@@ -8,15 +8,27 @@
     <style>
         /* ドラッグ中の要素のスタイル */
         .opacity-50 { opacity: 0.5; }
-        /* ドロップ先(移動)のハイライト */
-        .bg-blue-50 { background-color: #EFF6FF; }
-        /* ドロップ先(入れ替え)のハイライト */
-        .swap-target {
+        
+        /* ★ドラッグ可能なアイテム */
+        .draggable-item {
+            cursor: move;
+        }
+
+        /* ★ドロップ先(移動)のハイライト */
+        .members-dropzone.bg-blue-50 { 
+            background-color: #EFF6FF; 
+        }
+        
+        /* ★ドロップ先(入れ替え)のハイライト */
+        .driver-dropzone.swap-target, .draggable-item.swap-target {
             border: 2px dashed #3B82F6; /* blue-500 */
             box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
         }
-        /* 定員オーバー時のハイライト */
-        .bg-red-50 { background-color: #FEF2F2; }
+
+        /* ★ドロップ先(定員オーバー) */
+        .members-dropzone.bg-red-50 { 
+            background-color: #FEF2F2; 
+        }
         
         /* details[open] summary のスタイル */
         details[open] > summary {
@@ -27,14 +39,14 @@
             display: none;
         }
 
-        /* ★可変グリッドレイアウトのためのCSS */
+        /* 可変グリッドレイアウトのためのCSS */
         .main-grid-layout {
             display: grid;
             grid-template-columns: repeat(1, minmax(0, 1fr)); /* default: 1 col */
             gap: 1.5rem; /* gap-6 */
         }
         
-        /* ★結果表示用のグリッドレイアウト */
+        /* 結果表示用のグリッドレイアウト */
         .results-grid-layout {
             display: grid;
             grid-template-columns: repeat(1, minmax(0, 1fr)); /* default: 1 col */
@@ -47,21 +59,20 @@
                 grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
             }
             
-            /* ★結果表示用のグリッド（LG以上） */
+            /* 結果表示用のグリッド（LG以上） */
             .results-grid-layout {
-                grid-template-columns: repeat(var(--layout-columns, 4), minmax(0, 1fr));
+                grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
             }
         }
     </style>
 </head>
 <body class="bg-gray-100 font-sans">
 
-    <!-- ★コンテナ幅を max-w-7xl に変更 -->
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">配車調整アプリ</h1>
 
-        <!-- ファイル入出力ボタン (グリッドレイアウトに変更) -->
-        <section class="mb-6 grid grid-cols-2 gap-2 md:w-1/2 lg:w-1/3"> <!-- 幅を制限 -->
+        <!-- ファイル入出力ボタン -->
+        <section class="mb-6 grid grid-cols-2 gap-2 md:w-1/2 lg:w-1/3">
             <!-- 状態 -->
             <button id="export-state-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow transition duration-200">
                 状態を保存 (JSON)
@@ -88,41 +99,37 @@
             <button id="message-close" type="button" class="float-right font-bold text-lg leading-none">&times;</button>
         </div>
 
-        <!-- ★メインコンテンツグリッド -->
+        <!-- メインコンテンツグリッド -->
         <div id="main-content" class="main-grid-layout">
 
             <!-- ステップ 1: 参加者選択 -->
-            <section> <!-- mb-6 削除 -->
+            <section>
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xl font-semibold text-gray-700">1. 参加者を選択</h2>
                     <button id="toggle-details-button" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 rounded-lg text-sm transition duration-200">
                         すべて開く
                     </button>
                 </div>
-                <!-- ★高さを指定 -->
                 <div id="participant-list" class="space-y-2 h-[600px] overflow-y-auto bg-white p-4 rounded-lg shadow">
                     <!-- JSで描画 -->
                 </div>
             </section>
 
             <!-- ステップ 2: 車選択 -->
-            <section> <!-- mb-6 削除 -->
+            <section>
                 <h2 class="text-xl font-semibold text-gray-700 mb-3">2. 車とドライバーを選択</h2>
-                <!-- ★高さを指定 -->
                 <div id="car-list" class="space-y-3 h-[600px] overflow-y-auto bg-white p-4 rounded-lg shadow">
                     <!-- JSで描画 -->
                 </div>
             </section>
 
             <!-- ステップ 3 & 4: 別便除外 と 実行ボタン -->
-            <section> <!-- mb-6, mb-8 削除 -->
+            <section>
                 <h2 class="text-xl font-semibold text-gray-700 mb-3">3. 別便の人を除外</h2>
-                <!-- ★高さを指定 -->
                 <div id="exclusion-list" class="space-y-2 h-[488px] overflow-y-auto bg-white p-4 rounded-lg shadow min-h-[50px]">
                     <!-- JSで描画 -->
                 </div>
                 
-                <!-- ステップ 4: 割り当て実行ボタン をここに移動 -->
                 <div class="mt-6 text-center">
                     <button id="assign-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-10 rounded-lg shadow-lg transition duration-200 ease-in-out transform hover:scale-105">
                         4. 割り当て実行
@@ -131,7 +138,6 @@
             </section>
 
             <!-- ステップ 5: 割り当て結果 -->
-            <!-- ★IDを追加 -->
             <section id="results-section"> 
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xl font-semibold text-gray-700">5. 割り当て結果 (ドラッグ＆ドロップで調整可能)</h2>
@@ -148,156 +154,150 @@
                     </button>
                 </div>
 
-                <!-- ★クラス追加, space-y-4 削除 -->
                 <div id="results" class="results-grid-layout"> 
                     <p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>
                 </div>
             </section>
 
-        </div> <!-- ★main-content 閉じタグ -->
+        </div> <!-- main-content 閉じタグ -->
 
     </div>
 
     <script type="module">
-        // --- ★レイアウト列数の定義 ---
+        // --- レイアウト列数の定義 ---
         const LAYOUT_COLUMNS = 3; 
 
         // --- 事前定義データ ---
         
         let FAMILIES = [
-// ... (既存のデータ) ...
             {
                 familyName: '小高家', 
                 members: [
-                    { id: 'p1', name: '斗愛', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '東小', other: '' } },
-                    { id: 'p2', name: '小高監督', type: '保護者' },
-                    { id: 'p3', name: '小高母', type: '保護者' },
-                    { id: 'p22', name: '愛之佑', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '東小', other: '' } } 
+                    { id: 'p1', name: '斗愛', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: '' } },
+                    { id: 'p2', name: '小高監督', type: '保護者', data: { memo: '' } },
+                    { id: 'p3', name: '小高母', type: '保護者', data: { memo: '' } },
+                    { id: 'p22', name: '愛之佑', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '東小', other: '', memo: '' } } 
                 ]
             },
             {
                 familyName: '難波家',
                 members: [
-                    { id: 'p4', name: '諒成', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: 'x小', other: '' } },
-                    { id: 'p5', name: '難波父', type: '保護者' }
+                    { id: 'p4', name: '諒成', type: '選手', isFlagTarget: true, data: { grade: '5年', school: 'x小', other: '', memo: '' } },
+                    { id: 'p5', name: '難波父', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '浪川家',
                 members: [
-                    { id: 'p6', name: '長政', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '小金小', other: '' } },
-                    { id: 'p7', name: '浪川父', type: '保護者' },
-                    { id: 'p8', name: '浪川母', type: '保護者' }
+                    { id: 'p6', name: '長政', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p7', name: '浪川父', type: '保護者', data: { memo: '' } },
+                    { id: 'p8', name: '浪川母', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '高橋家',
                 members: [
-                    { id: 'p9', name: '湊多', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '東小', other: '' } }
+                    { id: 'p9', name: '湊多', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: '' } }
                 ]
             },
             {
                 familyName: '山田家',
                 members: [
-                    { id: 'p10', name: '颯真', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '小金小', other: '' } },
-                    { id: 'p11', name: '山田父', type: '保護者' },
-                    { id: 'p12', name: '山田母', type: '保護者' }
+                    { id: 'p10', name: '颯真', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p11', name: '山田父', type: '保護者', data: { memo: '' } },
+                    { id: 'p12', name: '山田母', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '菱沼家',
                 members: [
-                    { id: 'p13', name: '颯介', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '小金小', other: '' } },
-                    { id: 'p14', name: '菱沼父', type: '保護者' },
-                    { id: 'p15', name: '菱沼母', type: '保護者' },
-                    { id: 'p16', name: 'つぐみ', type: '兄弟', isFlagTarget: false, flags: { grade: '2年', school: '小金小', other: '' } }
+                    { id: 'p13', name: '颯介', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p14', name: '菱沼父', type: '保護者', data: { memo: '' } },
+                    { id: 'p15', name: '菱沼母', type: '保護者', data: { memo: '' } },
+                    { id: 'p16', name: 'つぐみ', type: '兄弟', isFlagTarget: false, data: { grade: '2年', school: '小金小', other: '', memo: '' } }
                 ]
             },
             {
                 familyName: '小野家',
                 members: [
-                    { id: 'p17', name: '暁人', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '小金小', other: '' } },
-                    { id: 'p18', name: '小野母', type: '保護者' },
-                    { id: 'p19', name: 'ななか', type: '兄弟', isFlagTarget: true, flags: { grade: '2年', school: '小金小', other: '' } }
+                    { id: 'p17', name: '暁人', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p18', name: '小野母', type: '保護者', data: { memo: '' } },
+                    { id: 'p19', name: 'ななか', type: '兄弟', isFlagTarget: true, data: { grade: '2年', school: '小金小', other: '', memo: '' } }
                 ]
             },
             {
                 familyName: '津村家',
                 members: [
-                    { id: 'p20', name: '一樹', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '東小', other: '' } },
-                    { id: 'p21', name: '津村父', type: '保護者' }
+                    { id: 'p20', name: '一樹', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '東小', other: '', memo: '' } },
+                    { id: 'p21', name: '津村父', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '浅野家',
                 members: [
-                    { id: 'p23', name: '泰地', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '小金小', other: '' } },
-                    { id: 'p24', name: '浅野父', type: '保護者' },
-                    { id: 'p25', name: '浅野母', type: '保護者' }
+                    { id: 'p23', name: '泰地', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p24', name: '浅野父', type: '保護者', data: { memo: '' } },
+                    { id: 'p25', name: '浅野母', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '近藤家', 
                 members: [
-                    { id: 'p26', name: '謙成', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '八木南小', other: '' } },
-                    { id: 'p44', name: '茉莉', type: '選手', isFlagTarget: true, flags: { grade: '1年', school: '八木南小', other: '' } } ,
-                    { id: 'p27', name: '近藤父', type: '保護者' },
-                    { id: 'p28', name: '近藤母', type: '保護者' },
-                    { id: 'p29', name: 'おうすけ', type: '兄弟', isFlagTarget: true, flags: { grade: '', school: '', other: '' } }
+                    { id: 'p26', name: '謙成', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '八木南小', other: '', memo: '' } },
+                    { id: 'p44', name: '茉莉', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '八木南小', other: '', memo: '' } } ,
+                    { id: 'p27', name: '近藤父', type: '保護者', data: { memo: '' } },
+                    { id: 'p28', name: '近藤母', type: '保護者', data: { memo: '' } },
+                    { id: 'p29', name: 'おうすけ', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: '' } }
                 ]
             },
             {
                 familyName: '知野見家',
                 members: [
-                    { id: 'p30', name: '怜央', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '小金小', other: '' } },
-                    { id: 'p31', name: '知野見父', type: '保護者' },
-                    { id: 'p32', name: '知野見母', type: '保護者' },
-                    { id: 'p33', name: 'ゆな', type: '兄弟', isFlagTarget: true, flags: { grade: '', school: '', other: '' } }
+                    { id: 'p30', name: '怜央', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p31', name: '知野見父', type: '保護者', data: { memo: '' } },
+                    { id: 'p32', name: '知野見母', type: '保護者', data: { memo: '' } },
+                    { id: 'p33', name: 'ゆな', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: '' } }
                 ]
             },
             {
                 familyName: '藤山家',
                 members: [
-                    { id: 'p34', name: '琉杜', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '小金小', other: '' } },
-                    { id: 'p35', name: '藤山父', type: '保護者' },
-                    { id: 'p36', name: '藤山母', type: '保護者' }
+                    { id: 'p34', name: '琉杜', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p35', name: '藤山父', type: '保護者', data: { memo: '' } },
+                    { id: 'p36', name: '藤山母', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '小河原家',
                 members: [
-                    { id: 'p37', name: '維', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '小金小', other: '' } }, // 画像では 3年 A/B
-                    { id: 'p38', name: '小河原父', type: '保護者' },
-                    { id: 'p39', name: '小河原母', type: '保護者' }
+                    { id: 'p37', name: '維', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } }, // 画像では 3年 A/B
+                    { id: 'p38', name: '小河原父', type: '保護者', data: { memo: '' } },
+                    { id: 'p39', name: '小河原母', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '古川家',
                 members: [
-                    { id: 'p40', name: '峻丞', type: '選手', isFlagTarget: true, flags: { grade: '2年', school: '新松戸南小', other: '' } },
-                    { id: 'p41', name: '古川父', type: '保護者' }
+                    { id: 'p40', name: '峻丞', type: '選手', isFlagTarget: true, data: { grade: '2年', school: '新松戸南小', other: '', memo: '' } },
+                    { id: 'p41', name: '古川父', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: '坪井家',
                 members: [
-                    { id: 'p42', name: '雄也', type: '選手', isFlagTarget: true, flags: { grade: '1年', school: '東小', other: '' } },
-                    { id: 'p43', name: '坪井父', type: '保護者' }
+                    { id: 'p42', name: '雄也', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '東小', other: '', memo: '' } },
+                    { id: 'p43', name: '坪井父', type: '保護者', data: { memo: '' } }
                 ]
             },
             {
                 familyName: 'スタッフ・個人', // ★コーチ等、家族に属さない個人用
                 members: [
-                    { id: 'p94', name: '渡邉会長', type: 'その他', isFlagTarget: false },
-                    { id: 'p99', name: '木村代表', type: 'その他', isFlagTarget: false },
-                    { id: 'p98', name: '吉田さん', type: 'その他', isFlagTarget: false },
-                    { id: 'p97', name: '前田さん', type: 'その他', isFlagTarget: false },
-                    { id: 'p96', name: '中田さん', type: 'その他', isFlagTarget: false },
-                    { id: 'p95', name: '渡辺さん', type: 'その他', isFlagTarget: false },
-                    // { id: 'p93', name: '専属コーチ', type: 'その他', isFlagTarget: false },
-                    // { id: 'p92', name: '専属コーチ', type: 'その他', isFlagTarget: false },
-                    // { id: 'p91', name: '専属コーチ', type: 'その他', isFlagTarget: false },
-                    // { id: 'p90', name: '専属コーチ', type: 'その他', isFlagTarget: false }
+                    { id: 'p94', name: '渡邉会長', type: 'その他', data: { memo: '' } },
+                    { id: 'p99', name: '木村代表', type: 'その他', data: { memo: '' } },
+                    { id: 'p98', name: '吉田さん', type: 'その他', data: { memo: '' } },
+                    { id: 'p97', name: '前田さん', type: 'その他', data: { memo: '' } },
+                    { id: 'p96', name: '中田さん', type: 'その他', data: { memo: '' } },
+                    { id: 'p95', name: '渡辺さん', type: 'その他', data: { memo: '' } },
                 ]
             }
         ];
@@ -320,44 +320,39 @@
             { id: 'c15', name: '古川カー', familyName: '古川家', baseCapacity: 8 },
             { id: 'c16', name: 'コーチカー', familyName: 'スタッフ・個人', baseCapacity: 5 } // ★コーチ用の車（仮）
         ];
-// ... (既存のデータ) ...
 
         let ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
 
 
         // --- 状態変数 ---
-// ... (既存の変数) ...
         let selectedParticipantIds = new Set();
-// ... (既存の変数) ...
         let selectedCarIds = new Set();
         let selectedDrivers = new Map(); // carId -> driverId
         let selectedLuggage = new Set(); // carId
         let excludedParticipantIds = new Set();
-        let participantFlags = new Map(); // participantId -> { grade, school, other }
-// ... (既存の変数) ...
-        let currentAssignments = []; // 割り当て結果
-        let dragTarget = null; // ドラッグ中の参加者ID
-        let dragSourceCarId = null; // ドラッグ元の車ID
+        let participantData = new Map(); // participantId -> { grade, school, other, memo }
+        let currentAssignments = []; // 割り当て結果: { car..., driver: {p...}, members: [{p...}] }
+        
+        // ドラッグ＆ドロップ用一時変数
+        let dragTargetId = null; 
+        let dragSourceCarId = null; 
+        let dragIsDriver = false;
+
 
         // --- DOM参照 ---
-// ... (既存のDOM参照) ...
         const participantListEl = document.getElementById('participant-list');
-// ... (既存のDOM参照) ...
         const carListEl = document.getElementById('car-list');
         const exclusionListEl = document.getElementById('exclusion-list');
         const resultsEl = document.getElementById('results');
         const assignButton = document.getElementById('assign-button');
-// ... (既存のDOM参照) ...
         const messageContainer = document.getElementById('message');
         const messageText = document.getElementById('message-text');
         const messageClose = document.getElementById('message-close');
         const exportButton = document.getElementById('export-state-button');
-// ... (既存のDOM参照) ...
         const importInput = document.getElementById('import-state-input');
         const showTextOutputButton = document.getElementById('show-text-output-button');
         const textOutputContainer = document.getElementById('text-output-container');
         const textOutputEl = document.getElementById('text-output');
-// ... (既存のDOM参照) ...
         const copyTextOutputButton = document.getElementById('copy-text-output-button');
         const toggleDetailsButton = document.getElementById('toggle-details-button');
         
@@ -367,10 +362,8 @@
 
         // --- 初期化処理 ---
         document.addEventListener('DOMContentLoaded', () => {
-            // ★CSS変数を設定
             document.documentElement.style.setProperty('--layout-columns', LAYOUT_COLUMNS);
             
-            // ★結果セクションとプレースホルダーの列スパンを動的に設定する関数
             const resultsSection = document.getElementById('results-section');
             function updateLayouts() { 
                 const placeholder = document.getElementById('results-placeholder');
@@ -387,22 +380,17 @@
                     }
                 }
             }
-            updateLayouts(); // 初期設定
-            window.addEventListener('resize', updateLayouts); // リサイズ時
+            updateLayouts();
+            window.addEventListener('resize', updateLayouts); 
 
-
-            initializeFlags(); 
+            initializeParticipantData(); 
             renderParticipantList();
-// ... (既存の初期化処理) ...
             renderCarList();
             
             participantListEl.addEventListener('change', handleParticipantChange);
-// ... (既存の初期化処理) ...
-            participantListEl.addEventListener('input', handleFlagInputChange);
+            participantListEl.addEventListener('input', handleParticipantDataInput); // ★ハンドラ変更
             carListEl.addEventListener('change', handleCarChange);
             exclusionListEl.addEventListener('change', handleExclusionChange);
-// ... (既存の初期化処理) ...
-// ... (既存の初期化処理) ...
             assignButton.addEventListener('click', handleAssignment);
             messageClose.addEventListener('click', hideMessage);
             resultsEl.addEventListener('dragstart', handleDragStart);
@@ -419,48 +407,48 @@
             importMasterInput.addEventListener('change', handleImportMasterData);
         });
 
-        // フラグデータを初期化
-// ... (既存の関数) ...
-        function initializeFlags() {
-            participantFlags.clear(); 
+        // ★参加者データ（備考含む）を初期化
+        function initializeParticipantData() {
+            participantData.clear(); 
             FAMILIES.forEach(family => {
                 family.members.forEach(member => {
-// ... (既存の関数) ...
-                    if (member.isFlagTarget && member.flags) {
-                         participantFlags.set(member.id, { ...member.flags });
+                    // メモデータは全員、フラグデータは対象者のみ
+                    const defaultData = { 
+                        grade: '', school: '', other: '', 
+                        ...member.data // memo: '' もここで上書き
+                    };
+                    
+                    if (!member.isFlagTarget) {
+                        defaultData.grade = '';
+                        defaultData.school = '';
+                        defaultData.other = '';
                     }
+                    participantData.set(member.id, defaultData);
                 });
-// ... (既存の関数) ...
             });
         }
 
         // ステップ1: 参加者リストを描画
-// ... (既存の関数) ...
         function renderParticipantList() {
-            participantListEl.innerHTML = ''; // クリア
+            participantListEl.innerHTML = '';
             FAMILIES.forEach(family => {
-// ... (既存の関数) ...
                 const details = document.createElement('details');
                 details.className = 'bg-gray-50 rounded border';
                 
                 const summary = document.createElement('summary');
-// ... (既存の関数) ...
                 summary.className = 'p-3 font-semibold cursor-pointer select-none';
                 summary.textContent = family.familyName;
                 
                 const memberList = document.createElement('div');
-// ... (既存の関数) ...
-                memberList.className = 'p-3 border-t border-gray-200 space-y-3'; // ★space-y-3に変更
+                memberList.className = 'p-3 border-t border-gray-200 space-y-3';
 
                 family.members.forEach(p => {
                     const isChecked = selectedParticipantIds.has(p.id);
-// ... (既存の関数) ...
                     const wrapper = document.createElement('div');
                     wrapper.className = 'ml-4';
 
                     // 参加者名とチェックボックス
                     const participantDiv = document.createElement('div');
-// ... (既存の関数) ...
                     participantDiv.className = 'flex items-center';
                     participantDiv.innerHTML = `
                         <input type="checkbox" id="p-${p.id}" data-id="${p.id}" data-action="select-participant" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
@@ -468,26 +456,29 @@
                     `;
                     wrapper.appendChild(participantDiv);
                     
-                    // フラグ入力欄を常時表示（対象者のみ）
-// ... (既存の関数) ...
+                    // データ入力欄
+                    const data = participantData.get(p.id) || { grade: '', school: '', other: '', memo: '' };
+                    const dataDiv = document.createElement('div');
+                    dataDiv.id = `data-inputs-${p.id}`; 
+                    dataDiv.className = `ml-8 mt-1.5 grid grid-cols-4 gap-2 ${isChecked ? '' : 'opacity-50'}`;
+                    
                     if (p.isFlagTarget) {
-                        const flags = participantFlags.get(p.id) || { grade: '', school: '', other: '' };
-                        const flagDiv = document.createElement('div');
-// ... (既存の関数) ...
-                        flagDiv.id = `flags-${p.id}`; 
-                        // グリッドレイアウトで横並びに
-                        flagDiv.className = `ml-8 mt-1.5 grid grid-cols-3 gap-2 ${isChecked ? '' : 'opacity-50'}`; // チェックなしで半透明
-                        flagDiv.innerHTML = `
-                            <input type="text" data-id="${p.id}" data-flag-type="grade" value="${flags.grade || ''}" placeholder="学年" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
-                            <input type="text" data-id="${p.id}" data-flag-type="school" value="${flags.school || ''}" placeholder="学校" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
-                            <input type="text" data-id="${p.id}" data-flag-type="other" value="${flags.other || ''}" placeholder="その他" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                        dataDiv.innerHTML = `
+                            <input type="text" data-id="${p.id}" data-type="grade" value="${data.grade || ''}" placeholder="学年" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                            <input type="text" data-id="${p.id}" data-type="school" value="${data.school || ''}" placeholder="学校" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                            <input type="text" data-id="${p.id}" data-type="other" value="${data.other || ''}" placeholder="その他" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                            <input type="text" data-id="${p.id}" data-type="memo" value="${data.memo || ''}" placeholder="備考" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
                         `;
-// ... (既存の関数) ...
-                        wrapper.appendChild(flagDiv);
+                    } else {
+                        // isFlagTarget: false の場合は備考欄のみ
+                        dataDiv.innerHTML = `
+                            <div class="col-span-3"></div> <!-- 空白 -->
+                            <input type="text" data-id="${p.id}" data-type="memo" value="${data.memo || ''}" placeholder="備考" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                        `;
                     }
+                    wrapper.appendChild(dataDiv);
                     memberList.appendChild(wrapper);
                 });
-// ... (既存の関数) ...
                 details.appendChild(summary);
                 details.appendChild(memberList);
                 participantListEl.appendChild(details);
@@ -495,22 +486,17 @@
         }
 
         // ステップ2: 車リストを描画
-// ... (既存の関数) ...
         function renderCarList() {
             carListEl.innerHTML = '';
             AVAILABLE_CARS_INFO.forEach(car => {
                 const family = FAMILIES.find(f => f.familyName === car.familyName);
-// ... (既存の関数) ...
-                // 家族に紐付かない車（例: スタッフ・個人）の場合、全参加者をドライバー候補にする
                 const driverOptions = family ? family.members : ALL_PARTICIPANTS_FLAT; 
                 const isChecked = selectedCarIds.has(car.id);
                 const driverId = selectedDrivers.get(car.id) || '';
-// ... (既存の関数) ...
                 const hasLuggage = selectedLuggage.has(car.id);
                 const div = document.createElement('div');
                 div.className = 'bg-gray-50 rounded border p-3';
                 div.dataset.carId = car.id;
-// ... (既存の関数) ...
                 div.innerHTML = `
                     <div class="flex items-center">
                         <input type="checkbox" id="c-${car.id}" data-id="${car.id}" data-action="select-car" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
@@ -530,45 +516,38 @@
                         </div>
                     </div>
                 `;
-// ... (既存の関数) ...
                 carListEl.appendChild(div);
             });
         }
 
         // ステップ3: 除外リストを描画
-// ... (既存の関数) ...
         function renderExclusionList() {
             exclusionListEl.innerHTML = '';
             const participants = ALL_PARTICIPANTS_FLAT.filter(p => selectedParticipantIds.has(p.id));
             if (participants.length === 0) {
-// ... (既存の関数) ...
                 exclusionListEl.innerHTML = '<p class="text-gray-500 text-sm">ステップ1で参加者を選択してください。</p>';
                 return;
             }
             participants.forEach(p => {
-// ... (既存の関数) ...
                 const div = document.createElement('div');
                 div.className = 'flex items-center';
                 div.innerHTML = `
                     <input type="checkbox" id="ex-${p.id}" data-id="${p.id}" data-action="exclude-participant" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${excludedParticipantIds.has(p.id) ? 'checked' : ''}>
                     <label for="ex-${p.id}" class="text-gray-700">${p.name} (${p.type})</label>
                 `;
-// ... (既存の関数) ...
                 exclusionListEl.appendChild(div);
             });
         }
 
-        // ステップ5: 割り当て結果を描画
+        // ★ステップ5: 割り当て結果を描画 (ドライバーと別便対応)
         function renderResults(assignments) {
             resultsEl.innerHTML = '';
             
-            // ★結果がない場合のメッセージ処理
             if (assignments.length === 0) {
-                // ★初期状態のメッセージに戻す
                 resultsEl.innerHTML = `<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>`;
                 const placeholder = document.getElementById('results-placeholder');
                 if (placeholder) {
-                     if (window.innerWidth >= 1024) { // lg breakpoint
+                     if (window.innerWidth >= 1024) { 
                         placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
                     } else {
                         placeholder.style.gridColumn = 'auto';
@@ -577,32 +556,75 @@
                 return;
             }
 
-            // ★結果がある場合
             assignments.forEach(car => {
                 const card = document.createElement('div');
                 card.id = `car-result-${car.id}`;
                 card.dataset.carId = car.id; 
-                card.className = 'bg-white border rounded-lg shadow-md car-dropzone'; // mb-4 削除 (gapで対応)
-                const vacancy = car.capacity - car.members.length;
-                const luggageInfo = car.hasLuggage ? ' (荷物あり)' : '';
-                card.innerHTML = `
-                    <div class="p-4 border-b">
-                        <h4 class="font-bold text-lg">${car.name} ${luggageInfo}</h4>
-                        <p class="text-sm text-gray-600">ドライバー: ${car.driverName} (${car.driverType})</p>
-                        <p class="text-sm font-medium ${vacancy < 0 ? 'text-red-600' : 'text-blue-600'}">
-                            乗客: ${car.members.length}名 / 定員 ${car.capacity}名 (空き ${vacancy}名)
-                        </p>
-                    </div>
-                    <ul id="car-list-${car.id}" class="p-4 space-y-2 min-h-[50px]">
-                        ${car.members.map(p => `
-                            <li id="p-result-${p.id}" 
-                                data-participant-id="${p.id}" 
-                                draggable="true" 
-                                class="p-2 bg-gray-100 rounded shadow-sm cursor-move flex justify-between items-center participant-draggable">
-                                <span>${p.name} (${p.type})</span>
-                                <span class="text-xs text-gray-500">${[p.flags?.grade, p.flags?.school, p.flags?.other].filter(Boolean).join(' ')}</span>
+                card.className = 'bg-white border rounded-lg shadow-md car-dropzone';
+                
+                let headerHtml = '';
+                let driverHtml = '';
+                
+                // 「別便カー」の特別処理
+                if (car.id === 'excluded-car') {
+                    headerHtml = `
+                        <div class="p-4 border-b bg-gray-100">
+                            <h4 class="font-bold text-lg text-gray-700">${car.name}</h4>
+                            <p class="text-sm text-gray-600">乗客: ${car.members.length}名</p>
+                        </div>`;
+                } else {
+                    // 通常の車
+                    const vacancy = car.capacity - car.members.length;
+                    const luggageInfo = car.hasLuggage ? ' (荷物あり)' : '';
+                    headerHtml = `
+                        <div class="p-4 border-b">
+                            <h4 class="font-bold text-lg">${car.name} ${luggageInfo}</h4>
+                            <p class="text-sm font-medium ${vacancy < 0 ? 'text-red-600' : 'text-blue-600'}">
+                                乗客: ${car.members.length}名 / 定員 ${car.capacity}名 (空き ${vacancy}名)
+                            </p>
+                        </div>`;
+                    
+                    // ドライバー欄
+                    const d = car.driver;
+                    if (d) {
+                        const memo = participantData.get(d.id)?.memo || '';
+                        driverHtml = `
+                        <div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone">
+                            <li id="p-result-${d.id}" data-participant-id="${d.id}" data-is-driver="true" draggable="true" 
+                                class="p-2 bg-blue-100 rounded shadow-sm flex justify-between items-center draggable-item">
+                                <div>
+                                    <span class="font-semibold text-blue-800">[D] ${d.name} (${d.type})</span>
+                                    ${memo ? `<span class="text-xs text-blue-600 ml-2">(${memo})</span>` : ''}
+                                </div>
                             </li>
-                        `).join('')}
+                        </div>`;
+                    } else {
+                         driverHtml = `
+                         <div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone min-h-[50px] bg-red-50">
+                            <p class="text-red-700 text-sm">ドライバーがいません</p>
+                         </div>`;
+                    }
+                }
+                
+                // 乗客リスト
+                const membersHtml = car.members.map(p => {
+                    const memo = participantData.get(p.id)?.memo || '';
+                    return `
+                    <li id="p-result-${p.id}" data-participant-id="${p.id}" data-is-driver="false" draggable="true" 
+                        class="p-2 bg-gray-100 rounded shadow-sm flex justify-between items-center draggable-item">
+                        <div>
+                            <span>${p.name} (${p.type})</span>
+                            ${memo ? `<span class="text-xs text-gray-500 ml-2">(${memo})</span>` : ''}
+                        </div>
+                        <span class="text-xs text-gray-400">${[p.flags?.grade, p.flags?.school, p.flags?.other].filter(Boolean).join(' ')}</span>
+                    </li>`;
+                }).join('');
+
+                card.innerHTML = `
+                    ${headerHtml}
+                    ${driverHtml}
+                    <ul id="members-dropzone-${car.id}" class="p-4 space-y-2 min-h-[50px] members-dropzone">
+                        ${membersHtml}
                     </ul>
                 `;
                 resultsEl.appendChild(card);
@@ -611,251 +633,257 @@
 
 
         // --- ドラッグ＆ドロップ ---
-// ... (既存の関数) ...
         
         function clearDragOverHighlights() {
-            document.querySelectorAll('.participant-draggable').forEach(el => el.classList.remove('swap-target'));
-// ... (既存の関数) ...
-            document.querySelectorAll('.car-dropzone').forEach(el => el.classList.remove('bg-blue-50', 'bg-red-50'));
+            document.querySelectorAll('.draggable-item').forEach(el => el.classList.remove('swap-target'));
+            document.querySelectorAll('.driver-dropzone').forEach(el => el.classList.remove('swap-target'));
+            document.querySelectorAll('.members-dropzone').forEach(el => el.classList.remove('bg-blue-50', 'bg-red-50'));
         }
 
         function handleDragStart(e) {
-            if (e.target.classList.contains('participant-draggable')) {
-// ... (既存の関数) ...
-                dragTarget = e.target.dataset.participantId;
+            if (e.target.classList.contains('draggable-item')) {
+                dragTargetId = e.target.dataset.participantId;
                 dragSourceCarId = e.target.closest('.car-dropzone').dataset.carId;
+                dragIsDriver = e.target.dataset.isDriver === 'true';
                 e.dataTransfer.effectAllowed = 'move';
                 e.target.classList.add('opacity-50');
-// ... (既存の関数) ...
             }
         }
 
         function handleDragOver(e) {
             e.preventDefault(); 
-// ... (既存の関数) ...
             const dropzone = e.target.closest('.car-dropzone');
             if (!dropzone) return;
 
-            const swapTarget = e.target.closest('.participant-draggable');
-// ... (既存の関数) ...
+            const targetItem = e.target.closest('.draggable-item');
+            const targetDriverZone = e.target.closest('.driver-dropzone');
+            const targetMembersZone = e.target.closest('.members-dropzone');
             
             clearDragOverHighlights(); 
 
-            // 「入れ替え」モード
-            if (swapTarget && swapTarget.dataset.participantId !== dragTarget) {
-// ... (既存の関数) ...
-                swapTarget.classList.add('swap-target'); 
+            // 「入れ替え」モード (アイテムの上、またはドライバーゾーンの上)
+            if (targetItem || targetDriverZone) {
+                const targetEl = targetItem || targetDriverZone;
+                targetEl.classList.add('swap-target'); 
                 dropzone.dataset.dropMode = 'swap'; 
-                dropzone.dataset.swapTargetId = swapTarget.dataset.participantId;
             } 
-            // 「移動」モード
-// ... (既存の関数) ...
-            else {
-                dropzone.classList.add('bg-blue-50'); 
+            // 「移動」モード (乗客ゾーンの空きスペース)
+            else if (targetMembersZone) {
+                targetMembersZone.classList.add('bg-blue-50'); 
                 dropzone.dataset.dropMode = 'move';
-// ... (既存の関数) ...
-                dropzone.dataset.swapTargetId = '';
                 
                 const targetCarId = dropzone.dataset.carId;
-                if (targetCarId === dragSourceCarId) return; // 同じ車への移動はハイライト不要
-// ... (既存の関数) ...
+                if (targetCarId === dragSourceCarId) return;
                 
                 const targetCar = currentAssignments.find(c => c.id === targetCarId);
-                if (!targetCar || targetCar.members.length >= targetCar.capacity) {
-                    dropzone.classList.remove('bg-blue-50');
-// ... (既存の関数) ...
-                    dropzone.classList.add('bg-red-50'); // 定員オーバー
+                // 定員チェック (別便カーはスキップ)
+                if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                    targetMembersZone.classList.remove('bg-blue-50');
+                    targetMembersZone.classList.add('bg-red-50');
                 }
             }
         }
 
         // 車の空き状況UIを更新
-// ... (既存の関数) ...
-        function updateCarVacancyUI(car) {
-            if (!car || !car.element) return;
+        function updateCarVacancyUI(carId) {
+            const car = currentAssignments.find(c => c.id === carId);
+            if (!car || car.id === 'excluded-car' || !car.element) return;
+            
             const vacancy = car.capacity - car.members.length;
             const pEl = car.element.querySelector('p.font-medium');
-// ... (既存の関数) ...
             if (pEl) {
                 pEl.textContent = `乗客: ${car.members.length}名 / 定員 ${car.capacity}名 (空き ${vacancy}名)`;
                 pEl.classList.toggle('text-red-600', vacancy < 0);
-// ... (既存の関数) ...
                 pEl.classList.toggle('text-blue-600', vacancy >= 0);
             }
         }
+        
+        // 参加者オブジェクトをデータから見つけるヘルパー
+        function findAndRemoveParticipant(carId, pId, isDriver) {
+            const car = currentAssignments.find(c => c.id === carId);
+            if (!car) return null;
+            
+            if (isDriver) {
+                if (car.driver && car.driver.id === pId) {
+                    const p = car.driver;
+                    car.driver = null; // ドライバーを削除
+                    return p;
+                }
+            } else {
+                const index = car.members.findIndex(p => p.id === pId);
+                if (index > -1) {
+                    return car.members.splice(index, 1)[0]; // 乗客を削除
+                }
+            }
+            return null;
+        }
+
 
         function handleDrop(e) {
-// ... (既存の関数) ...
             e.preventDefault();
             clearDragOverHighlights(); 
             
             const dropzone = e.target.closest('.car-dropzone');
-            if (!dropzone || !dragTarget) return;
-// ... (既存の関数) ...
+            if (!dropzone || !dragTargetId) return;
 
             const dropMode = dropzone.dataset.dropMode;
             const targetCarId = dropzone.dataset.carId;
 
-            const targetCar = currentAssignments.find(c => c.id === targetCarId);
-// ... (既存の関数) ...
+            const targetItem = e.target.closest('.draggable-item');
+            const targetDriverZone = e.target.closest('.driver-dropzone');
+
             const sourceCar = currentAssignments.find(c => c.id === dragSourceCarId);
+            const targetCar = currentAssignments.find(c => c.id === targetCarId);
 
-            if (!targetCar || !sourceCar) return;
+            if (!sourceCar || !targetCar) return;
 
-            // ドラッグ元の参加者データを取得
-// ... (既存の関数) ...
-            const sourceParticipantIndex = sourceCar.members.findIndex(p => p.id === dragTarget);
-            if (sourceParticipantIndex === -1) return;
-            const sourceParticipant = sourceCar.members[sourceParticipantIndex];
+            // ドラッグ元の参加者データを取得＆削除
+            const sourceParticipant = findAndRemoveParticipant(dragSourceCarId, dragTargetId, dragIsDriver);
+            if (!sourceParticipant) return; // 予期せぬエラー
 
-            // 「入れ替え」処理
-// ... (既存の関数) ...
+            // --- 「入れ替え」処理 (アイテム or ドライバーゾーンにドロップ) ---
             if (dropMode === 'swap') {
-                const targetParticipantId = dropzone.dataset.swapTargetId;
-                if (!targetParticipantId || targetParticipantId === dragTarget) return; 
+                let targetParticipant = null;
+                let targetIsDriver = false;
 
-                const targetParticipantIndex = targetCar.members.findIndex(p => p.id === targetParticipantId);
-// ... (既存の関数) ...
-                if (targetParticipantIndex === -1) return;
-                const targetParticipant = targetCar.members[targetParticipantIndex];
-
-                // データを入れ替え
-                sourceCar.members.splice(sourceParticipantIndex, 1, targetParticipant);
-// ... (既存の関数) ...
-                targetCar.members.splice(targetParticipantIndex, 1, sourceParticipant);
-
-                // DOMを入れ替え
-                const sourceEl = document.getElementById(`p-result-${dragTarget}`);
-// ... (既存の関数) ...
-                const targetEl = document.getElementById(`p-result-${targetParticipantId}`);
-                const sourceParent = sourceEl.parentNode;
-                const targetParent = targetEl.parentNode;
-                sourceParent.appendChild(targetEl);
-// ... (既存の関数) ...
-                targetParent.appendChild(sourceEl);
-
-                updateCarVacancyUI(sourceCar);
-                updateCarVacancyUI(targetCar);
-// ... (既存の関数) ...
-                hideMessage();
-            } 
-            // 「移動」処理
-            else if (dropMode === 'move') {
-                if (targetCarId === dragSourceCarId) return; // 同じ車への移動は無視
-// ... (既存の関数) ...
-                
-                // 定員チェック
-                if (targetCar.members.length >= targetCar.capacity) {
-                    showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
-                } else {
-// ... (既存の関数) ...
-                    // データを移動
-                    sourceCar.members.splice(sourceParticipantIndex, 1);
-                    targetCar.members.push(sourceParticipant);
-
-                    // DOMを移動
-// ... (既存の関数) ...
-                    const participantEl = document.getElementById(`p-result-${dragTarget}`);
-                    document.getElementById(`car-list-${targetCarId}`).appendChild(participantEl);
-
-                    updateCarVacancyUI(sourceCar);
-// ... (既存の関数) ...
-                    updateCarVacancyUI(targetCar);
-                    hideMessage();
+                if (targetItem) { // アイテムの上
+                    targetIsDriver = targetItem.dataset.isDriver === 'true';
+                    targetParticipant = findAndRemoveParticipant(targetCarId, targetItem.dataset.participantId, targetIsDriver);
+                } else if (targetDriverZone) { // ドライバーゾーンの上
+                    targetIsDriver = true;
+                    targetParticipant = findAndRemoveParticipant(targetCarId, targetCar.driver?.id, true);
                 }
-            }
-// ... (既存の関数) ...
+                
+                if (!targetParticipant) { // 入れ替え対象が見つからない (自分自身にドロップなど)
+                    // 元に戻す
+                    if (dragIsDriver) sourceCar.driver = sourceParticipant;
+                    else sourceCar.members.push(sourceParticipant);
+                    renderResults(currentAssignments); // UIを元に戻す
+                    return;
+                }
 
-            dropzone.dataset.dropMode = '';
-            dropzone.dataset.swapTargetId = '';
+                // 1. source を target の位置に入れる
+                if (targetIsDriver) {
+                    targetCar.driver = sourceParticipant;
+                } else {
+                    targetCar.members.push(sourceParticipant);
+                }
+                
+                // 2. target を source の位置に入れる
+                if (dragIsDriver) {
+                    sourceCar.driver = targetParticipant;
+                } else {
+                    sourceCar.members.push(targetParticipant);
+                }
+            } 
+            // --- 「移動」処理 (乗客ゾーンの空きスペースにドロップ) ---
+            else if (dropMode === 'move') {
+                if (targetCarId === dragSourceCarId && !dragIsDriver) { // 乗客→同じ車の乗客ゾーン
+                     sourceCar.members.push(sourceParticipant); // 元に戻す
+                     return; 
+                }
+                
+                // 定員チェック (別便カーはスキップ)
+                if (targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                    showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
+                    // 元に戻す
+                    if (dragIsDriver) sourceCar.driver = sourceParticipant;
+                    else sourceCar.members.push(sourceParticipant);
+                    return;
+                }
+                
+                // targetCar に乗客として追加
+                targetCar.members.push(sourceParticipant);
+                
+                // もし sourceCar のドライバーが空になったら、乗客の先頭を昇格
+                if (dragIsDriver && !sourceCar.driver && sourceCar.id !== 'excluded-car') {
+                    if (sourceCar.members.length > 0) {
+                        sourceCar.driver = sourceCar.members.splice(0, 1)[0];
+                    }
+                }
+                
+                hideMessage();
+            } else {
+                // 不明なドロップ -> 元に戻す
+                if (dragIsDriver) sourceCar.driver = sourceParticipant;
+                else sourceCar.members.push(sourceParticipant);
+            }
+
+            // 全体を再描画
+            renderResults(currentAssignments);
+            updateCarVacancyUI(dragSourceCarId);
+            updateCarVacancyUI(targetCarId);
         }
 
         function handleDragEnd(e) {
-// ... (既存の関数) ...
-            if (dragTarget) {
-                const el = document.getElementById(`p-result-${dragTarget}`);
+            if (dragTargetId) {
+                const el = document.getElementById(`p-result-${dragTargetId}`);
                 if (el) el.classList.remove('opacity-50');
             }
-// ... (既存の関数) ...
             clearDragOverHighlights();
             document.querySelectorAll('.car-dropzone').forEach(el => {
                 el.dataset.dropMode = '';
-                el.dataset.swapTargetId = '';
-// ... (既存の関数) ...
             });
-            dragTarget = null;
+            dragTargetId = null;
             dragSourceCarId = null;
+            dragIsDriver = false;
         }
-// ... (既存の関数) ...
 
 
         // --- イベントハンドラ ---
 
-        // 参加者選択のハンドラ（フラグUIの有効/無効切り替え）
         function handleParticipantChange(e) {
-// ... (既存の関数) ...
             const target = e.target;
             if (target.type === 'checkbox' && target.dataset.action === 'select-participant') {
                 const id = target.dataset.id;
-                const flagEl = document.getElementById(`flags-${id}`); 
-// ... (既存の関数) ...
+                const dataEl = document.getElementById(`data-inputs-${id}`); 
                 
                 if (target.checked) {
                     selectedParticipantIds.add(id);
-                    if (flagEl) {
-                        flagEl.classList.remove('opacity-50');
-// ... (既存の関数) ...
-                        // flagEl 内部の input を有効化
-                        flagEl.querySelectorAll('input').forEach(input => input.disabled = false);
+                    if (dataEl) {
+                        dataEl.classList.remove('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = false);
                     }
                 } else {
                     selectedParticipantIds.delete(id);
-// ... (既存の関数) ...
-                    if (flagEl) {
-                        flagEl.classList.add('opacity-50');
-                        // flagEl 内部の input を無効化
-                        flagEl.querySelectorAll('input').forEach(input => input.disabled = true);
-// ... (既存の関数) ...
+                    if (dataEl) {
+                        dataEl.classList.add('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = true);
                     }
                     if (excludedParticipantIds.has(id)) {
                         excludedParticipantIds.delete(id);
                     }
-// ... (既存の関数) ...
                 }
                 renderExclusionList();
             }
         }
 
-        // フラグ入力のハンドラ
-// ... (既存の関数) ...
-        function handleFlagInputChange(e) {
+        // ★データ入力のハンドラ (備考含む)
+        function handleParticipantDataInput(e) {
             const target = e.target;
-            if (target.dataset.id && target.dataset.flagType) {
+            if (target.dataset.id && target.dataset.type) {
                 const id = target.dataset.id;
-// ... (既存の関数) ...
-                const flagType = target.dataset.flagType;
+                const type = target.dataset.type;
                 const value = target.value;
                 
-                const flags = participantFlags.get(id) || { grade: '', school: '', other: '' };
-                flags[flagType] = value;
-// ... (既存の関数) ...
-                participantFlags.set(id, flags);
+                const data = participantData.get(id) || { grade: '', school: '', other: '', memo: '' };
+                data[type] = value;
+                participantData.set(id, data);
             }
         }
 
         // 車選択のハンドラ
-// ... (既存の関数) ...
         function handleCarChange(e) {
+// ... (既存の関数) ...
             const target = e.target;
             const carId = target.closest('[data-car-id]')?.dataset.carId;
             if (!carId) return;
-// ... (既存の関数) ...
 
             const action = target.dataset.action;
 
             if (action === 'select-car') {
-                if (target.checked) {
 // ... (既存の関数) ...
+                if (target.checked) {
                     selectedCarIds.add(carId);
                     document.getElementById(`car-options-${carId}`).classList.remove('hidden');
                 } else {
@@ -865,23 +893,22 @@
                     selectedLuggage.delete(carId);
                     document.getElementById(`car-options-${carId}`).classList.add('hidden');
                     document.getElementById(`driver-${carId}`).value = '';
-// ... (既存の関数) ...
                 }
             } else if (action === 'select-driver') {
+// ... (既存の関数) ...
                 if (target.value) {
                     selectedDrivers.set(carId, target.value);
-// ... (既存の関数) ...
                 } else {
                     selectedDrivers.delete(carId);
                 }
             } else if (action === 'select-luggage') {
-                if (target.checked) {
 // ... (既存の関数) ...
+                if (target.checked) {
                     selectedLuggage.add(carId);
                 } else {
                     selectedLuggage.delete(carId);
-                }
 // ... (既存の関数) ...
+                }
             }
         }
 
@@ -892,345 +919,265 @@
             if (target.type === 'checkbox' && target.dataset.action === 'exclude-participant') {
                 const id = target.dataset.id;
                 if (target.checked) {
-// ... (既存の関数) ...
                     excludedParticipantIds.add(id);
                 } else {
                     excludedParticipantIds.delete(id);
-                }
 // ... (既存の関数) ...
+                }
             }
         }
 
-        // 割り当て実行
+        // ★割り当て実行 (ドライバーと別便対応)
         function handleAssignment() {
-// ... (既存の関数) ...
-            // ... (バリデーション) ...
             if (selectedCarIds.size === 0) {
                 showMessage('ステップ2で車を1台以上選択してください。', 'error');
                 return;
-// ... (既存の関数) ...
             }
 
             let errors = [];
-            let driversToValidate = new Set();
+            let driverMap = new Map(); // carId -> driverObject
             let selectedCarsData = [];
-// ... (既存の関数) ...
+            
+            // 1. 参加者全員のリスト（データ付き）を作成
+            const allParticipantsWithData = ALL_PARTICIPANTS_FLAT
+                .filter(p => selectedParticipantIds.has(p.id)) // 参加者のみ
+                .map(p => {
+                    const family = FAMILIES.find(f => f.members.some(m => m.id === p.id));
+                    return {
+                        ...p,
+                        ...participantData.get(p.id), // grade, school, other, memo を展開
+                        familyName: family ? family.familyName : null
+                    };
+                });
 
-            // 1. 車とドライバーのバリデーション
+
+            // 2. 車とドライバーのバリデーション
             selectedCarIds.forEach(carId => {
                 const driverId = selectedDrivers.get(carId);
-// ... (既存の関数) ...
                 if (!driverId) {
                     errors.push(`${AVAILABLE_CARS_INFO.find(c=>c.id === carId).name} のドライバーが選択されていません。`);
                     return;
                 }
-                const driver = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId);
-// ... (既存の関数) ...
+                
+                const driver = allParticipantsWithData.find(p => p.id === driverId);
                 if (!driver) { 
-                     errors.push(`${AVAILABLE_CARS_INFO.find(c=>c.id === carId).name} のドライバー情報が見つかりません。`);
+                     // ドライバーが参加者に選ばれていない
+                     const driverInfo = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId);
+                     errors.push(`ドライバー (${driverInfo.name} (${driverInfo.type})) がステップ1の参加者に含まれていません。`);
                      return;
                 }
-// ... (既存の関数) ...
                 
-                // ドライバーが参加者に含まれているかチェック
-                if (!selectedParticipantIds.has(driverId)) {
-                    errors.push(`ドライバー (${driver.name} (${driver.type})) がステップ1の参加者に含まれていません。`);
-                }
-// ... (既存の関数) ...
-                
-                // ドライバーが重複していないかチェック
-                if (driversToValidate.has(driverId)) {
+                if ([...driverMap.values()].some(d => d.id === driverId)) {
                     errors.push(`ドライバー (${driver.name} (${driver.type})) が複数の車に割り当てられています。`);
                 }
-// ... (既存の関数) ...
-                driversToValidate.add(driverId);
+                driverMap.set(carId, driver);
                 
-                // 実質定員の計算
                 const carInfo = AVAILABLE_CARS_INFO.find(c => c.id === carId);
-// ... (既存の関数) ...
                 const hasLuggage = selectedLuggage.has(carId);
-                let actualCapacity = carInfo.baseCapacity - 1; // ドライバー分を引く
-                
+                let actualCapacity = carInfo.baseCapacity - 1; // ドライバー分
                 if (hasLuggage) {
                     actualCapacity = 1; // 荷物ありなら乗客は1名のみ
-// ... (既存の関数) ...
                 }
 
                 selectedCarsData.push({
                     id: carId,
                     name: carInfo.name,
-// ... (既存の関数) ...
-                    familyName: carInfo.familyName, // ★家族割り当て用に familyName を追加
-                    driverId: driverId,
-                    driverName: driver.name,
-                    driverType: driver.type,
-// ... (既存の関数) ...
+                    familyName: carInfo.familyName,
+                    driverId: driverId, // 自動割り当てロジックで使用
                     capacity: actualCapacity, 
                     hasLuggage: hasLuggage
                 });
             });
 
             if (errors.length > 0) {
-// ... (既存の関数) ...
                 showMessage(errors.join('<br>'), 'error');
                 return;
             }
 
-            // 2. 割り当て対象の乗客リストを作成
-// ... (既存の関数) ...
-            let participantsToAssign = [];
-            selectedParticipantIds.forEach(id => {
-                // ドライバーでもなく、除外者でもない人
-                if (!driversToValidate.has(id) && !excludedParticipantIds.has(id)) {
-// ... (既存の関数) ...
-                    const p = ALL_PARTICIPANTS_FLAT.find(p => p.id === id);
-                    const flags = participantFlags.get(id); 
-                    const family = FAMILIES.find(f => f.members.some(m => m.id === p.id));
-                    participantsToAssign.push({ 
-// ... (既存の関数) ...
-                        ...p, 
-                        flags: flags,
-                        familyName: family ? family.familyName : null // ★家族割り当て用に familyName を追加
-                    }); 
-// ... (既存の関数) ...
-                }
+            // 3. 割り当て対象の乗客リストを作成 (ドライバーと除外者を *除く*)
+            const driverIds = new Set([...driverMap.values()].map(d => d.id));
+            let participantsToAssign = allParticipantsWithData.filter(p => {
+                return !driverIds.has(p.id) && !excludedParticipantIds.has(p.id);
+            });
+            
+            // 4. 別便リストを作成
+            let excludedParticipants = allParticipantsWithData.filter(p => {
+                return excludedParticipantIds.has(p.id) && !driverIds.has(p.id); // ドライバーは別便にしない
             });
 
-            // 3. 全体の定員チェック
+            // 5. 全体の定員チェック
             const totalParticipants = participantsToAssign.length;
-// ... (既存の関数) ...
             const totalCapacity = selectedCarsData.reduce((sum, car) => sum + car.capacity, 0);
 
             if (totalParticipants > totalCapacity) {
                 showMessage(`定員オーバーです。参加者 ${totalParticipants}人 に対して、車の乗客定員は合計 ${totalCapacity}人 です。`, 'error');
-// ... (既存の関数) ...
             } else {
                 hideMessage();
             }
 
-            // 4. 割り当てロジックの実行
-// ... (既存の関数) ...
-            const assignments = allocateParticipants(participantsToAssign, selectedCarsData, totalParticipants, totalCapacity);
+            // 6. 割り当てロジックの実行
+            const assignments = allocateParticipants(participantsToAssign, selectedCarsData, driverMap);
 
-            // 5. 結果の描画と保存
-            currentAssignments = assignments; 
-            renderResults(currentAssignments);
-// ... (既存の関数) ...
-            
-            // 内部データにDOM要素を紐付け（ドラッグ＆ドロップ用）
-            currentAssignments.forEach(car => {
-                car.element = document.getElementById(`car-result-${car.id}`);
-// ... (既存の関数) ...
+            // 7. 別便カーを追加
+            assignments.push({
+                id: 'excluded-car',
+                name: '別便',
+                capacity: 999,
+                driver: null,
+                members: excludedParticipants,
+                hasLuggage: false
             });
 
-            updateTextOutput(); // テキスト出力も更新
+            // 8. 結果の描画と保存
+            currentAssignments = assignments; 
+            renderResults(currentAssignments);
+            
+            currentAssignments.forEach(car => {
+                car.element = document.getElementById(`car-result-${car.id}`);
+            });
+
+            updateTextOutput();
         }
-// ... (既存の関数) ...
         
 
         // --- メッセージとロジック ---
 
         function showMessage(message, type = 'info') {
-            messageText.innerHTML = message;
 // ... (既存の関数) ...
+            messageText.innerHTML = message;
             messageContainer.classList.remove('hidden', 'bg-red-100', 'border-red-400', 'text-red-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700');
             if (type === 'error') {
                 messageContainer.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
             } else {
-// ... (既存の関数) ...
                 messageContainer.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
             }
             messageContainer.classList.remove('hidden');
         }
-// ... (既存の関数) ...
 
         function hideMessage() {
+// ... (既存の関数) ...
             messageContainer.classList.add('hidden');
         }
 
-        // ★★★ 割り当てロジック (「家族の車」最優先、次に「フラグ」) ★★★
-// ... (既存の関数) ...
-        function allocateParticipants(participants, cars, totalParticipants, totalCapacity) {
-            let assignments = cars.map(car => ({ ...car, members: [] }));
-            if (totalParticipants === 0) return assignments;
+        // ★割り当てロジック (ドライバーを引数で受け取る)
+        function allocateParticipants(participants, cars, driverMap) {
+            // 1. 割り当て結果の器を初期化 (ドライバーをセット)
+            let assignments = cars.map(car => ({ 
+                ...car, 
+                driver: driverMap.get(car.id) || null, // ドライバーをセット
+                members: [] 
+            }));
+            
+            if (participants.length === 0) return assignments;
 
             let remainingParticipants = [...participants]; 
-// ... (既存の関数) ...
             
-            // 参加者の優先度を定義 (低いほど優先)
-            const typePriority = {
-                '保護者': 1,
-                '兄弟': 2,
-// ... (既存の関数) ...
-                '選手': 3,
-                'その他': 4
-            };
+            const typePriority = { '保護者': 1, '兄弟': 2, '選手': 3, 'その他': 4 };
 
             // --- 優先度1: 家族を自分の車に乗せる ---
-// ... (既存の関数) ...
             assignments.forEach(car => {
-                const familyName = car.familyName;
-                if (!familyName) return; // 家族に紐付かない車はスキップ
+                if (!car.driver || !car.familyName) return;
+                
+                // ドライバーの家族名と車の家族名が一致する場合のみ
+                if (car.driver.familyName === car.familyName) {
+                    let familyMembersInThisCar = remainingParticipants
+                        .filter(p => p.familyName === car.familyName) // 同じ家族
+                        .sort((a, b) => (typePriority[a.type] || 9) - (typePriority[b.type] || 9));
 
-                // 1. この車に乗るべき家族メンバーを抽出
-// ... (既存の関数) ...
-                let familyMembersInThisCar = remainingParticipants
-                    .filter(p => p.familyName === familyName)
-                    .sort((a, b) => (typePriority[a.type] || 9) - (typePriority[b.type] || 9)); // 保護者→兄弟→選手 の順
-
-                // 2. 優先度順に車に乗せる
-// ... (既存の関数) ...
-                familyMembersInThisCar.forEach(member => {
-                    if (car.members.length < car.capacity) {
-                        car.members.push(member);
-                        // remainingParticipants から削除
-// ... (既存の関数) ...
-                        remainingParticipants = remainingParticipants.filter(p => p.id !== member.id);
-                    }
-                });
+                    familyMembersInThisCar.forEach(member => {
+                        if (car.members.length < car.capacity) {
+                            car.members.push(member);
+                            remainingParticipants = remainingParticipants.filter(p => p.id !== member.id);
+                        }
+                    });
+                }
             });
 
-
             // --- 優先度2: フラググループ ---
-// ... (既存の関数) ...
             let flaggedParticipants = [];
             let nonFlaggedParticipants = [];
 
             remainingParticipants.forEach(p => {
-                const flags = p.flags || {};
-// ... (既存の関数) ...
-                const hasFlags = flags.grade || flags.school || flags.other;
-                if (hasFlags && p.isFlagTarget) { // フラグ対象者のみ
+                const hasFlags = p.grade || p.school || p.other;
+                if (hasFlags && p.isFlagTarget) { 
                     flaggedParticipants.push(p);
                 } else {
-// ... (既存の関数) ...
                     nonFlaggedParticipants.push(p);
                 }
             });
 
-            // グループ化と優先度付け
-// ... (既存の関数) ...
             const flagGroupsMap = new Map();
             flaggedParticipants.forEach(p => {
-                const flags = p.flags;
-                const grade = flags.grade || '';
-                const school = flags.school || '';
-// ... (既存の関数) ...
-                const other = flags.other || '';
+                const grade = p.grade || '';
+                const school = p.school || '';
+                const other = p.other || '';
                 
                 let key, priority;
                 
-                if (grade && school) {
-// ... (既存の関数) ...
-                    key = `GS:${grade}/${school}`;
-                    priority = 1;
-                } else if (grade) {
-                    key = `G:${grade}`;
-// ... (既存の関数) ...
-                    priority = 2;
-                } else if (school) {
-                    key = `S:${school}`;
-                    priority = 3;
-// ... (既存の関数) ...
-                } else if (other) {
-                    key = `O:${other}`;
-                    priority = 4;
-                } else {
-// ... (既存の関数) ...
-                    return; // 有効なフラグなし
-                }
+                if (grade && school) { key = `GS:${grade}/${school}`; priority = 1; }
+                else if (grade) { key = `G:${grade}`; priority = 2; }
+                else if (school) { key = `S:${school}`; priority = 3; }
+                else if (other) { key = `O:${other}`; priority = 4; }
+                else { return; }
 
                 if (!flagGroupsMap.has(key)) {
                     flagGroupsMap.set(key, { priority, members: [] });
-// ... (既存の関数) ...
                 }
                 flagGroupsMap.get(key).members.push(p);
             });
 
-            // 優先度順 > サイズ順にソート
-// ... (既存の関数) ...
             const sortedFlagGroups = Array.from(flagGroupsMap.values())
-                .filter(group => group.members.length > 1) // 2人以上のグループのみ
+                .filter(group => group.members.length > 1) 
                 .sort((a, b) => {
-                    if (a.priority !== b.priority) {
-                        return a.priority - b.priority; // 優先度 (1が最優先)
-// ... (既存の関数) ...
-                    }
-                    return b.members.length - a.members.length; // サイズ (大きい順)
+                    if (a.priority !== b.priority) return a.priority - b.priority;
+                    return b.members.length - a.members.length;
                 });
             
-            let finalRemainingParticipants = [...nonFlaggedParticipants]; // どのグループにも属さなかった人
-// ... (既存の関数) ...
-            const remainingFlaggedIds = new Set(flaggedParticipants.map(p => p.id)); // グループ化対象だった人
+            let finalRemainingParticipants = [...nonFlaggedParticipants]; 
+            const remainingFlaggedIds = new Set(flaggedParticipants.map(p => p.id)); 
 
             sortedFlagGroups.forEach(group => {
-                // グループ全員が入れる車を（空きが多い順に）探す
                 let bestFitCar = assignments
-// ... (既存の関数) ...
                     .map(car => ({ carRef: car, vacancy: car.capacity - car.members.length }))
                     .filter(c => c.vacancy >= group.members.length)
-                    .sort((a, b) => b.vacancy - a.vacancy)[0]; // 最も空きが多い車
+                    .sort((a, b) => b.vacancy - a.vacancy)[0]; 
 
                 if (bestFitCar) {
-// ... (既存の関数) ...
                     bestFitCar.carRef.members.push(...group.members);
-                    // remainingFlaggedIds から削除
                     group.members.forEach(p => remainingFlaggedIds.delete(p.id));
                 }
-// ... (既存の関数) ...
             });
             
-            // グループ割り当てされなかったフラグ対象者を、個人割り当てに戻す
             remainingFlaggedIds.forEach(id => {
                 finalRemainingParticipants.push(flaggedParticipants.find(p => p.id === id));
-// ... (既存の関数) ...
             });
             
-
             // --- 優先度3: 残りの個人 ---
             if (finalRemainingParticipants.length > 0) {
-// ... (既存の関数) ...
-                // 公平性のためシャッフル
                 const shuffledRemaining = finalRemainingParticipants.sort(() => 0.5 - Math.random());
                 
-                // 空きがある車をリストアップ
                 let carsWithVacancy = assignments
-// ... (既存の関数) ...
                     .map(car => ({ carRef: car, vacancy: car.capacity - car.members.length }))
                     .filter(c => c.vacancy > 0)
-                    .sort((a, b) => b.vacancy - a.vacancy); // 空きが多い順
+                    .sort((a, b) => b.vacancy - a.vacancy); 
 
                 let carIndex = 0;
-// ... (既存の関数) ...
-                // 参加者がいなくなるまで
                 while (shuffledRemaining.length > 0) {
-                    if (carsWithVacancy.length === 0) break; // 空きがなくなったら終了
+                    if (carsWithVacancy.length === 0) break; 
 
-                    // ラウンドロビンで車を選択
-// ... (既存の関数) ...
                     const targetCarInfo = carsWithVacancy[carIndex % carsWithVacancy.length];
                     
                     if (targetCarInfo.carRef.members.length < targetCarInfo.carRef.capacity) {
                         targetCarInfo.carRef.members.push(shuffledRemaining.pop());
                     }
-// ... (既存の関数) ...
-
                     carIndex++;
-                    
-                    // 定員に達した車をリストから除く
                     carsWithVacancy = carsWithVacancy.filter(c => c.carRef.members.length < c.carRef.capacity);
-// ... (既存の関数) ...
-                    if (carsWithVacancy.length === 0) break;
-                    
-                    // carIndex が配列外を指さないように調整
-                    if (carsWithVacancy.length > 0) { // まだ空きがあるか再確認
-// ... (既存の関数) ...
+                    if (carsWithVacancy.length > 0) { 
                         carIndex = carIndex % carsWithVacancy.length;
                     }
                 }
             }
             return assignments;
-// ... (既存の関数) ...
         }
 
 
@@ -1241,92 +1188,84 @@
             const shouldOpen = toggleDetailsButton.textContent === 'すべて開く';
             detailsElements.forEach(details => {
                 details.open = shouldOpen;
-// ... (既存の関数) ...
             });
             toggleDetailsButton.textContent = shouldOpen ? 'すべて閉じる' : 'すべて開く';
         }
 
 
         // --- ファイル入出力・テキスト出力機能 ---
-// ... (既存の関数) ...
 
         // 現在の状態を取得
         function getCurrentState() {
             return {
                 selectedParticipantIds: Array.from(selectedParticipantIds),
-// ... (既存の関数) ...
                 selectedCarIds: Array.from(selectedCarIds),
                 selectedDrivers: Array.from(selectedDrivers.entries()),
                 selectedLuggage: Array.from(selectedLuggage),
                 excludedParticipantIds: Array.from(excludedParticipantIds),
-                participantFlags: Array.from(participantFlags.entries())
-// ... (既存の関数) ...
+                participantData: Array.from(participantData.entries()) // ★変更
             };
         }
 
         // 状態を復元
         function restoreState(state) {
-// ... (既存の関数) ...
             selectedParticipantIds = new Set(state.selectedParticipantIds || []);
             selectedCarIds = new Set(state.selectedCarIds || []);
             selectedDrivers = new Map(state.selectedDrivers || []);
             selectedLuggage = new Set(state.selectedLuggage || []);
-// ... (既存の関数) ...
             excludedParticipantIds = new Set(state.excludedParticipantIds || []);
-            participantFlags = new Map(state.participantFlags || []);
+            participantData = new Map(state.participantData || []); // ★変更
             
-            // フラグが保存されていない場合、マスターデータのデフォルト値で補完
-            if (participantFlags.size === 0) {
-// ... (既存の関数) ...
-                initializeFlags();
+            if (participantData.size === 0) {
+                initializeParticipantData(); // ★変更
             }
 
             currentAssignments = [];
         }
-// ... (既存の関数) ...
 
         // 状態をエクスポート
         function handleExportState() {
+// ... (既存の関数) ...
             const state = getCurrentState();
             const jsonString = JSON.stringify(state, null, 2);
-// ... (既存の関数) ...
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
+// ... (既存の関数) ...
             
             const a = document.createElement('a');
             a.href = url;
-// ... (既存の関数) ...
             a.download = `car_assignment_state_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
+// ... (既存の関数) ...
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-// ... (既存の関数) ...
             
             showMessage('現在の状態をファイルに保存しました。', 'info');
+// ... (既存の関数) ...
         }
 
         // 状態をインポート
         function handleImportState(e) {
-// ... (既存の関数) ...
             const file = e.target.files[0];
+// ... (既存の関数) ...
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = (event) => {
-// ... (既存の関数) ...
                 try {
+// ... (既存の関数) ...
                     const state = JSON.parse(event.target.result);
                     restoreState(state);
                     
                     // UIを再描画
-// ... (既存の関数) ...
                     renderParticipantList();
+// ... (既存の関数) ...
                     renderCarList();
                     renderExclusionList();
                     resultsEl.innerHTML = '<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>';
-                    // ★プレースホルダーのスタイルも更新
                     const placeholder = document.getElementById('results-placeholder');
+// ... (既存の関数) ...
                     if (placeholder) {
                          if (window.innerWidth >= 1024) { // lg breakpoint
                             placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
@@ -1334,95 +1273,89 @@
                             placeholder.style.gridColumn = 'auto';
                         }
                     }
+// ... (既存の関数) ...
                     textOutputContainer.classList.add('hidden'); // テキスト出力も隠す
                     
-// ... (既存の関数) ...
                     showMessage('状態を読み込みました。', 'info');
                 } catch (err) {
                     console.error('Error parsing JSON state:', err);
-                    showMessage('ファイルの読み込みに失敗しました。無効なJSONファイルです。', 'error');
 // ... (既存の関数) ...
+                    showMessage('ファイルの読み込みに失敗しました。無効なJSONファイルです。', 'error');
                 }
                 // 同じファイルを再度読み込めるように input の値をリセット
                 e.target.value = null;
             };
-// ... (既存の関数) ...
             reader.readAsText(file);
+// ... (既存の関数) ...
         }
 
         // テキスト出力の表示/非表示
         function handleShowTextOutput() {
-// ... (既存の関数) ...
             if (currentAssignments.length === 0) {
                 showMessage('テキスト出力する結果がありません。先に「割り当て実行」を押してください。', 'error');
+// ... (既存の関数) ...
                 return;
             }
             textOutputContainer.classList.toggle('hidden');
-// ... (既存の関数) ...
             if (!textOutputContainer.classList.contains('hidden')) {
                 updateTextOutput(); // 表示する瞬間に内容を最新化
+// ... (既存の関数) ...
             }
         }
-// ... (既存の関数) ...
 
-        // テキスト出力エリアを更新
+        // ★テキスト出力エリアを更新 (備考対応)
         function updateTextOutput() {
             if (currentAssignments.length === 0) {
-                textOutputEl.value = '';
 // ... (既存の関数) ...
+                textOutputEl.value = '';
                 return;
             }
 
-            const outputLines = currentAssignments.map(car => {
-                // 車名の整形
-// ... (既存の関数) ...
+            const outputLines = currentAssignments
+                .filter(car => car.id !== 'excluded-car') // 別便カーは除外
+                .map(car => {
+                
                 const carName = car.name.replace(/の車|家の車/g, 'カー');
                 
-                // ドライバー名
-                const driverName = car.driverName;
-// ... (既存の関数) ...
+                // ドライバー
+                let driverName = ' (ドライバー未定)';
+                if (car.driver) {
+                    const memo = participantData.get(car.driver.id)?.memo || '';
+                    driverName = car.driver.name + (memo ? ` (${memo})` : '');
+                }
                 
                 // 乗客リスト
                 const members = car.members.map(p => {
                     let name = p.name;
                     if (p.type === '選手') name = '★' + name;
-// ... (既存の関数) ...
-                    return name;
+                    const memo = participantData.get(p.id)?.memo || '';
+                    return name + (memo ? ` (${memo})` : '');
                 });
                 
-                // 荷物
-// ... (既存の関数) ...
                 const luggage = car.hasLuggage ? '荷物' : null;
                 
-                // 結合
                 const parts = [driverName, ...members];
                 if (luggage) parts.push(luggage);
-// ... (既存の関数) ...
                 
                 return `${carName} (${parts.join(', ')})`;
             });
 
             textOutputEl.value = outputLines.join('\n');
-// ... (既存の関数) ...
         }
 
         // テキストをコピー
         function handleCopyTextOutput() {
-            if (!textOutputEl.value) return;
 // ... (既存の関数) ...
+            if (!textOutputEl.value) return;
 
-            // navigator.clipboard が使えるか (HTTPS or localhost)
             try {
                 navigator.clipboard.writeText(textOutputEl.value).then(() => {
-// ... (既存の関数) ...
                     showMessage('クリップボードにコピーしました。', 'info');
-                }, (err) => {
-                    // 失敗したら古い方法を試す
-                    legacyCopy(textOutputEl.value);
 // ... (既存の関数) ...
+                }, (err) => {
+                    legacyCopy(textOutputEl.value);
                 });
             } catch (err) {
-                // navigator.clipboard がない環境
                 legacyCopy(textOutputEl.value);
 // ... (既存の関数) ...
             }
@@ -1430,28 +1363,27 @@
 
         // 古いコピー方法 (フォールバック)
         function legacyCopy(text) {
-// ... (既存の関数) ...
              const textArea = document.createElement('textarea');
+// ... (既存の関数) ...
             textArea.value = text;
             textArea.style.position = 'fixed'; // 画面外
             textArea.style.opacity = '0';
-// ... (既存の関数) ...
             document.body.appendChild(textArea);
+// ... (既存の関数) ...
             textArea.focus();
             textArea.select();
             try {
-// ... (既存の関数) ...
                 const successful = document.execCommand('copy');
                 if (successful) {
+// ... (既存の関数) ...
                     showMessage('クリップボードにコピーしました。', 'info');
                 } else {
-// ... (既存の関数) ...
-                    showMessage('コピーに失敗しました。', 'error'); // ★★★ ここの 'D' を削除しました ★★★
+                    showMessage('コピーに失敗しました。', 'error');
                 }
             } catch (err) {
+// ... (既存の関数) ...
                 showMessage('コピーに失敗しました。', 'error');
             }
-// ... (既存の関数) ...
             document.body.removeChild(textArea);
         }
 
@@ -1463,35 +1395,34 @@
             const masterData = {
                 families: FAMILIES,
                 cars: AVAILABLE_CARS_INFO
-// ... (既存の関数) ...
             };
+// ... (既存の関数) ...
             const jsonString = JSON.stringify(masterData, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-// ... (既存の関数) ...
             
             const a = document.createElement('a');
+// ... (既存の関数) ...
             a.href = url;
             a.download = `car_assignment_master_${new Date().toISOString().slice(0,10)}.json`;
-// ... (既存の関数) ...
             document.body.appendChild(a);
             a.click();
+// ... (既存の関数) ...
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-// ... (既存の関数) ...
             
             showMessage('現在のマスターデータをファイルに保存しました。', 'info');
         }
 
         // マスターデータをインポート
-        function handleImportMasterData(e) {
 // ... (既存の関数) ...
+        function handleImportMasterData(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-            reader.onload = (event) => {
 // ... (既存の関数) ...
+            reader.onload = (event) => {
                 try {
                     const masterData = JSON.parse(event.target.result);
                     
@@ -1509,23 +1440,24 @@
                     ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
 
                     // 状態をすべてリセット
-// ... (既存の関数) ...
                     restoreState({}); // 空の状態でリセット
+// ... (既存の関数) ...
                     
                     // UIを完全に再描画
-                    initializeFlags(); // 新しいマスターデータでフラグを初期化
+                    initializeParticipantData(); // ★変更
                     renderParticipantList();
-// ... (既存の関数) ...
                     renderCarList();
+// ... (既存の関数) ...
                     renderExclusionList();
                     resultsEl.innerHTML = '<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>';
-                    // ★プレースホルダーのスタイルも更新
                     const placeholder = document.getElementById('results-placeholder');
                     if (placeholder) {
+// ... (既存の関数) ...
                          if (window.innerWidth >= 1024) { // lg breakpoint
                             placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
                         } else {
                             placeholder.style.gridColumn = 'auto';
+// ... (既存の関数) ...
                         }
                     }
                     textOutputContainer.classList.add('hidden'); // テキスト出力も隠す
@@ -1535,14 +1467,14 @@
                     showMessage('マスターデータを読み込み、アプリをリセットしました。', 'info');
                 } catch (err) {
                     console.error('Error parsing master data JSON:', err);
-// ... (既存の関数) ...
                     showMessage(`マスターデータの読み込みに失敗しました: ${err.message}`, 'error');
+// ... (既存の関数) ...
                 }
                 // 同じファイルを再度読み込めるように input の値をリセット
                 e.target.value = null;
-// ... (既存の関数) ...
             };
             reader.readAsText(file);
+// ... (既存の関数) ...
         }
 
     </script>
