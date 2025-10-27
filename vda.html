@@ -9,24 +9,32 @@
         /* ドラッグ中の要素のスタイル */
         .opacity-50 { opacity: 0.5; }
         
-        /* ★ドラッグ可能なアイテム */
+        /* ドラッグ可能なアイテム */
         .draggable-item {
             cursor: move;
         }
 
         /* ★ドロップ先(移動)のハイライト */
-        .members-dropzone.bg-blue-50 { 
+        .members-dropzone.drop-target-move { 
             background-color: #EFF6FF; 
         }
         
         /* ★ドロップ先(入れ替え)のハイライト */
-        .driver-dropzone.swap-target, .draggable-item.swap-target {
+        .driver-dropzone.drop-target-swap, .draggable-item.drop-target-swap {
             border: 2px dashed #3B82F6; /* blue-500 */
             box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
         }
+        
+        /* ★ドロップ先(挿入)のハイライト */
+        .draggable-item.drop-target-insert-before {
+            border-top: 3px solid #3B82F6; /* blue-500 */
+        }
+        .draggable-item.drop-target-insert-after {
+            border-bottom: 3px solid #3B82F6; /* blue-500 */
+        }
 
         /* ★ドロップ先(定員オーバー) */
-        .members-dropzone.bg-red-50 { 
+        .members-dropzone.drop-target-full { 
             background-color: #FEF2F2; 
         }
         
@@ -337,6 +345,9 @@
         let dragTargetId = null; 
         let dragSourceCarId = null; 
         let dragIsDriver = false;
+        // ★ドロップ操作の種類を保持
+        let currentDropMode = null; // 'swap', 'insert-before', 'insert-after', 'move-to-end'
+        let currentDropTargetId = null; // 挿入/スワップ対象のID
 
 
         // --- DOM参照 ---
@@ -388,7 +399,7 @@
             renderCarList();
             
             participantListEl.addEventListener('change', handleParticipantChange);
-            participantListEl.addEventListener('input', handleParticipantDataInput); // ★ハンドラ変更
+            participantListEl.addEventListener('input', handleParticipantDataInput); 
             carListEl.addEventListener('change', handleCarChange);
             exclusionListEl.addEventListener('change', handleExclusionChange);
             assignButton.addEventListener('click', handleAssignment);
@@ -634,10 +645,17 @@
 
         // --- ドラッグ＆ドロップ ---
         
+        // ★全てのハイライトをクリア
         function clearDragOverHighlights() {
-            document.querySelectorAll('.draggable-item').forEach(el => el.classList.remove('swap-target'));
-            document.querySelectorAll('.driver-dropzone').forEach(el => el.classList.remove('swap-target'));
-            document.querySelectorAll('.members-dropzone').forEach(el => el.classList.remove('bg-blue-50', 'bg-red-50'));
+            document.querySelectorAll('.draggable-item').forEach(el => {
+                el.classList.remove('drop-target-swap', 'drop-target-insert-before', 'drop-target-insert-after');
+            });
+            document.querySelectorAll('.driver-dropzone').forEach(el => {
+                el.classList.remove('drop-target-swap');
+            });
+            document.querySelectorAll('.members-dropzone').forEach(el => {
+                el.classList.remove('drop-target-move', 'drop-target-full');
+            });
         }
 
         function handleDragStart(e) {
@@ -647,9 +665,14 @@
                 dragIsDriver = e.target.dataset.isDriver === 'true';
                 e.dataTransfer.effectAllowed = 'move';
                 e.target.classList.add('opacity-50');
+                
+                // リセット
+                currentDropMode = null;
+                currentDropTargetId = null;
             }
         }
 
+        // ★並び替え対応
         function handleDragOver(e) {
             e.preventDefault(); 
             const dropzone = e.target.closest('.car-dropzone');
@@ -660,26 +683,58 @@
             const targetMembersZone = e.target.closest('.members-dropzone');
             
             clearDragOverHighlights(); 
+            currentDropMode = null;
+            currentDropTargetId = null;
+            
+            // --- ホバー対象の判定 ---
 
-            // 「入れ替え」モード (アイテムの上、またはドライバーゾーンの上)
-            if (targetItem || targetDriverZone) {
-                const targetEl = targetItem || targetDriverZone;
-                targetEl.classList.add('swap-target'); 
-                dropzone.dataset.dropMode = 'swap'; 
+            // 1. アイテム(li) の上
+            if (targetItem) {
+                const targetIsDriver = targetItem.dataset.isDriver === 'true';
+                
+                // 1a. ドライバーの上 (またはドライバーが乗客の上) -> 入れ替え
+                if (targetIsDriver || dragIsDriver) {
+                    targetItem.classList.add('drop-target-swap');
+                    currentDropMode = 'swap';
+                    currentDropTargetId = targetItem.dataset.participantId;
+                } 
+                // 1b. 乗客の上 -> 挿入
+                else {
+                    const rect = targetItem.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    
+                    if (e.clientY < midY) {
+                        targetItem.classList.add('drop-target-insert-before');
+                        currentDropMode = 'insert-before';
+                    } else {
+                        targetItem.classList.add('drop-target-insert-after');
+                        currentDropMode = 'insert-after';
+                    }
+                    currentDropTargetId = targetItem.dataset.participantId;
+                }
+            }
+            // 2. ドライバーゾーン(div) の上 -> 入れ替え
+            else if (targetDriverZone) {
+                targetDriverZone.classList.add('drop-target-swap');
+                currentDropMode = 'swap';
+                // ターゲットはゾーンが属する車のドライバー
+                const carId = targetDriverZone.closest('.car-dropzone').dataset.carId;
+                currentDropTargetId = currentAssignments.find(c => c.id === carId)?.driver?.id || null;
             } 
-            // 「移動」モード (乗客ゾーンの空きスペース)
+            // 3. 乗客ゾーン(ul) の背景の上 -> 末尾に移動
             else if (targetMembersZone) {
-                targetMembersZone.classList.add('bg-blue-50'); 
-                dropzone.dataset.dropMode = 'move';
+                currentDropMode = 'move-to-end';
                 
                 const targetCarId = dropzone.dataset.carId;
-                if (targetCarId === dragSourceCarId) return;
-                
-                const targetCar = currentAssignments.find(c => c.id === targetCarId);
-                // 定員チェック (別便カーはスキップ)
-                if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
-                    targetMembersZone.classList.remove('bg-blue-50');
-                    targetMembersZone.classList.add('bg-red-50');
+                if (targetCarId === dragSourceCarId && !dragIsDriver) {
+                     // 同じ車の乗客ゾーンへの移動はハイライト不要
+                } else {
+                    const targetCar = currentAssignments.find(c => c.id === targetCarId);
+                    if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                        targetMembersZone.classList.add('drop-target-full');
+                    } else {
+                        targetMembersZone.classList.add('drop-target-move');
+                    }
                 }
             }
         }
@@ -718,96 +773,91 @@
             return null;
         }
 
-
+        // ★並び替え対応
         function handleDrop(e) {
             e.preventDefault();
             clearDragOverHighlights(); 
             
-            const dropzone = e.target.closest('.car-dropzone');
-            if (!dropzone || !dragTargetId) return;
-
-            const dropMode = dropzone.dataset.dropMode;
-            const targetCarId = dropzone.dataset.carId;
-
-            const targetItem = e.target.closest('.draggable-item');
-            const targetDriverZone = e.target.closest('.driver-dropzone');
+            const targetCarId = e.target.closest('.car-dropzone')?.dataset.carId;
+            if (!targetCarId || !dragTargetId) return;
 
             const sourceCar = currentAssignments.find(c => c.id === dragSourceCarId);
             const targetCar = currentAssignments.find(c => c.id === targetCarId);
 
             if (!sourceCar || !targetCar) return;
-
+            
             // ドラッグ元の参加者データを取得＆削除
             const sourceParticipant = findAndRemoveParticipant(dragSourceCarId, dragTargetId, dragIsDriver);
             if (!sourceParticipant) return; // 予期せぬエラー
 
-            // --- 「入れ替え」処理 (アイテム or ドライバーゾーンにドロップ) ---
-            if (dropMode === 'swap') {
-                let targetParticipant = null;
-                let targetIsDriver = false;
-
-                if (targetItem) { // アイテムの上
-                    targetIsDriver = targetItem.dataset.isDriver === 'true';
-                    targetParticipant = findAndRemoveParticipant(targetCarId, targetItem.dataset.participantId, targetIsDriver);
-                } else if (targetDriverZone) { // ドライバーゾーンの上
-                    targetIsDriver = true;
-                    targetParticipant = findAndRemoveParticipant(targetCarId, targetCar.driver?.id, true);
-                }
+            let operationDone = false;
+            
+            // --- 1. 入れ替え (Swap) ---
+            if (currentDropMode === 'swap' && currentDropTargetId) {
+                const targetIsDriver = (targetCar.driver && targetCar.driver.id === currentDropTargetId);
+                const targetParticipant = findAndRemoveParticipant(targetCarId, currentDropTargetId, targetIsDriver);
                 
-                if (!targetParticipant) { // 入れ替え対象が見つからない (自分自身にドロップなど)
-                    // 元に戻す
-                    if (dragIsDriver) sourceCar.driver = sourceParticipant;
-                    else sourceCar.members.push(sourceParticipant);
-                    renderResults(currentAssignments); // UIを元に戻す
-                    return;
+                if (targetParticipant) {
+                    // 1a. source を target の位置に入れる
+                    if (targetIsDriver) targetCar.driver = sourceParticipant;
+                    else targetCar.members.push(sourceParticipant); // スワップ時は乗客リストの末尾でOK
+                    
+                    // 1b. target を source の位置に入れる
+                    if (dragIsDriver) sourceCar.driver = targetParticipant;
+                    else sourceCar.members.push(targetParticipant);
+                    
+                    operationDone = true;
                 }
-
-                // 1. source を target の位置に入れる
-                if (targetIsDriver) {
-                    targetCar.driver = sourceParticipant;
+            }
+            // --- 2. 挿入 (Insert Before / After) ---
+            else if ((currentDropMode === 'insert-before' || currentDropMode === 'insert-after') && currentDropTargetId) {
+                // 定員チェック
+                if (targetCar.id !== 'excluded-car' && targetCarId !== dragSourceCarId && targetCar.members.length >= targetCar.capacity) {
+                     showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
                 } else {
-                    targetCar.members.push(sourceParticipant);
-                }
-                
-                // 2. target を source の位置に入れる
-                if (dragIsDriver) {
-                    sourceCar.driver = targetParticipant;
-                } else {
-                    sourceCar.members.push(targetParticipant);
-                }
-            } 
-            // --- 「移動」処理 (乗客ゾーンの空きスペースにドロップ) ---
-            else if (dropMode === 'move') {
-                if (targetCarId === dragSourceCarId && !dragIsDriver) { // 乗客→同じ車の乗客ゾーン
-                     sourceCar.members.push(sourceParticipant); // 元に戻す
-                     return; 
-                }
-                
-                // 定員チェック (別便カーはスキップ)
-                if (targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
-                    showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
-                    // 元に戻す
-                    if (dragIsDriver) sourceCar.driver = sourceParticipant;
-                    else sourceCar.members.push(sourceParticipant);
-                    return;
-                }
-                
-                // targetCar に乗客として追加
-                targetCar.members.push(sourceParticipant);
-                
-                // もし sourceCar のドライバーが空になったら、乗客の先頭を昇格
-                if (dragIsDriver && !sourceCar.driver && sourceCar.id !== 'excluded-car') {
-                    if (sourceCar.members.length > 0) {
-                        sourceCar.driver = sourceCar.members.splice(0, 1)[0];
+                    const targetIndex = targetCar.members.findIndex(p => p.id === currentDropTargetId);
+                    if (targetIndex > -1) {
+                        const insertIndex = (currentDropMode === 'insert-before') ? targetIndex : targetIndex + 1;
+                        targetCar.members.splice(insertIndex, 0, sourceParticipant);
+                        operationDone = true;
+                        hideMessage();
                     }
                 }
-                
-                hideMessage();
-            } else {
-                // 不明なドロップ -> 元に戻す
+            }
+            // --- 3. 末尾へ移動 (Move to End) ---
+            else if (currentDropMode === 'move-to-end') {
+                if (targetCarId === dragSourceCarId && !dragIsDriver) {
+                    // 同じ車の乗客ゾーン -> 元の位置（末尾）に戻す
+                    sourceCar.members.push(sourceParticipant); 
+                    operationDone = true;
+                } else {
+                    // 定員チェック
+                    if (targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                        showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
+                    } else {
+                        targetCar.members.push(sourceParticipant);
+                        operationDone = true;
+                        hideMessage();
+                    }
+                }
+            }
+
+            // --- 4. 操作失敗/キャンセル -> 元に戻す ---
+            if (!operationDone) {
                 if (dragIsDriver) sourceCar.driver = sourceParticipant;
                 else sourceCar.members.push(sourceParticipant);
             }
+            
+            // --- 5. ドライバー昇格処理 (sourceCar) ---
+            if (operationDone && dragIsDriver && !sourceCar.driver && sourceCar.id !== 'excluded-car') {
+                 if (sourceCar.members.length > 0) {
+                    sourceCar.driver = sourceCar.members.splice(0, 1)[0];
+                }
+            }
+            
+            // --- 6. ドライバー降格処理 (targetCar) ---
+            // ※乗客をドライバーゾーンにSwapした場合は、元ドライバーが乗客に降格（Swap処理で完了済）
+            // ※乗客を乗客ゾーンにInsert/Moveした場合は、targetCarのドライバーは不変
 
             // 全体を再描画
             renderResults(currentAssignments);
@@ -821,12 +871,11 @@
                 if (el) el.classList.remove('opacity-50');
             }
             clearDragOverHighlights();
-            document.querySelectorAll('.car-dropzone').forEach(el => {
-                el.dataset.dropMode = '';
-            });
             dragTargetId = null;
             dragSourceCarId = null;
             dragIsDriver = false;
+            currentDropMode = null;
+            currentDropTargetId = null;
         }
 
 
