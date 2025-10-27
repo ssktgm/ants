@@ -12,6 +12,11 @@
         /* ドラッグ可能なアイテム */
         .draggable-item {
             cursor: move;
+            /* ★タッチ操作時にテキスト選択が起こらないようにする */
+            user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            -moz-user-select: none;
         }
 
         /* ★ドロップ先(移動)のハイライト */
@@ -345,9 +350,12 @@
         let dragTargetId = null; 
         let dragSourceCarId = null; 
         let dragIsDriver = false;
-        // ★ドロップ操作の種類を保持
         let currentDropMode = null; // 'swap', 'insert-before', 'insert-after', 'move-to-end'
         let currentDropTargetId = null; // 挿入/スワップ対象のID
+
+        // ★タッチ操作用
+        let ghostElement = null;
+        let lastTouchMoveEvent = null; // touchmoveイベントを保持
 
 
         // --- DOM参照 ---
@@ -404,10 +412,18 @@
             exclusionListEl.addEventListener('change', handleExclusionChange);
             assignButton.addEventListener('click', handleAssignment);
             messageClose.addEventListener('click', hideMessage);
+
+            // 標準ドラッグイベント
             resultsEl.addEventListener('dragstart', handleDragStart);
             resultsEl.addEventListener('dragover', handleDragOver);
             resultsEl.addEventListener('drop', handleDrop);
             resultsEl.addEventListener('dragend', handleDragEnd);
+
+            // ★タッチイベントリスナーを追加 (passive: false で preventDefault を許可)
+            resultsEl.addEventListener('touchstart', handleTouchStart, { passive: false });
+            resultsEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+            resultsEl.addEventListener('touchend', handleTouchEnd);
+            
             exportButton.addEventListener('click', handleExportState);
             importInput.addEventListener('change', handleImportState);
             showTextOutputButton.addEventListener('click', handleShowTextOutput);
@@ -418,15 +434,14 @@
             importMasterInput.addEventListener('change', handleImportMasterData);
         });
 
-        // ★参加者データ（備考含む）を初期化
+        // 参加者データ（備考含む）を初期化
         function initializeParticipantData() {
             participantData.clear(); 
             FAMILIES.forEach(family => {
                 family.members.forEach(member => {
-                    // メモデータは全員、フラグデータは対象者のみ
                     const defaultData = { 
                         grade: '', school: '', other: '', 
-                        ...member.data // memo: '' もここで上書き
+                        ...member.data 
                     };
                     
                     if (!member.isFlagTarget) {
@@ -550,7 +565,7 @@
             });
         }
 
-        // ★ステップ5: 割り当て結果を描画 (ドライバーと別便対応)
+        // ステップ5: 割り当て結果を描画
         function renderResults(assignments) {
             resultsEl.innerHTML = '';
             
@@ -576,7 +591,6 @@
                 let headerHtml = '';
                 let driverHtml = '';
                 
-                // 「別便カー」の特別処理
                 if (car.id === 'excluded-car') {
                     headerHtml = `
                         <div class="p-4 border-b bg-gray-100">
@@ -584,7 +598,6 @@
                             <p class="text-sm text-gray-600">乗客: ${car.members.length}名</p>
                         </div>`;
                 } else {
-                    // 通常の車
                     const vacancy = car.capacity - car.members.length;
                     const luggageInfo = car.hasLuggage ? ' (荷物あり)' : '';
                     headerHtml = `
@@ -595,7 +608,6 @@
                             </p>
                         </div>`;
                     
-                    // ドライバー欄
                     const d = car.driver;
                     if (d) {
                         const memo = participantData.get(d.id)?.memo || '';
@@ -617,7 +629,6 @@
                     }
                 }
                 
-                // 乗客リスト
                 const membersHtml = car.members.map(p => {
                     const memo = participantData.get(p.id)?.memo || '';
                     return `
@@ -645,7 +656,6 @@
 
         // --- ドラッグ＆ドロップ ---
         
-        // ★全てのハイライトをクリア
         function clearDragOverHighlights() {
             document.querySelectorAll('.draggable-item').forEach(el => {
                 el.classList.remove('drop-target-swap', 'drop-target-insert-before', 'drop-target-insert-after');
@@ -666,13 +676,11 @@
                 e.dataTransfer.effectAllowed = 'move';
                 e.target.classList.add('opacity-50');
                 
-                // リセット
                 currentDropMode = null;
                 currentDropTargetId = null;
             }
         }
 
-        // ★並び替え対応
         function handleDragOver(e) {
             e.preventDefault(); 
             const dropzone = e.target.closest('.car-dropzone');
@@ -686,19 +694,14 @@
             currentDropMode = null;
             currentDropTargetId = null;
             
-            // --- ホバー対象の判定 ---
-
-            // 1. アイテム(li) の上
             if (targetItem) {
                 const targetIsDriver = targetItem.dataset.isDriver === 'true';
                 
-                // 1a. ドライバーの上 (またはドライバーが乗客の上) -> 入れ替え
                 if (targetIsDriver || dragIsDriver) {
                     targetItem.classList.add('drop-target-swap');
                     currentDropMode = 'swap';
                     currentDropTargetId = targetItem.dataset.participantId;
                 } 
-                // 1b. 乗客の上 -> 挿入
                 else {
                     const rect = targetItem.getBoundingClientRect();
                     const midY = rect.top + rect.height / 2;
@@ -713,21 +716,18 @@
                     currentDropTargetId = targetItem.dataset.participantId;
                 }
             }
-            // 2. ドライバーゾーン(div) の上 -> 入れ替え
             else if (targetDriverZone) {
                 targetDriverZone.classList.add('drop-target-swap');
                 currentDropMode = 'swap';
-                // ターゲットはゾーンが属する車のドライバー
                 const carId = targetDriverZone.closest('.car-dropzone').dataset.carId;
                 currentDropTargetId = currentAssignments.find(c => c.id === carId)?.driver?.id || null;
             } 
-            // 3. 乗客ゾーン(ul) の背景の上 -> 末尾に移動
             else if (targetMembersZone) {
                 currentDropMode = 'move-to-end';
                 
                 const targetCarId = dropzone.dataset.carId;
                 if (targetCarId === dragSourceCarId && !dragIsDriver) {
-                     // 同じ車の乗客ゾーンへの移動はハイライト不要
+                     // 同じ車
                 } else {
                     const targetCar = currentAssignments.find(c => c.id === targetCarId);
                     if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
@@ -739,7 +739,6 @@
             }
         }
 
-        // 車の空き状況UIを更新
         function updateCarVacancyUI(carId) {
             const car = currentAssignments.find(c => c.id === carId);
             if (!car || car.id === 'excluded-car' || !car.element) return;
@@ -753,7 +752,6 @@
             }
         }
         
-        // 参加者オブジェクトをデータから見つけるヘルパー
         function findAndRemoveParticipant(carId, pId, isDriver) {
             const car = currentAssignments.find(c => c.id === carId);
             if (!car) return null;
@@ -761,34 +759,211 @@
             if (isDriver) {
                 if (car.driver && car.driver.id === pId) {
                     const p = car.driver;
-                    car.driver = null; // ドライバーを削除
+                    car.driver = null; 
                     return p;
                 }
             } else {
                 const index = car.members.findIndex(p => p.id === pId);
                 if (index > -1) {
-                    return car.members.splice(index, 1)[0]; // 乗客を削除
+                    return car.members.splice(index, 1)[0]; 
                 }
             }
             return null;
         }
 
-        // ★並び替え対応
         function handleDrop(e) {
             e.preventDefault();
-            clearDragOverHighlights(); 
-            
-            const targetCarId = e.target.closest('.car-dropzone')?.dataset.carId;
-            if (!targetCarId || !dragTargetId) return;
+            performDropOperation(e.target.closest('.car-dropzone')?.dataset.carId);
+        }
 
+        // ★クリーンアップロジックを分離
+        function handleDragEndCleanup() {
+            if (ghostElement) {
+                ghostElement.remove();
+                ghostElement = null;
+            }
+            
+            if (dragTargetId) {
+                const el = document.getElementById(`p-result-${dragTargetId}`);
+                if (el) el.classList.remove('opacity-50');
+            }
+            
+            clearDragOverHighlights();
+            dragTargetId = null;
+            dragSourceCarId = null;
+            dragIsDriver = false;
+            currentDropMode = null;
+            currentDropTargetId = null;
+            lastTouchMoveEvent = null;
+        }
+        
+        function handleDragEnd(e) {
+            handleDragEndCleanup();
+        }
+        
+        // ★★★ タッチ操作ハンドラ ★★★
+
+        function createGhostElement(targetElement) {
+            if (ghostElement) ghostElement.remove();
+            ghostElement = targetElement.cloneNode(true);
+            ghostElement.id = 'ghost-element';
+            ghostElement.style.position = 'absolute';
+            ghostElement.style.zIndex = '1000';
+            ghostElement.style.opacity = '0.8';
+            ghostElement.style.pointerEvents = 'none'; 
+            ghostElement.style.width = `${targetElement.offsetWidth}px`;
+            document.body.appendChild(ghostElement);
+        }
+
+        function updateGhostPosition(e) {
+            if (!ghostElement) return;
+            const touch = e.touches[0];
+            ghostElement.style.left = `${touch.clientX - ghostElement.offsetWidth / 2}px`;
+            ghostElement.style.top = `${touch.clientY - ghostElement.offsetHeight / 2}px`;
+        }
+
+        // ★タッチ開始 (ドラッグ開始)
+        function handleTouchStart(e) {
+            const targetElement = e.target.closest('.draggable-item');
+            if (!targetElement) return;
+            
+            e.preventDefault(); // テキスト選択やスクロールを防止
+
+            dragTargetId = targetElement.dataset.participantId;
+            dragSourceCarId = targetElement.closest('.car-dropzone').dataset.carId;
+            dragIsDriver = targetElement.dataset.isDriver === 'true';
+            
+            currentDropMode = null;
+            currentDropTargetId = null;
+            
+            targetElement.classList.add('opacity-50');
+            createGhostElement(targetElement);
+            updateGhostPosition(e);
+            
+            lastTouchMoveEvent = e; 
+        }
+
+        // ★タッチ移動 (ドラッグ中)
+        function handleTouchMove(e) {
+            if (!dragTargetId) return; 
+            
+            e.preventDefault(); 
+            lastTouchMoveEvent = e; 
+            
+            updateGhostPosition(e);
+            
+            const touch = e.touches[0];
+            ghostElement.style.display = 'none'; 
+            const elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+            ghostElement.style.display = ''; 
+            
+            if (!elementUnderFinger) {
+                clearDragOverHighlights();
+                currentDropMode = null;
+                currentDropTargetId = null;
+                return;
+            }
+
+            // handleDragOver と同じロジックをシミュレート (引数eの代わりにtouchを使用)
+            const dropzone = elementUnderFinger.closest('.car-dropzone');
+            if (!dropzone) {
+                clearDragOverHighlights();
+                currentDropMode = null;
+                currentDropTargetId = null;
+                return;
+            }
+
+            const targetItem = elementUnderFinger.closest('.draggable-item');
+            const targetDriverZone = elementUnderFinger.closest('.driver-dropzone');
+            const targetMembersZone = elementUnderFinger.closest('.members-dropzone');
+            
+            clearDragOverHighlights(); 
+            currentDropMode = null;
+            currentDropTargetId = null;
+            
+            if (targetItem) {
+                const targetIsDriver = targetItem.dataset.isDriver === 'true';
+                if (targetIsDriver || dragIsDriver) {
+                    targetItem.classList.add('drop-target-swap');
+                    currentDropMode = 'swap';
+                    currentDropTargetId = targetItem.dataset.participantId;
+                } else {
+                    const rect = targetItem.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    if (touch.clientY < midY) {
+                        targetItem.classList.add('drop-target-insert-before');
+                        currentDropMode = 'insert-before';
+                    } else {
+                        targetItem.classList.add('drop-target-insert-after');
+                        currentDropMode = 'insert-after';
+                    }
+                    currentDropTargetId = targetItem.dataset.participantId;
+                }
+            }
+            else if (targetDriverZone) {
+                targetDriverZone.classList.add('drop-target-swap');
+                currentDropMode = 'swap';
+                const carId = targetDriverZone.closest('.car-dropzone').dataset.carId;
+                currentDropTargetId = currentAssignments.find(c => c.id === carId)?.driver?.id || null;
+            } 
+            else if (targetMembersZone) {
+                currentDropMode = 'move-to-end';
+                const targetCarId = dropzone.dataset.carId;
+                if (targetCarId === dragSourceCarId && !dragIsDriver) {
+                    // 同じ車
+                } else {
+                    const targetCar = currentAssignments.find(c => c.id === targetCarId);
+                    if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                        targetMembersZone.classList.add('drop-target-full');
+                    } else {
+                        targetMembersZone.classList.add('drop-target-move');
+                    }
+                }
+            }
+        }
+
+        // ★タッチ終了 (ドロップ)
+        function handleTouchEnd(e) {
+            if (!dragTargetId) return;
+
+            let targetCarId = null;
+            
+            if (lastTouchMoveEvent) {
+                const touch = lastTouchMoveEvent.touches[0] || lastTouchMoveEvent.changedTouches[0];
+                ghostElement.style.display = 'none';
+                const elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+                ghostElement.style.display = '';
+                targetCarId = elementUnderFinger?.closest('.car-dropzone')?.dataset.carId;
+            }
+
+            if (!targetCarId) {
+                // ドロップゾーン外ならキャンセル（ソース車に戻す）
+                targetCarId = dragSourceCarId; 
+                currentDropMode = 'move-to-end'; // キャンセル時は「末尾に移動」として扱う
+            }
+            
+            performDropOperation(targetCarId);
+            
+            handleDragEndCleanup();
+        }
+        
+        // ★★★ ドロップ共通処理 ★★★
+        function performDropOperation(targetCarId) {
+            if (!targetCarId || !dragTargetId) return; // 必要な情報がない
+            
             const sourceCar = currentAssignments.find(c => c.id === dragSourceCarId);
             const targetCar = currentAssignments.find(c => c.id === targetCarId);
 
-            if (!sourceCar || !targetCar) return;
+            if (!sourceCar || !targetCar) {
+                console.error("Drop failed: car data not found.");
+                return;
+            }
             
-            // ドラッグ元の参加者データを取得＆削除
             const sourceParticipant = findAndRemoveParticipant(dragSourceCarId, dragTargetId, dragIsDriver);
-            if (!sourceParticipant) return; // 予期せぬエラー
+            if (!sourceParticipant) {
+                console.error("Drop failed: source participant not found.");
+                return; 
+            }
 
             let operationDone = false;
             
@@ -798,20 +973,15 @@
                 const targetParticipant = findAndRemoveParticipant(targetCarId, currentDropTargetId, targetIsDriver);
                 
                 if (targetParticipant) {
-                    // 1a. source を target の位置に入れる
                     if (targetIsDriver) targetCar.driver = sourceParticipant;
-                    else targetCar.members.push(sourceParticipant); // スワップ時は乗客リストの末尾でOK
-                    
-                    // 1b. target を source の位置に入れる
+                    else targetCar.members.push(sourceParticipant); 
                     if (dragIsDriver) sourceCar.driver = targetParticipant;
                     else sourceCar.members.push(targetParticipant);
-                    
                     operationDone = true;
                 }
             }
             // --- 2. 挿入 (Insert Before / After) ---
             else if ((currentDropMode === 'insert-before' || currentDropMode === 'insert-after') && currentDropTargetId) {
-                // 定員チェック
                 if (targetCar.id !== 'excluded-car' && targetCarId !== dragSourceCarId && targetCar.members.length >= targetCar.capacity) {
                      showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
                 } else {
@@ -827,11 +997,9 @@
             // --- 3. 末尾へ移動 (Move to End) ---
             else if (currentDropMode === 'move-to-end') {
                 if (targetCarId === dragSourceCarId && !dragIsDriver) {
-                    // 同じ車の乗客ゾーン -> 元の位置（末尾）に戻す
                     sourceCar.members.push(sourceParticipant); 
                     operationDone = true;
                 } else {
-                    // 定員チェック
                     if (targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
                         showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
                     } else {
@@ -854,30 +1022,12 @@
                     sourceCar.driver = sourceCar.members.splice(0, 1)[0];
                 }
             }
-            
-            // --- 6. ドライバー降格処理 (targetCar) ---
-            // ※乗客をドライバーゾーンにSwapした場合は、元ドライバーが乗客に降格（Swap処理で完了済）
-            // ※乗客を乗客ゾーンにInsert/Moveした場合は、targetCarのドライバーは不変
 
             // 全体を再描画
             renderResults(currentAssignments);
             updateCarVacancyUI(dragSourceCarId);
             updateCarVacancyUI(targetCarId);
         }
-
-        function handleDragEnd(e) {
-            if (dragTargetId) {
-                const el = document.getElementById(`p-result-${dragTargetId}`);
-                if (el) el.classList.remove('opacity-50');
-            }
-            clearDragOverHighlights();
-            dragTargetId = null;
-            dragSourceCarId = null;
-            dragIsDriver = false;
-            currentDropMode = null;
-            currentDropTargetId = null;
-        }
-
 
         // --- イベントハンドラ ---
 
@@ -907,7 +1057,6 @@
             }
         }
 
-        // ★データ入力のハンドラ (備考含む)
         function handleParticipantDataInput(e) {
             const target = e.target;
             if (target.dataset.id && target.dataset.type) {
@@ -921,9 +1070,7 @@
             }
         }
 
-        // 車選択のハンドラ
         function handleCarChange(e) {
-// ... (既存の関数) ...
             const target = e.target;
             const carId = target.closest('[data-car-id]')?.dataset.carId;
             if (!carId) return;
@@ -931,39 +1078,32 @@
             const action = target.dataset.action;
 
             if (action === 'select-car') {
-// ... (既存の関数) ...
                 if (target.checked) {
                     selectedCarIds.add(carId);
                     document.getElementById(`car-options-${carId}`).classList.remove('hidden');
                 } else {
                     selectedCarIds.delete(carId);
-// ... (既存の関数) ...
                     selectedDrivers.delete(carId);
                     selectedLuggage.delete(carId);
                     document.getElementById(`car-options-${carId}`).classList.add('hidden');
                     document.getElementById(`driver-${carId}`).value = '';
                 }
             } else if (action === 'select-driver') {
-// ... (既存の関数) ...
                 if (target.value) {
                     selectedDrivers.set(carId, target.value);
                 } else {
                     selectedDrivers.delete(carId);
                 }
             } else if (action === 'select-luggage') {
-// ... (既存の関数) ...
                 if (target.checked) {
                     selectedLuggage.add(carId);
                 } else {
                     selectedLuggage.delete(carId);
-// ... (既存の関数) ...
                 }
             }
         }
 
-        // 除外者選択のハンドラ
         function handleExclusionChange(e) {
-// ... (既存の関数) ...
             const target = e.target;
             if (target.type === 'checkbox' && target.dataset.action === 'exclude-participant') {
                 const id = target.dataset.id;
@@ -971,12 +1111,10 @@
                     excludedParticipantIds.add(id);
                 } else {
                     excludedParticipantIds.delete(id);
-// ... (既存の関数) ...
                 }
             }
         }
 
-        // ★割り当て実行 (ドライバーと別便対応)
         function handleAssignment() {
             if (selectedCarIds.size === 0) {
                 showMessage('ステップ2で車を1台以上選択してください。', 'error');
@@ -987,20 +1125,18 @@
             let driverMap = new Map(); // carId -> driverObject
             let selectedCarsData = [];
             
-            // 1. 参加者全員のリスト（データ付き）を作成
             const allParticipantsWithData = ALL_PARTICIPANTS_FLAT
-                .filter(p => selectedParticipantIds.has(p.id)) // 参加者のみ
+                .filter(p => selectedParticipantIds.has(p.id)) 
                 .map(p => {
                     const family = FAMILIES.find(f => f.members.some(m => m.id === p.id));
                     return {
                         ...p,
-                        ...participantData.get(p.id), // grade, school, other, memo を展開
+                        ...participantData.get(p.id), 
                         familyName: family ? family.familyName : null
                     };
                 });
 
 
-            // 2. 車とドライバーのバリデーション
             selectedCarIds.forEach(carId => {
                 const driverId = selectedDrivers.get(carId);
                 if (!driverId) {
@@ -1010,7 +1146,6 @@
                 
                 const driver = allParticipantsWithData.find(p => p.id === driverId);
                 if (!driver) { 
-                     // ドライバーが参加者に選ばれていない
                      const driverInfo = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId);
                      errors.push(`ドライバー (${driverInfo.name} (${driverInfo.type})) がステップ1の参加者に含まれていません。`);
                      return;
@@ -1023,16 +1158,16 @@
                 
                 const carInfo = AVAILABLE_CARS_INFO.find(c => c.id === carId);
                 const hasLuggage = selectedLuggage.has(carId);
-                let actualCapacity = carInfo.baseCapacity - 1; // ドライバー分
+                let actualCapacity = carInfo.baseCapacity - 1; 
                 if (hasLuggage) {
-                    actualCapacity = 1; // 荷物ありなら乗客は1名のみ
+                    actualCapacity = 1; 
                 }
 
                 selectedCarsData.push({
                     id: carId,
                     name: carInfo.name,
                     familyName: carInfo.familyName,
-                    driverId: driverId, // 自動割り当てロジックで使用
+                    driverId: driverId, 
                     capacity: actualCapacity, 
                     hasLuggage: hasLuggage
                 });
@@ -1043,18 +1178,15 @@
                 return;
             }
 
-            // 3. 割り当て対象の乗客リストを作成 (ドライバーと除外者を *除く*)
             const driverIds = new Set([...driverMap.values()].map(d => d.id));
             let participantsToAssign = allParticipantsWithData.filter(p => {
                 return !driverIds.has(p.id) && !excludedParticipantIds.has(p.id);
             });
             
-            // 4. 別便リストを作成
             let excludedParticipants = allParticipantsWithData.filter(p => {
-                return excludedParticipantIds.has(p.id) && !driverIds.has(p.id); // ドライバーは別便にしない
+                return excludedParticipantIds.has(p.id) && !driverIds.has(p.id); 
             });
 
-            // 5. 全体の定員チェック
             const totalParticipants = participantsToAssign.length;
             const totalCapacity = selectedCarsData.reduce((sum, car) => sum + car.capacity, 0);
 
@@ -1064,10 +1196,9 @@
                 hideMessage();
             }
 
-            // 6. 割り当てロジックの実行
+            // ★修正されたロジックを呼び出す
             const assignments = allocateParticipants(participantsToAssign, selectedCarsData, driverMap);
 
-            // 7. 別便カーを追加
             assignments.push({
                 id: 'excluded-car',
                 name: '別便',
@@ -1077,7 +1208,6 @@
                 hasLuggage: false
             });
 
-            // 8. 結果の描画と保存
             currentAssignments = assignments; 
             renderResults(currentAssignments);
             
@@ -1092,7 +1222,6 @@
         // --- メッセージとロジック ---
 
         function showMessage(message, type = 'info') {
-// ... (既存の関数) ...
             messageText.innerHTML = message;
             messageContainer.classList.remove('hidden', 'bg-red-100', 'border-red-400', 'text-red-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700');
             if (type === 'error') {
@@ -1104,11 +1233,10 @@
         }
 
         function hideMessage() {
-// ... (既存の関数) ...
             messageContainer.classList.add('hidden');
         }
 
-        // ★割り当てロジック (ドライバーを引数で受け取る)
+        // ★★★ 割り当てロジック (フラグ一致優先度を修正) ★★★
         function allocateParticipants(participants, cars, driverMap) {
             // 1. 割り当て結果の器を初期化 (ドライバーをセット)
             let assignments = cars.map(car => ({ 
@@ -1142,97 +1270,120 @@
                 }
             });
 
-            // --- 優先度2: フラググループ ---
-            let flaggedParticipants = [];
-            let nonFlaggedParticipants = [];
+            // --- 優先度2: フラグ一致 (新しいロジック) ---
+            
+            // フラグ一致スコアを計算する関数
+            function getFlagMatchScore(pA, pB) {
+                if (!pA || !pB || !pA.isFlagTarget || !pB.isFlagTarget) return 0;
+                let score = 0;
+                // grade, school, other が空文字列やnullでないことを確認してから比較
+                if (pA.grade && pA.grade === pB.grade) score++;
+                if (pA.school && pA.school === pB.school) score++;
+                if (pA.other && pA.other === pB.other) score++;
+                return score;
+            }
 
-            remainingParticipants.forEach(p => {
-                const hasFlags = p.grade || p.school || p.other;
-                if (hasFlags && p.isFlagTarget) { 
-                    flaggedParticipants.push(p);
-                } else {
-                    nonFlaggedParticipants.push(p);
+            // 残った参加者をシャッフルし、フラグ対象者を優先
+            let participantsToProcess = remainingParticipants.sort((a, b) => {
+                if (a.isFlagTarget !== b.isFlagTarget) {
+                    return a.isFlagTarget ? -1 : 1; // フラグ対象者を先に
                 }
+                return Math.random() - 0.5; // ランダム性
             });
+            
+            let stillRemaining = []; // どの車とも一致しなかった参加者
 
-            const flagGroupsMap = new Map();
-            flaggedParticipants.forEach(p => {
-                const grade = p.grade || '';
-                const school = p.school || '';
-                const other = p.other || '';
-                
-                let key, priority;
-                
-                if (grade && school) { key = `GS:${grade}/${school}`; priority = 1; }
-                else if (grade) { key = `G:${grade}`; priority = 2; }
-                else if (school) { key = `S:${school}`; priority = 3; }
-                else if (other) { key = `O:${other}`; priority = 4; }
-                else { return; }
+            participantsToProcess.forEach(participant => {
+                let bestCar = null;
+                let maxScore = 0;
 
-                if (!flagGroupsMap.has(key)) {
-                    flagGroupsMap.set(key, { priority, members: [] });
-                }
-                flagGroupsMap.get(key).members.push(p);
-            });
+                // 参加者(participant)にとって最適な車を探す
+                assignments.forEach(car => {
+                    // 1. 定員に空きがあるか
+                    if (car.members.length >= car.capacity) return;
 
-            const sortedFlagGroups = Array.from(flagGroupsMap.values())
-                .filter(group => group.members.length > 1) 
-                .sort((a, b) => {
-                    if (a.priority !== b.priority) return a.priority - b.priority;
-                    return b.members.length - a.members.length;
+                    // 2. 車内の乗客との合計一致スコアを計算
+                    let currentCarScore = 0;
+                    car.members.forEach(member => {
+                        currentCarScore += getFlagMatchScore(participant, member);
+                    });
+
+                    // 3. ベストスコアを更新
+                    if (currentCarScore > maxScore) {
+                        maxScore = currentCarScore;
+                        bestCar = car;
+                    } 
+                    // 4. 同一ポイントの場合はランダムで決定（すでに見つかっているbestCarを確率で上書き）
+                    else if (currentCarScore > 0 && currentCarScore === maxScore) {
+                        if (Math.random() > 0.5) {
+                            bestCar = car;
+                        }
+                    }
                 });
-            
-            let finalRemainingParticipants = [...nonFlaggedParticipants]; 
-            const remainingFlaggedIds = new Set(flaggedParticipants.map(p => p.id)); 
 
-            sortedFlagGroups.forEach(group => {
-                let bestFitCar = assignments
-                    .map(car => ({ carRef: car, vacancy: car.capacity - car.members.length }))
-                    .filter(c => c.vacancy >= group.members.length)
-                    .sort((a, b) => b.vacancy - a.vacancy)[0]; 
-
-                if (bestFitCar) {
-                    bestFitCar.carRef.members.push(...group.members);
-                    group.members.forEach(p => remainingFlaggedIds.delete(p.id));
+                // 5. ベストな車（スコア>0）が見つかったら割り当て
+                if (bestCar) {
+                    bestCar.members.push(participant);
+                } else {
+                    // スコア0の参加者は後回し
+                    stillRemaining.push(participant);
                 }
             });
+
             
-            remainingFlaggedIds.forEach(id => {
-                finalRemainingParticipants.push(flaggedParticipants.find(p => p.id === id));
-            });
-            
-            // --- 優先度3: 残りの個人 ---
-            if (finalRemainingParticipants.length > 0) {
-                const shuffledRemaining = finalRemainingParticipants.sort(() => 0.5 - Math.random());
+            // --- 優先度3: 残りの個人 (スコア0の人たち) ---
+            if (stillRemaining.length > 0) {
                 
                 let carsWithVacancy = assignments
                     .map(car => ({ carRef: car, vacancy: car.capacity - car.members.length }))
                     .filter(c => c.vacancy > 0)
-                    .sort((a, b) => b.vacancy - a.vacancy); 
+                    .sort((a, b) => b.vacancy - a.vacancy); // 空きが多い順
 
                 let carIndex = 0;
-                while (shuffledRemaining.length > 0) {
-                    if (carsWithVacancy.length === 0) break; 
+                stillRemaining.forEach(participant => {
+                    if (carsWithVacancy.length === 0) return; // 満車
 
-                    const targetCarInfo = carsWithVacancy[carIndex % carsWithVacancy.length];
+                    let assigned = false;
+                    let initialCarIndex = carIndex;
                     
-                    if (targetCarInfo.carRef.members.length < targetCarInfo.carRef.capacity) {
-                        targetCarInfo.carRef.members.push(shuffledRemaining.pop());
-                    }
-                    carIndex++;
-                    carsWithVacancy = carsWithVacancy.filter(c => c.carRef.members.length < c.carRef.capacity);
-                    if (carsWithVacancy.length > 0) { 
+                    while(!assigned) {
+                        if (carsWithVacancy.length === 0) break; // 途中で満車になった
+                        
+                        // carIndexが範囲外にならないように調整
                         carIndex = carIndex % carsWithVacancy.length;
+                        
+                        const targetCarInfo = carsWithVacancy[carIndex];
+                        
+                        if (targetCarInfo.carRef.members.length < targetCarInfo.carRef.capacity) {
+                            targetCarInfo.carRef.members.push(participant);
+                        	targetCarInfo.vacancy--;
+                            assigned = true;
+                            
+                            // この車が満車になったらリストから削除
+                            if (targetCarInfo.vacancy <= 0) {
+                                carsWithVacancy.splice(carIndex, 1);
+                            } else {
+                                carIndex++; // 次の車へ
+                            }
+                        } else {
+                             // 満車だった場合（起こりにくいはずだが念のため）
+                             carsWithVacancy.splice(carIndex, 1);
+                        }
+                        
+                        if (carsWithVacancy.length > 0 && carIndex === initialCarIndex && !assigned) {
+                             // 1周しても空きがなかった（＝全車満車）
+                             break;
+                        }
                     }
-                }
+                });
             }
+            
             return assignments;
         }
 
 
         // アコーディオンの全開/全閉
         function handleToggleDetails() {
-// ... (既存の関数) ...
             const detailsElements = participantListEl.querySelectorAll('details');
             const shouldOpen = toggleDetailsButton.textContent === 'すべて開く';
             detailsElements.forEach(details => {
@@ -1244,7 +1395,6 @@
 
         // --- ファイル入出力・テキスト出力機能 ---
 
-        // 現在の状態を取得
         function getCurrentState() {
             return {
                 selectedParticipantIds: Array.from(selectedParticipantIds),
@@ -1252,128 +1402,105 @@
                 selectedDrivers: Array.from(selectedDrivers.entries()),
                 selectedLuggage: Array.from(selectedLuggage),
                 excludedParticipantIds: Array.from(excludedParticipantIds),
-                participantData: Array.from(participantData.entries()) // ★変更
+                participantData: Array.from(participantData.entries()) 
             };
         }
 
-        // 状態を復元
         function restoreState(state) {
             selectedParticipantIds = new Set(state.selectedParticipantIds || []);
             selectedCarIds = new Set(state.selectedCarIds || []);
             selectedDrivers = new Map(state.selectedDrivers || []);
             selectedLuggage = new Set(state.selectedLuggage || []);
             excludedParticipantIds = new Set(state.excludedParticipantIds || []);
-            participantData = new Map(state.participantData || []); // ★変更
+            participantData = new Map(state.participantData || []); 
             
             if (participantData.size === 0) {
-                initializeParticipantData(); // ★変更
+                initializeParticipantData(); 
             }
 
             currentAssignments = [];
         }
 
-        // 状態をエクスポート
         function handleExportState() {
-// ... (既存の関数) ...
             const state = getCurrentState();
             const jsonString = JSON.stringify(state, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-// ... (既存の関数) ...
             
             const a = document.createElement('a');
             a.href = url;
             a.download = `car_assignment_state_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
-// ... (既存の関数) ...
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
             showMessage('現在の状態をファイルに保存しました。', 'info');
-// ... (既存の関数) ...
         }
 
-        // 状態をインポート
         function handleImportState(e) {
             const file = e.target.files[0];
-// ... (既存の関数) ...
             if (!file) return;
 
             const reader = new FileReader();
             reader.onload = (event) => {
                 try {
-// ... (既存の関数) ...
                     const state = JSON.parse(event.target.result);
                     restoreState(state);
                     
-                    // UIを再描画
                     renderParticipantList();
-// ... (既存の関数) ...
                     renderCarList();
                     renderExclusionList();
                     resultsEl.innerHTML = '<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>';
                     const placeholder = document.getElementById('results-placeholder');
-// ... (既存の関数) ...
                     if (placeholder) {
-                         if (window.innerWidth >= 1024) { // lg breakpoint
+                         if (window.innerWidth >= 1024) { 
                             placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
                         } else {
                             placeholder.style.gridColumn = 'auto';
                         }
                     }
-// ... (既存の関数) ...
-                    textOutputContainer.classList.add('hidden'); // テキスト出力も隠す
+                    textOutputContainer.classList.add('hidden'); 
                     
                     showMessage('状態を読み込みました。', 'info');
                 } catch (err) {
                     console.error('Error parsing JSON state:', err);
-// ... (既存の関数) ...
                     showMessage('ファイルの読み込みに失敗しました。無効なJSONファイルです。', 'error');
                 }
-                // 同じファイルを再度読み込めるように input の値をリセット
                 e.target.value = null;
             };
             reader.readAsText(file);
-// ... (既存の関数) ...
         }
 
-        // テキスト出力の表示/非表示
         function handleShowTextOutput() {
             if (currentAssignments.length === 0) {
                 showMessage('テキスト出力する結果がありません。先に「割り当て実行」を押してください。', 'error');
-// ... (既存の関数) ...
                 return;
             }
             textOutputContainer.classList.toggle('hidden');
             if (!textOutputContainer.classList.contains('hidden')) {
-                updateTextOutput(); // 表示する瞬間に内容を最新化
-// ... (既存の関数) ...
+                updateTextOutput(); 
             }
         }
 
-        // ★テキスト出力エリアを更新 (備考対応)
         function updateTextOutput() {
             if (currentAssignments.length === 0) {
-// ... (既存の関数) ...
                 textOutputEl.value = '';
                 return;
             }
 
             const outputLines = currentAssignments
-                .filter(car => car.id !== 'excluded-car') // 別便カーは除外
+                .filter(car => car.id !== 'excluded-car') 
                 .map(car => {
                 
                 const carName = car.name.replace(/の車|家の車/g, 'カー');
                 
-                // ドライバー
                 let driverName = ' (ドライバー未定)';
                 if (car.driver) {
                     const memo = participantData.get(car.driver.id)?.memo || '';
                     driverName = car.driver.name + (memo ? ` (${memo})` : '');
                 }
                 
-                // 乗客リスト
                 const members = car.members.map(p => {
                     let name = p.name;
                     if (p.type === '選手') name = '★' + name;
@@ -1392,45 +1519,36 @@
             textOutputEl.value = outputLines.join('\n');
         }
 
-        // テキストをコピー
         function handleCopyTextOutput() {
-// ... (既存の関数) ...
             if (!textOutputEl.value) return;
 
             try {
                 navigator.clipboard.writeText(textOutputEl.value).then(() => {
                     showMessage('クリップボードにコピーしました。', 'info');
-// ... (既存の関数) ...
                 }, (err) => {
                     legacyCopy(textOutputEl.value);
                 });
             } catch (err) {
                 legacyCopy(textOutputEl.value);
-// ... (既存の関数) ...
             }
         }
 
-        // 古いコピー方法 (フォールバック)
         function legacyCopy(text) {
              const textArea = document.createElement('textarea');
-// ... (既存の関数) ...
             textArea.value = text;
-            textArea.style.position = 'fixed'; // 画面外
+            textArea.style.position = 'fixed'; 
             textArea.style.opacity = '0';
             document.body.appendChild(textArea);
-// ... (既存の関数) ...
             textArea.focus();
             textArea.select();
             try {
                 const successful = document.execCommand('copy');
                 if (successful) {
-// ... (既存の関数) ...
                     showMessage('クリップボードにコピーしました。', 'info');
                 } else {
                     showMessage('コピーに失敗しました。', 'error');
                 }
             } catch (err) {
-// ... (既存の関数) ...
                 showMessage('コピーに失敗しました。', 'error');
             }
             document.body.removeChild(textArea);
@@ -1438,92 +1556,70 @@
 
         // --- マスターデータ入出力 ---
 
-// ... (既存の関数) ...
-        // マスターデータをエクスポート
         function handleExportMasterData() {
             const masterData = {
                 families: FAMILIES,
                 cars: AVAILABLE_CARS_INFO
             };
-// ... (既存の関数) ...
             const jsonString = JSON.stringify(masterData, null, 2);
             const blob = new Blob([jsonString], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             
             const a = document.createElement('a');
-// ... (既存の関数) ...
             a.href = url;
             a.download = `car_assignment_master_${new Date().toISOString().slice(0,10)}.json`;
             document.body.appendChild(a);
             a.click();
-// ... (既存の関数) ...
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
             showMessage('現在のマスターデータをファイルに保存しました。', 'info');
         }
 
-        // マスターデータをインポート
-// ... (既存の関数) ...
         function handleImportMasterData(e) {
             const file = e.target.files[0];
             if (!file) return;
 
             const reader = new FileReader();
-// ... (既存の関数) ...
             reader.onload = (event) => {
                 try {
                     const masterData = JSON.parse(event.target.result);
                     
                     if (!masterData || !Array.isArray(masterData.families) || !Array.isArray(masterData.cars)) {
                         throw new Error('JSONの形式が正しくありません。 "families" と "cars" の配列が必要です。');
-// ... (既存の関数) ...
                     }
 
-                    // グローバル変数を上書き
                     FAMILIES = masterData.families;
                     AVAILABLE_CARS_INFO = masterData.cars;
-// ... (既存の関数) ...
                     
-                    // 派生データを再計算
                     ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
 
-                    // 状態をすべてリセット
-                    restoreState({}); // 空の状態でリセット
-// ... (既存の関数) ...
+                    restoreState({}); 
                     
-                    // UIを完全に再描画
-                    initializeParticipantData(); // ★変更
+                    initializeParticipantData(); 
                     renderParticipantList();
                     renderCarList();
-// ... (既存の関数) ...
                     renderExclusionList();
                     resultsEl.innerHTML = '<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>';
                     const placeholder = document.getElementById('results-placeholder');
                     if (placeholder) {
-// ... (既存の関数) ...
-                         if (window.innerWidth >= 1024) { // lg breakpoint
+                         if (window.innerWidth >= 1024) { 
                             placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
                         } else {
                             placeholder.style.gridColumn = 'auto';
-// ... (既存の関数) ...
                         }
                     }
-                    textOutputContainer.classList.add('hidden'); // テキスト出力も隠す
-                    toggleDetailsButton.textContent = 'すべて開く'; // ボタンをリセット
-// ... (既存の関数) ...
+                    textOutputContainer.classList.add('hidden'); 
+                    toggleDetailsButton.textContent = 'すべて開く'; 
                     
                     showMessage('マスターデータを読み込み、アプリをリセットしました。', 'info');
                 } catch (err) {
                     console.error('Error parsing master data JSON:', err);
                     showMessage(`マスターデータの読み込みに失敗しました: ${err.message}`, 'error');
-// ... (既存の関数) ...
                 }
-                // 同じファイルを再度読み込めるように input の値をリセット
                 e.target.value = null;
             };
             reader.readAsText(file);
-// ... (既存の関数) ...
         }
 
     </script>
