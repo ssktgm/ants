@@ -1600,7 +1600,7 @@
                     let name = p.name;
                     if (p.type === '選手') name = '★' + name;
                     const memo = participantData.get(p.id)?.memo || '';
-                    return name + (memo ? ` (${memo})` : '');
+                    return name + (memo ? ` [${memo}]` : '');
                 });
                 
                 const luggage = car.hasLuggage ? '荷物' : null;
