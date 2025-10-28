@@ -120,7 +120,7 @@
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-xl font-semibold text-gray-700">1. 参加者を選択</h2>
                     <button id="toggle-details-button" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 rounded-lg text-sm transition duration-200">
-                        すべて開く
+                        すべて閉じる <!-- 初期表示は開いているので閉じるボタンに -->
                     </button>
                 </div>
                 <div id="participant-list" class="space-y-2 h-[600px] overflow-y-auto bg-white p-4 rounded-lg shadow">
@@ -403,11 +403,13 @@
             window.addEventListener('resize', updateLayouts); 
 
             initializeParticipantData(); 
+            initializeDefaultDrivers(); // ★デフォルトドライバー設定を追加
             renderParticipantList();
             renderCarList();
             
             participantListEl.addEventListener('change', handleParticipantChange);
             participantListEl.addEventListener('input', handleParticipantDataInput); 
+            participantListEl.addEventListener('click', handleFamilySelectButtons); // ★家族一括選択リスナー
             carListEl.addEventListener('change', handleCarChange);
             exclusionListEl.addEventListener('change', handleExclusionChange);
             assignButton.addEventListener('click', handleAssignment);
@@ -454,16 +456,48 @@
             });
         }
 
+        // ★デフォルトドライバーを設定する関数を追加
+        function initializeDefaultDrivers() {
+            selectedDrivers.clear(); // 既存の設定をクリア
+            AVAILABLE_CARS_INFO.forEach(car => {
+                const family = FAMILIES.find(f => f.familyName === car.familyName);
+                if (family) {
+                    const father = family.members.find(m => m.name.includes('父') || m.name.includes('監督')); // '父' または '監督'
+                    const mother = family.members.find(m => m.name.includes('母')); // '母'
+
+                    if (father) {
+                        selectedDrivers.set(car.id, father.id);
+                    } else if (mother) {
+                        selectedDrivers.set(car.id, mother.id);
+                    }
+                    // 父も母も見つからない場合は設定しない
+                }
+            });
+        }
+
+
         // ステップ1: 参加者リストを描画
         function renderParticipantList() {
             participantListEl.innerHTML = '';
             FAMILIES.forEach(family => {
                 const details = document.createElement('details');
                 details.className = 'bg-gray-50 rounded border';
+                details.open = true; // ★デフォルトで開くように変更
                 
                 const summary = document.createElement('summary');
-                summary.className = 'p-3 font-semibold cursor-pointer select-none';
-                summary.textContent = family.familyName;
+                summary.className = 'p-3 font-semibold cursor-pointer select-none flex justify-between items-center'; // ★flexを追加
+                // ★家族名とボタンを内包するdivに変更
+                summary.innerHTML = `
+                    <span>${family.familyName}</span>
+                    <div class="space-x-1">
+                         <button type="button" data-family-name="${family.familyName}" data-action="family-select-all" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-1 px-2 rounded-lg" style="font-size: 0.7rem;">
+                            全員参加
+                         </button>
+                         <button type="button" data-family-name="${family.familyName}" data-action="family-select-none" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-1 px-2 rounded-lg" style="font-size: 0.7rem;">
+                            全員不参加
+                         </button>
+                    </div>
+                `;
                 
                 const memberList = document.createElement('div');
                 memberList.className = 'p-3 border-t border-gray-200 space-y-3';
@@ -509,6 +543,8 @@
                 details.appendChild(memberList);
                 participantListEl.appendChild(details);
             });
+            // 初期表示時は「すべて閉じる」ボタンにする
+             toggleDetailsButton.textContent = 'すべて閉じる';
         }
 
         // ステップ2: 車リストを描画
@@ -518,7 +554,8 @@
                 const family = FAMILIES.find(f => f.familyName === car.familyName);
                 const driverOptions = family ? family.members : ALL_PARTICIPANTS_FLAT; 
                 const isChecked = selectedCarIds.has(car.id);
-                const driverId = selectedDrivers.get(car.id) || '';
+                // ★ デフォルトドライバーIDを取得 (selectedDriversはinitializeDefaultDriversで設定済み)
+                const driverId = selectedDrivers.get(car.id) || ''; 
                 const hasLuggage = selectedLuggage.has(car.id);
                 const div = document.createElement('div');
                 div.className = 'bg-gray-50 rounded border p-3';
@@ -595,16 +632,18 @@
                     headerHtml = `
                         <div class="p-4 border-b bg-gray-100">
                             <h4 class="font-bold text-lg text-gray-700">${car.name}</h4>
-                            <p class="text-sm text-gray-600">乗客: ${car.members.length}名</p>
+                            <p class="text-sm text-gray-600">人数: ${car.members.length}名</p> <!-- 別便は人数のみ -->
                         </div>`;
                 } else {
-                    const vacancy = car.capacity - car.members.length;
+                    // ★ 乗客定員 (capacity) と 実際の乗客数 (members.length) で計算
+                    const vacancy = car.capacity - car.members.length; 
                     const luggageInfo = car.hasLuggage ? ' (荷物あり)' : '';
+                    // ★ 表示形式を変更
                     headerHtml = `
                         <div class="p-4 border-b">
                             <h4 class="font-bold text-lg">${car.name} ${luggageInfo}</h4>
                             <p class="text-sm font-medium ${vacancy < 0 ? 'text-red-600' : 'text-blue-600'}">
-                                乗客: ${car.members.length}名 / 定員 ${car.capacity}名 (空き ${vacancy}名)
+                                定員 ${car.capacity}名 (空き ${vacancy}名) 
                             </p>
                         </div>`;
                     
@@ -638,7 +677,7 @@
                             <span>${p.name} (${p.type})</span>
                             ${memo ? `<span class="text-xs text-gray-500 ml-2">(${memo})</span>` : ''}
                         </div>
-                        <span class="text-xs text-gray-400">${[p.flags?.grade, p.flags?.school, p.flags?.other].filter(Boolean).join(' ')}</span>
+                        <span class="text-xs text-gray-400">${[participantData.get(p.id)?.grade, participantData.get(p.id)?.school, participantData.get(p.id)?.other].filter(Boolean).join(' ')}</span> <!-- 修正: participantDataから取得 -->
                     </li>`;
                 }).join('');
 
@@ -741,12 +780,14 @@
 
         function updateCarVacancyUI(carId) {
             const car = currentAssignments.find(c => c.id === carId);
-            if (!car || car.id === 'excluded-car' || !car.element) return;
+            // ★ car.element が存在するかチェックを追加
+            if (!car || car.id === 'excluded-car' || !document.getElementById(`car-result-${carId}`)) return; 
             
+            const cardElement = document.getElementById(`car-result-${carId}`);
             const vacancy = car.capacity - car.members.length;
-            const pEl = car.element.querySelector('p.font-medium');
+            const pEl = cardElement.querySelector('p.font-medium'); // ★ car.element を cardElement に変更
             if (pEl) {
-                pEl.textContent = `乗客: ${car.members.length}名 / 定員 ${car.capacity}名 (空き ${vacancy}名)`;
+                pEl.textContent = `定員 ${car.capacity}名 (空き ${vacancy}名)`; // ★ 表示形式を変更
                 pEl.classList.toggle('text-red-600', vacancy < 0);
                 pEl.classList.toggle('text-blue-600', vacancy >= 0);
             }
@@ -1056,6 +1097,46 @@
                 renderExclusionList();
             }
         }
+        
+        // ★ 家族一括選択/解除ボタンのハンドラ
+        function handleFamilySelectButtons(e) {
+             const button = e.target.closest('button[data-family-name]');
+             if (!button) return;
+
+             e.preventDefault(); // detailsの開閉を防ぐ
+             e.stopPropagation(); // イベントの伝播を防ぐ
+
+             const familyName = button.dataset.familyName;
+             const action = button.dataset.action; // 'family-select-all' or 'family-select-none'
+             const family = FAMILIES.find(f => f.familyName === familyName);
+             if (!family) return;
+
+             const shouldSelect = (action === 'family-select-all');
+
+             family.members.forEach(member => {
+                 const checkbox = document.getElementById(`p-${member.id}`);
+                 const dataEl = document.getElementById(`data-inputs-${member.id}`);
+                 
+                 if (shouldSelect) {
+                    selectedParticipantIds.add(member.id);
+                    if (checkbox) checkbox.checked = true;
+                    if (dataEl) {
+                        dataEl.classList.remove('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = false);
+                    }
+                 } else {
+                    selectedParticipantIds.delete(member.id);
+                    excludedParticipantIds.delete(member.id); // 除外からも削除
+                    if (checkbox) checkbox.checked = false;
+                     if (dataEl) {
+                        dataEl.classList.add('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = true);
+                    }
+                 }
+             });
+             renderExclusionList(); // 除外リストを更新
+        }
+
 
         function handleParticipantDataInput(e) {
             const target = e.target;
@@ -1129,9 +1210,10 @@
                 .filter(p => selectedParticipantIds.has(p.id)) 
                 .map(p => {
                     const family = FAMILIES.find(f => f.members.some(m => m.id === p.id));
+                    // ★ participantData を展開して含める
                     return {
                         ...p,
-                        ...participantData.get(p.id), 
+                        ...(participantData.get(p.id) || {}), // grade, school, other, memo を展開
                         familyName: family ? family.familyName : null
                     };
                 });
@@ -1144,10 +1226,12 @@
                     return;
                 }
                 
-                const driver = allParticipantsWithData.find(p => p.id === driverId);
+                // ★ ドライバーが参加者として選択されているかチェック
+                const driver = allParticipantsWithData.find(p => p.id === driverId); 
                 if (!driver) { 
                      const driverInfo = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId);
-                     errors.push(`ドライバー (${driverInfo.name} (${driverInfo.type})) がステップ1の参加者に含まれていません。`);
+                     // ★ 警告メッセージを変更
+                     errors.push(`ドライバー (${driverInfo?.name || '不明'} ${driverInfo?.type ? `(${driverInfo.type})` : ''}) がステップ1の参加者に含まれていません。`);
                      return;
                 }
                 
@@ -1211,8 +1295,9 @@
             currentAssignments = assignments; 
             renderResults(currentAssignments);
             
+            // ★ currentAssignments の各 car に DOM 要素への参照を追加 (D&D用)
             currentAssignments.forEach(car => {
-                car.element = document.getElementById(`car-result-${car.id}`);
+                 car.element = document.getElementById(`car-result-${car.id}`);
             });
 
             updateTextOutput();
@@ -1274,6 +1359,7 @@
             
             // フラグ一致スコアを計算する関数
             function getFlagMatchScore(pA, pB) {
+                // ★ isFlagTarget が false の参加者はスコア計算対象外とする
                 if (!pA || !pB || !pA.isFlagTarget || !pB.isFlagTarget) return 0;
                 let score = 0;
                 // grade, school, other が空文字列やnullでないことを確認してから比較
@@ -1362,17 +1448,26 @@
                             // この車が満車になったらリストから削除
                             if (targetCarInfo.vacancy <= 0) {
                                 carsWithVacancy.splice(carIndex, 1);
+                                // ★ carIndex が削除された要素を指さないように調整
+                                if (carIndex >= carsWithVacancy.length) {
+                                    carIndex = 0; // 配列の先頭に戻すか、0にする
+                                }
                             } else {
                                 carIndex++; // 次の車へ
                             }
                         } else {
                              // 満車だった場合（起こりにくいはずだが念のため）
                              carsWithVacancy.splice(carIndex, 1);
+                             // ★ carIndex が削除された要素を指さないように調整
+                             if (carIndex >= carsWithVacancy.length) {
+                                 carIndex = 0;
+                             }
                         }
                         
+                        // ★ 無限ループ防止: 1周しても割り当てられなかった場合
                         if (carsWithVacancy.length > 0 && carIndex === initialCarIndex && !assigned) {
-                             // 1周しても空きがなかった（＝全車満車）
-                             break;
+                             console.warn("Could not assign participant (all cars might be full unexpectedly):", participant);
+                             break; // ループを抜ける
                         }
                     }
                 });
@@ -1597,6 +1692,7 @@
                     restoreState({}); 
                     
                     initializeParticipantData(); 
+                    initializeDefaultDrivers(); // ★インポート後もデフォルトドライバーを設定
                     renderParticipantList();
                     renderCarList();
                     renderExclusionList();
@@ -1610,7 +1706,7 @@
                         }
                     }
                     textOutputContainer.classList.add('hidden'); 
-                    toggleDetailsButton.textContent = 'すべて開く'; 
+                    toggleDetailsButton.textContent = 'すべて閉じる'; // ★ボタンテキストもリセット
                     
                     showMessage('マスターデータを読み込み、アプリをリセットしました。', 'info');
                 } catch (err) {
@@ -1626,3 +1722,4 @@
 
 </body>
 </html>
+
