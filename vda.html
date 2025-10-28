@@ -18,8 +18,10 @@
             --layout-columns: 3; /* デフォルト */
         }
         
-        .grid-layout-dynamic {
-            grid-template-columns: repeat(var(--layout-columns), minmax(0, 1fr));
+        @media (min-width: 1024px) { /* lg */
+            .grid-layout-dynamic {
+                grid-template-columns: repeat(var(--layout-columns), minmax(0, 1fr));
+            }
         }
 
         /* 割り当て結果の高さ */
@@ -97,7 +99,7 @@
             <section id="step1-participants" class="bg-white p-4 rounded-lg shadow">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-xl font-bold text-gray-700">1. 参加者を選択</h2>
-                    <button id="toggle-all-participants" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-3 rounded-lg">すべて開く</button>
+                    <button id="toggle-all-participants" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-3 rounded-lg">すべて閉じる</button>
                 </div>
                 <div id="participant-list" class="space-y-4">
                     <!-- JSで描画 -->
@@ -129,7 +131,7 @@
         <!-- ステップ5: 割り当て結果 -->
         <section id="step5-results" class="mt-8">
             <h2 class="text-2xl font-bold text-gray-700 mb-4">5. 割り当て結果</h2>
-            <div id="assignment-results" class="grid grid-cols-1 lg:grid-layout-dynamic gap-6">
+            <div id="assignment-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-layout-dynamic gap-6">
                 <!-- JSで描画 -->
             </div>
         </section>
@@ -958,20 +960,18 @@
     // --- 標準 D&D ハンドラ ---
     
     function handleDragStart(e) {
-        // ドラッグハンドル (名前部分) 以外はドラッグ開始しない
-        if (!e.target.dataset.dragHandle) {
-             // e.preventDefault(); // これを呼ぶと入力などができなくなる
-             // 代わりに、ドラッグ可能な要素にのみ draggable=true を設定する
-             if (e.target.draggable) {
-                 // ドラッグ不可要素でドラッグが開始しようとしたらキャンセル
-             } else {
-                 e.preventDefault();
-                 return;
-             }
+        // ドラッグハンドル (名前部分) からドラッグ開始されたかチェック
+        const handle = e.target.closest('[data-drag-handle="true"]');
+        if (!handle) {
+            e.preventDefault();
+            return;
         }
-        
-        const target = e.target.closest('[draggable="true"]');
-        if (!target) return;
+
+        const target = handle.closest('[draggable="true"]');
+        if (!target) {
+            e.preventDefault();
+            return;
+        }
         
         draggedElement = target;
         const type = target.dataset.dragType; // 'driver' or 'passenger'
@@ -985,7 +985,9 @@
         
         // 少し遅れてゴーストを非表示化
         setTimeout(() => {
-            draggedElement.style.opacity = '0.4';
+            if (draggedElement) { // dragendでnullになることがある
+                draggedElement.style.opacity = '0.4';
+            }
         }, 0);
     }
 
@@ -1012,6 +1014,9 @@
         }
         // 2. 乗客アイテムへのドロップ (挿入)
         else if (dropZone.classList.contains('passenger-item')) {
+            // 自分自身の上はハイライトしない
+            if (draggedElement && draggedElement === dropZone) return; 
+            
             const rect = dropZone.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
             if (e.clientY < midY) {
@@ -1139,12 +1144,15 @@
 
         const dropZone = elementUnderTouch.closest('.driver-dropzone, .passenger-item, .passenger-dropzone');
         if (!dropZone) return;
-
+        
         // dragoverと同じロジック
         if (dropZone.classList.contains('driver-dropzone')) {
             dropZone.classList.add('drag-over-border');
         }
         else if (dropZone.classList.contains('passenger-item')) {
+            // 自分自身の上はハイライトしない
+            if (draggedElement && draggedElement === dropZone) return; 
+
             const rect = dropZone.getBoundingClientRect();
             const midY = rect.top + rect.height / 2;
             if (touch.clientY < midY) {
@@ -1181,8 +1189,13 @@
             const dropZone = elementUnderTouch.closest('.driver-dropzone, .passenger-item, .passenger-dropzone');
             
             if (dropZone) {
-                const targetCarId = dropZone.closest('.car-dropzone').dataset.carId;
-                performDropOperation(targetCarId, dropZone);
+                // 自分自身にドロップした場合は何もしない
+                if (draggedElement && draggedElement === dropZone) {
+                    // 何もしない
+                } else {
+                    const targetCarId = dropZone.closest('.car-dropzone').dataset.carId;
+                    performDropOperation(targetCarId, dropZone);
+                }
             }
         }
         
@@ -1222,6 +1235,11 @@
         if (!draggedData || !targetCarId) return;
 
         const { type: dragType, id: dragId, fromCar: fromCarId } = draggedData;
+        
+        // 自分自身にドロップ
+        if (draggedElement && draggedElement === dropZoneElement) {
+            return; 
+        }
         
         const fromAssignment = currentAssignments.get(fromCarId);
         const toAssignment = currentAssignments.get(targetCarId);
