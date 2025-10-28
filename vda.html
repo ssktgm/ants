@@ -559,11 +559,17 @@
                 // ★デフォルトドライバーの選定
                 let defaultDriverId = '';
                 if (family) {
-                    const father = family.members.find(m => m.type === '保護者' && m.name.includes('父'));
+                    // 優先順位：「父」を含む保護者 -> 「母」を含む保護者
+                    const father = family.members.find(m => m.type === '保護者' && (m.name.includes('父') || m.name.includes('監督')));
                     const mother = family.members.find(m => m.type === '保護者' && m.name.includes('母'));
-                    if (father) defaultDriverId = father.id;
-                    else if (mother) defaultDriverId = mother.id;
+                    
+                    if (father) {
+                        defaultDriverId = father.id;
+                    } else if (mother) {
+                        defaultDriverId = mother.id;
+                    }
                 }
+                
                 // 既に選択済みの値があればそちらを優先
                 const driverId = selectedDrivers.get(car.id) || defaultDriverId;
                 if(defaultDriverId && !selectedDrivers.has(car.id)) {
