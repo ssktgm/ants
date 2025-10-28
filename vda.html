@@ -3,1690 +3,1722 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script src="https://cdn.tailwindcss.com"></script>
     <title>配車調整アプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Tailwind JIT/CDN 用のベーススタイル */
-        body {
-            font-family: 'Inter', 'Noto Sans JP', sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
+        /* ドラッグ中の要素のスタイル */
+        .opacity-50 { opacity: 0.5; }
+        
+        /* ドラッグ可能なアイテム */
+        .draggable-item {
+            cursor: move;
+            /* ★タッチ操作時にテキスト選択が起こらないようにする */
+            user-select: none;
+            -webkit-user-select: none;
+            -ms-user-select: none;
+            -moz-user-select: none;
+        }
+
+        /* ★ドロップ先(移動)のハイライト */
+        .members-dropzone.drop-target-move { 
+            background-color: #EFF6FF; 
         }
         
-        /* 3列レイアウト用のカスタムスタイル */
-        :root {
-            --layout-columns: 3; /* デフォルト */
+        /* ★ドロップ先(入れ替え)のハイライト */
+        .driver-dropzone.drop-target-swap, .draggable-item.drop-target-swap {
+            border: 2px dashed #3B82F6; /* blue-500 */
+            box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
         }
         
-        @media (min-width: 768px) { /* md */
-            .grid-layout-dynamic {
-                grid-template-columns: repeat(var(--layout-columns), minmax(0, 1fr));
+        /* ★ドロップ先(挿入)のハイライト */
+        .draggable-item.drop-target-insert-before {
+            border-top: 3px solid #3B82F6; /* blue-500 */
+        }
+        .draggable-item.drop-target-insert-after {
+            border-bottom: 3px solid #3B82F6; /* blue-500 */
+        }
+
+        /* ★ドロップ先(定員オーバー) */
+        .members-dropzone.drop-target-full { 
+            background-color: #FEF2F2; 
+        }
+        
+        /* details[open] summary のスタイル */
+        details[open] > summary {
+            border-bottom: 1px solid #e5e7eb; /* gray-200 */
+        }
+        /* ファイル入力ボタンを隠す */
+        #import-state-input, #import-master-input {
+            display: none;
+        }
+
+        /* 可変グリッドレイアウトのためのCSS */
+        .main-grid-layout {
+            display: grid;
+            grid-template-columns: repeat(1, minmax(0, 1fr)); /* default: 1 col */
+            gap: 1.5rem; /* gap-6 */
+        }
+        
+        /* 結果表示用のグリッドレイアウト */
+        .results-grid-layout {
+            display: grid;
+            grid-template-columns: repeat(1, minmax(0, 1fr)); /* default: 1 col */
+            gap: 1rem; /* gap-4 */
+        }
+
+        @media (min-width: 1024px) { /* lg: breakpoint */
+            .main-grid-layout {
+                /* JSからこの変数を変更できるようにする */
+                grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
             }
-        }
-
-        /* 割り当て結果の高さ */
-        .car-assignment-list {
-            min-height: 150px;
-        }
-
-        /* ドラッグ&ドロップのハイライト */
-        .drag-over-bg {
-            background-color: #ebf8ff; /* bg-blue-50 */
-        }
-        .drag-over-border {
-            outline: 2px dashed #63b3ed; /* blue-400 */
-            outline-offset: -2px;
-        }
-        .drag-over-insert-before::before,
-        .drag-over-insert-after::after {
-            content: '';
-            display: block;
-            height: 4px;
-            background-color: #3182ce; /* blue-600 */
-            margin: 2px 0;
-        }
-
-        /* タッチ操作のゴースト要素 */
-        .touch-ghost {
-            position: fixed;
-            pointer-events: none;
-            opacity: 0.7;
-            z-index: 1000;
-            transform: translate(-50%, -50px); /* 指の少し上に出るように調整 */
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border-radius: 0.375rem; /* rounded-md */
-        }
-
-        /* メッセージ表示 */
-        #message-box {
-            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
-        }
-        #message-box.show {
-            opacity: 1;
-            transform: translateY(0);
+            
+            /* 結果表示用のグリッド（LG以上） */
+            .results-grid-layout {
+                grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
+            }
         }
     </style>
 </head>
-<body class="bg-gray-100 p-4 md:p-8">
-    <div class="max-w-7xl mx-auto">
-        
-        <h1 class="text-2xl md:text-3xl font-bold text-gray-800 mb-6">配車調整アプリ</h1>
+<body class="bg-gray-100 font-sans">
 
-        <!-- グローバルコントロールボタン -->
-        <div class="mb-6 bg-white p-4 rounded-lg shadow-sm max-w-md">
-            <h2 class="font-semibold text-lg mb-3">状態</h2>
-            <div class="grid grid-cols-2 gap-3">
-                <button id="export-state-btn" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">状態を保存</button>
-                <label class="w-full bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-center cursor-pointer">
-                    状態を読み込む
-                    <input type="file" id="import-state-input" class="hidden" accept=".json">
-                </label>
-            </div>
-            <h2 class="font-semibold text-lg mt-5 mb-3">マスター</h2>
-            <div class="grid grid-cols-2 gap-3">
-                <button id="export-master-btn" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">マスターを保存</button>
-                <label class="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 text-center cursor-pointer">
-                    マスターを読み込む
-                    <input type="file" id="import-master-input" class="hidden" accept=".json">
-                </label>
-            </div>
+    <div class="container mx-auto p-4 md:p-8 max-w-7xl">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">配車調整アプリ</h1>
+
+        <!-- ファイル入出力ボタン -->
+        <section class="mb-6 grid grid-cols-2 gap-2 md:w-1/2 lg:w-1/3">
+            <!-- 状態 -->
+            <button id="export-state-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow transition duration-200">
+                状態を保存 (JSON)
+            </button>
+            <label for="import-state-input" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg shadow transition duration-200 cursor-pointer text-center">
+                状態を読み込む (JSON)
+            </label>
+            <input type="file" id="import-state-input" accept=".json">
+
+            <!-- マスターデータ -->
+            <button id="export-master-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow transition duration-200">
+                マスターを保存 (JSON)
+            </button>
+            <label for="import-master-input" class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-lg shadow transition duration-200 cursor-pointer text-center">
+                マスターを読み込む (JSON)
+            </label>
+            <input type="file" id="import-master-input" accept=".json">
+        </section>
+
+
+        <!-- メッセージエリア -->
+        <div id="message" class="hidden p-4 mb-4 border rounded-lg" role="alert">
+            <span id="message-text"></span>
+            <button id="message-close" type="button" class="float-right font-bold text-lg leading-none">&times;</button>
         </div>
 
         <!-- メインコンテンツグリッド -->
-        <div id="main-grid" class="grid grid-cols-1 md:grid-layout-dynamic gap-6">
+        <div id="main-content" class="main-grid-layout">
 
-            <!-- ステップ1: 参加者 -->
-            <section id="step1-participants" class="bg-white p-4 rounded-lg shadow">
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-xl font-bold text-gray-700">1. 参加者を選択</h2>
-                    <button id="toggle-all-participants" class="text-sm bg-gray-200 hover:bg-gray-300 text-gray-700 font-medium py-1 px-3 rounded-lg">すべて閉じる</button>
+            <!-- ステップ 1: 参加者選択 -->
+            <section>
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold text-gray-700">1. 参加者を選択</h2>
+                    <button id="toggle-details-button" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-1 px-3 rounded-lg text-sm transition duration-200">
+                        すべて閉じる <!-- 初期表示は開いているので閉じるボタンに -->
+                    </button>
                 </div>
-                <div id="participant-list" class="space-y-4">
+                <div id="participant-list" class="space-y-2 h-[600px] overflow-y-auto bg-white p-4 rounded-lg shadow">
                     <!-- JSで描画 -->
                 </div>
             </section>
 
-            <!-- ステップ2: 車とドライバー -->
-            <section id="step2-cars" class="bg-white p-4 rounded-lg shadow">
-                <h2 class="text-xl font-bold text-gray-700 mb-4">2. 車とドライバーを選択</h2>
-                <div id="car-list" class="space-y-4">
+            <!-- ステップ 2: 車選択 -->
+            <section>
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">2. 車とドライバーを選択</h2>
+                <div id="car-list" class="space-y-3 h-[600px] overflow-y-auto bg-white p-4 rounded-lg shadow">
                     <!-- JSで描画 -->
                 </div>
             </section>
 
-            <!-- ステップ3 & 4: 除外 & 実行 -->
-            <section id="step3-exclusions" class="bg-white p-4 rounded-lg shadow">
-                <h2 class="text-xl font-bold text-gray-700 mb-4">3. 別便の人を除外</h2>
-                <div id="exclusion-list" class="space-y-2 mb-6">
+            <!-- ステップ 3 & 4: 別便除外 と 実行ボタン -->
+            <section>
+                <h2 class="text-xl font-semibold text-gray-700 mb-3">3. 別便の人を除外</h2>
+                <div id="exclusion-list" class="space-y-2 h-[488px] overflow-y-auto bg-white p-4 rounded-lg shadow min-h-[50px]">
                     <!-- JSで描画 -->
                 </div>
                 
-                <h2 class="text-xl font-bold text-gray-700 mb-4">4. 割り当て実行</h2>
-                <button id="assign-button" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg transition duration-200 shadow">
-                    割り当て実行
-                </button>
+                <div class="mt-6 text-center">
+                    <button id="assign-button" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-10 rounded-lg shadow-lg transition duration-200 ease-in-out transform hover:scale-105">
+                        4. 割り当て実行
+                    </button>
+                </div>
             </section>
-        </div>
 
-        <!-- ステップ5: 割り当て結果 -->
-        <section id="step5-results" class="mt-8">
-            <h2 class="text-2xl font-bold text-gray-700 mb-4">5. 割り当て結果</h2>
-            <div id="assignment-results" class="grid grid-cols-1 md:grid-layout-dynamic gap-6">
-                <!-- JSで描画 -->
-            </div>
-        </section>
+            <!-- ステップ 5: 割り当て結果 -->
+            <section id="results-section"> 
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-xl font-semibold text-gray-700">5. 割り当て結果 (ドラッグ＆ドロップで調整可能)</h2>
+                    <button id="show-text-output-button" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-1 px-3 rounded-lg shadow text-sm transition duration-200">
+                        テキスト出力
+                    </button>
+                </div>
 
-        <!-- ステップ6: テキスト出力 -->
-        <section id="step6-output" class="mt-8">
-            <h2 class="text-2xl font-bold text-gray-700 mb-4">6. テキスト出力</h2>
-            <div class="bg-white p-4 rounded-lg shadow">
-                <textarea id="text-output" rows="10" class="w-full p-3 border border-gray-300 rounded-md bg-gray-50 font-mono text-sm" readonly></textarea>
-                <button id="copy-text-btn" class="mt-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-200">
-                    テキストをコピー
-                </button>
-            </div>
-        </section>
+                <!-- テキスト出力エリア -->
+                <div id="text-output-container" class="mb-4 hidden">
+                    <textarea id="text-output" rows="5" class="w-full p-2 border rounded-lg font-mono text-sm bg-gray-50" readonly></textarea>
+                    <button id="copy-text-output-button" class="mt-2 bg-gray-400 hover:bg-gray-500 text-white py-1 px-3 rounded text-sm">
+                        コピー
+                    </button>
+                </div>
+
+                <div id="results" class="results-grid-layout"> 
+                    <p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>
+                </div>
+            </section>
+
+        </div> <!-- main-content 閉じタグ -->
 
     </div>
 
-    <!-- メッセージ表示エリア -->
-    <div id="message-box" class="fixed top-8 right-8 p-4 rounded-lg shadow-lg max-w-sm text-white opacity-0 transform -translate-y-10" role="alert">
-        <span id="message-text"></span>
-    </div>
+    <script type="module">
+        // --- レイアウト列数の定義 ---
+        const LAYOUT_COLUMNS = 3; 
 
-<script>
-    // --- 定数 & グローバル変数 ---
-    const LAYOUT_COLUMNS = 3;
-    
-    // マスターデータ (letで上書き可能に)
-    let FAMILIES = [];
-    let AVAILABLE_CARS_INFO = [];
-    let ALL_PARTICIPANTS_FLAT = []; // FAMILIESから生成されるフラットなリスト
-
-    // 状態管理
-    let selectedParticipantIds = new Set();
-    let selectedCarIds = new Set();
-    let excludedParticipantIds = new Set();
-    let participantFlags = new Map(); // { 'p1': { grade: '5年', school: '東小', other: '', remarks: '' } }
-    let carSettings = new Map(); // { 'c1': { driverId: 'p2', hasLuggage: false } }
-    
-    // 割り当て結果
-    let currentAssignments = new Map(); // { 'c1': { driver: pObj, passengers: [pObj, ...], capacity: 4 }, 'c_excluded': { ... } }
-
-    // DOM要素
-    const participantListEl = document.getElementById('participant-list');
-    const carListEl = document.getElementById('car-list');
-    const exclusionListEl = document.getElementById('exclusion-list');
-    const assignButton = document.getElementById('assign-button');
-    const assignmentResultsEl = document.getElementById('assignment-results');
-    const textOutputEl = document.getElementById('text-output');
-    const copyTextBtn = document.getElementById('copy-text-btn');
-    const messageBox = document.getElementById('message-box');
-    const messageText = document.getElementById('message-text');
-    const toggleAllParticipantsBtn = document.getElementById('toggle-all-participants');
-    
-    const exportStateBtn = document.getElementById('export-state-btn');
-    const importStateInput = document.getElementById('import-state-input');
-    const exportMasterBtn = document.getElementById('export-master-btn');
-    const importMasterInput = document.getElementById('import-master-input');
-
-    // ドラッグ＆ドロップ＆タッチ状態
-    let draggedElement = null;
-    let draggedData = null; // { type: 'driver'/'passenger', id: 'p1', fromCar: 'c1' }
-    let touchGhost = null;
-    let longPressTimer = null;
-
-
-    // --- 初期化 ---
-
-    // デフォルトマスターデータの設定
-    function setDefaultMasterData() {
-        FAMILIES = [
-            // 家族: 小高
-            { 
-                familyName: "小高家",
-                carId: "c_kodaka",
+        // --- 事前定義データ ---
+        
+        let FAMILIES = [
+            {
+                familyName: '小高家', 
                 members: [
-                    { id: 'p_kodaka_1', name: '斗愛', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '東小', other: '' } },
-                    { id: 'p_kodaka_2', name: '愛之佑', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '東小', other: '' } },
-                    { id: 'p_kodaka_3', name: '小高監督', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_kodaka_4', name: '小高母', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p1', name: '斗愛', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: '' } },
+                    { id: 'p2', name: '小高監督', type: '保護者', data: { memo: '' } },
+                    { id: 'p3', name: '小高母', type: '保護者', data: { memo: '' } },
+                    { id: 'p22', name: '愛之佑', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '東小', other: '', memo: '' } } 
                 ]
             },
-            // 家族: 難波
             {
-                familyName: "難波家",
-                carId: "c_namba",
+                familyName: '難波家',
                 members: [
-                    { id: 'p_namba_1', name: '諒成', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '東小', other: '' } },
-                    { id: 'p_namba_2', name: '難波父', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p4', name: '諒成', type: '選手', isFlagTarget: true, data: { grade: '5年', school: 'x小', other: '', memo: '' } },
+                    { id: 'p5', name: '難波父', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 浪川
             {
-                familyName: "浪川家",
-                carId: "c_namikawa_1", // 浪川カー①
+                familyName: '浪川家',
                 members: [
-                    { id: 'p_namikawa_1', name: '長政', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '東小', other: '' } },
-                    { id: 'p_namikawa_2', name: '浪川父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_namikawa_3', name: '浪川母', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p6', name: '長政', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p7', name: '浪川父', type: '保護者', data: { memo: '' } },
+                    { id: 'p8', name: '浪川母', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 高橋
             {
-                familyName: "高橋家",
-                carId: null, // 車なし
+                familyName: '高橋家',
                 members: [
-                    { id: 'p_takahashi_1', name: '湊多', type: '選手', isFlagTarget: true, flags: { grade: '5年', school: '東小', other: '' } },
+                    { id: 'p9', name: '湊多', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: '' } }
                 ]
             },
-            // 家族: 山田
             {
-                familyName: "山田家",
-                carId: "c_yamada_1", // 山田カー①
+                familyName: '山田家',
                 members: [
-                    { id: 'p_yamada_1', name: '颯真', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '東小', other: '' } },
-                    { id: 'p_yamada_2', name: '山田父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_yamada_3', name: '山田母', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p10', name: '颯真', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p11', name: '山田父', type: '保護者', data: { memo: '' } },
+                    { id: 'p12', name: '山田母', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 菱沼
             {
-                familyName: "菱沼家",
-                carId: "c_hishinuma",
+                familyName: '菱沼家',
                 members: [
-                    { id: 'p_hishinuma_1', name: '颯介', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '東小', other: '' } },
-                    { id: 'p_hishinuma_2', name: '菱沼父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_hishinuma_3', name: '菱沼母', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_hishinuma_4', name: 'つぐみ', type: '兄弟', isFlagTarget: false, flags: {} },
+                    { id: 'p13', name: '颯介', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p14', name: '菱沼父', type: '保護者', data: { memo: '' } },
+                    { id: 'p15', name: '菱沼母', type: '保護者', data: { memo: '' } },
+                    { id: 'p16', name: 'つぐみ', type: '兄弟', isFlagTarget: false, data: { grade: '2年', school: '小金小', other: '', memo: '' } }
                 ]
             },
-            // 家族: 小野
             {
-                familyName: "小野家",
-                carId: "c_ono",
+                familyName: '小野家',
                 members: [
-                    { id: 'p_ono_1', name: '暁人', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '東小', other: '' } },
-                    { id: 'p_ono_2', name: '小野母', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_ono_3', name: 'ななか', type: '兄弟', isFlagTarget: false, flags: {} },
+                    { id: 'p17', name: '暁人', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p18', name: '小野母', type: '保護者', data: { memo: '' } },
+                    { id: 'p19', name: 'ななか', type: '兄弟', isFlagTarget: true, data: { grade: '2年', school: '小金小', other: '', memo: '' } }
                 ]
             },
-            // 家族: 津村
             {
-                familyName: "津村家",
-                carId: null, // 車なし
+                familyName: '津村家',
                 members: [
-                    { id: 'p_tsumura_1', name: '一樹', type: '選手', isFlagTarget: true, flags: { grade: '4年', school: '東小', other: '' } },
-                    { id: 'p_tsumura_2', name: '津村父', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p20', name: '一樹', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '東小', other: '', memo: '' } },
+                    { id: 'p21', name: '津村父', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 浅野
             {
-                familyName: "浅野家",
-                carId: "c_asano",
+                familyName: '浅野家',
                 members: [
-                    { id: 'p_asano_1', name: '泰地', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '西小', other: '' } },
-                    { id: 'p_asano_2', name: '浅野父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_asano_3', name: '浅野母', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p23', name: '泰地', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p24', name: '浅野父', type: '保護者', data: { memo: '' } },
+                    { id: 'p25', name: '浅野母', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 近藤
             {
-                familyName: "近藤家",
-                carId: "c_kondo",
+                familyName: '近藤家', 
                 members: [
-                    { id: 'p_kondo_1', name: '譲成', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '西小', other: '' } },
-                    { id: 'p_kondo_2', name: '近藤父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_kondo_3', name: '近藤母', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_kondo_4', name: 'おうすけ', type: '兄弟', isFlagTarget: false, flags: {} },
-                    { id: 'p_kondo_5', name: '茉莉', type: '選手', isFlagTarget: true, flags: { grade: '1年', school: '西小', other: '' } },
+                    { id: 'p26', name: '謙成', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '八木南小', other: '', memo: '' } },
+                    { id: 'p44', name: '茉莉', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '八木南小', other: '', memo: '' } } ,
+                    { id: 'p27', name: '近藤父', type: '保護者', data: { memo: '' } },
+                    { id: 'p28', name: '近藤母', type: '保護者', data: { memo: '' } },
+                    { id: 'p29', name: 'おうすけ', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: '' } }
                 ]
             },
-            // 家族: 知野見
             {
-                familyName: "知野見家",
-                carId: "c_chinomi",
+                familyName: '知野見家',
                 members: [
-                    { id: 'p_chinomi_1', name: '怜央', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '西小', other: '' } },
-                    { id: 'p_chinomi_2', name: '知野見父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_chinomi_3', name: '知野見母', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_chinomi_4', name: 'ゆな', type: '兄弟', isFlagTarget: false, flags: {} },
+                    { id: 'p30', name: '怜央', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p31', name: '知野見父', type: '保護者', data: { memo: '' } },
+                    { id: 'p32', name: '知野見母', type: '保護者', data: { memo: '' } },
+                    { id: 'p33', name: 'ゆな', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: '' } }
                 ]
             },
-            // 家族: 藤山
             {
-                familyName: "藤山家",
-                carId: "c_fujiyama",
+                familyName: '藤山家',
                 members: [
-                    { id: 'p_fujiyama_1', name: '琉杜', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '西小', other: '' } },
-                    { id: 'p_fujiyama_2', name: '藤山父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_fujiyama_3', name: '藤山母', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p34', name: '琉杜', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } },
+                    { id: 'p35', name: '藤山父', type: '保護者', data: { memo: '' } },
+                    { id: 'p36', name: '藤山母', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 小河原
             {
-                familyName: "小河原家",
-                carId: "c_ogawara_1", // 小河原カー①
+                familyName: '小河原家',
                 members: [
-                    { id: 'p_ogawara_1', name: '維', type: '選手', isFlagTarget: true, flags: { grade: '3年', school: '西小', other: '' } },
-                    { id: 'p_ogawara_2', name: '小河原父', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_ogawara_3', name: '小河原母', type: '保護者', isFlagTarget: false, flags: {} },
-                    { id: 'p_ogawara_4', name: '小河原父or母', type: 'その他', isFlagTarget: false, flags: {} },
+                    { id: 'p37', name: '維', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } }, // 画像では 3年 A/B
+                    { id: 'p38', name: '小河原父', type: '保護者', data: { memo: '' } },
+                    { id: 'p39', name: '小河原母', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 古川
             {
-                familyName: "古川家",
-                carId: "c_furukawa",
+                familyName: '古川家',
                 members: [
-                    { id: 'p_furukawa_1', name: '峻丞', type: '選手', isFlagTarget: true, flags: { grade: '2年', school: '西小', other: '' } },
-                    { id: 'p_furukawa_2', name: '古川父', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p40', name: '峻丞', type: '選手', isFlagTarget: true, data: { grade: '2年', school: '新松戸南小', other: '', memo: '' } },
+                    { id: 'p41', name: '古川父', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // 家族: 坪井
             {
-                familyName: "坪井家",
-                carId: null, // 車なし
+                familyName: '坪井家',
                 members: [
-                    { id: 'p_tsuboi_1', name: '雄也', type: '選手', isFlagTarget: true, flags: { grade: '1年', school: '西小', other: '' } },
-                    { id: 'p_tsuboi_2', name: '坪井父', type: '保護者', isFlagTarget: false, flags: {} },
+                    { id: 'p42', name: '雄也', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '東小', other: '', memo: '' } },
+                    { id: 'p43', name: '坪井父', type: '保護者', data: { memo: '' } }
                 ]
             },
-            // スタッフ・個人
             {
-                familyName: "スタッフ・個人",
-                carId: null,
+                familyName: 'スタッフ・個人', // ★コーチ等、家族に属さない個人用
                 members: [
-                    { id: 'p_staff_1', name: 'コーチ', type: 'その他', isFlagTarget: false, flags: {} },
+                    { id: 'p94', name: '渡邉会長', type: 'その他', data: { memo: '' } },
+                    { id: 'p99', name: '木村代表', type: 'その他', data: { memo: '' } },
+                    { id: 'p98', name: '吉田さん', type: 'その他', data: { memo: '' } },
+                    { id: 'p97', name: '前田さん', type: 'その他', data: { memo: '' } },
+                    { id: 'p96', name: '中田さん', type: 'その他', data: { memo: '' } },
+                    { id: 'p95', name: '渡辺さん', type: 'その他', data: { memo: '' } },
                 ]
             }
         ];
 
-        AVAILABLE_CARS_INFO = [
-            { id: 'c_kodaka', name: '小高カー', type: 'セレナ', capacity: 6, familyName: '小高家' },
-            { id: 'c_namba', name: '難波カー', type: 'アルファード', capacity: 7, familyName: '難波家' },
-            { id: 'c_namikawa_1', name: '浪川カー①', type: 'セレナ', capacity: 6, familyName: '浪川家' },
-            { id: 'c_namikawa_2', name: '浪川カー②', type: 'プリウス', capacity: 5, familyName: '浪川家' },
-            { id: 'c_yamada_1', name: '山田カー①', type: 'アルファード', capacity: 7, familyName: '山田家' },
-            { id: 'c_yamada_2', name: '山田カー②', type: 'プリウス', capacity: 5, familyName: '山田家' },
-            { id: 'c_hishinuma', name: '菱沼カー', type: 'セレナ', capacity: 6, familyName: '菱沼家' },
-            { id: 'c_ono', name: '小野カー', type: 'ステップワゴン', capacity: 8, familyName: '小野家' },
-            { id: 'c_asano', name: '浅野カー', type: 'ステップワゴン', capacity: 8, familyName: '浅野家' },
-            { id: 'c_kondo', name: '近藤カー', type: 'セレナ', capacity: 6, familyName: '近藤家' },
-            { id: 'c_chinomi', name: '知野見カー', type: 'VOXY', capacity: 7, familyName: '知野見家' }, // 定員仮
-            { id: 'c_fujiyama', name: '藤山カー', type: '?', capacity: 4, familyName: '藤山家' },
-            { id: 'c_ogawara_1', name: '小河原カー①', type: 'クラウン', capacity: 4, familyName: '小河原家' },
-            { id: 'c_ogawara_2', name: '小河原カー②', type: '?', capacity: 4, familyName: '小河原家' },
-            { id: 'c_furukawa', name: '古川カー', type: 'ステップワゴン', capacity: 8, familyName: '古川家' },
+        let AVAILABLE_CARS_INFO = [
+            { id: 'c1', name: '小高カー', familyName: '小高家', baseCapacity: 6 }, 
+            { id: 'c2', name: '難波カー', familyName: '難波家', baseCapacity: 7 },
+            { id: 'c3', name: '浪川カー①', familyName: '浪川家', baseCapacity: 6 },
+            { id: 'c4', name: '浪川カー②', familyName: '浪川家', baseCapacity: 5 },
+            { id: 'c5', name: '山田カー①', familyName: '山田家', baseCapacity: 7 },
+            { id: 'c6', name: '山田カー②', familyName: '山田家', baseCapacity: 5 },
+            { id: 'c7', name: '菱沼カー', familyName: '菱沼家', baseCapacity: 6 },
+            { id: 'c8', name: '小野カー', familyName: '小野家', baseCapacity: 8 },
+            { id: 'c9', name: '浅野カー', familyName: '浅野家', baseCapacity: 8 },
+            { id: 'c10', name: '近藤カー', familyName: '近藤家', baseCapacity: 6 }, 
+            { id: 'c11', name: '知野見カー', familyName: '知野見家', baseCapacity: 7 }, // ※画像に定員記載なし、仮に7
+            { id: 'c12', name: '藤山カー', familyName: '藤山家', baseCapacity: 4 },
+            { id: 'c13', name: '小河原カー①', familyName: '小河原家', baseCapacity: 4 },
+            { id: 'c14', name: '小河原カー②', familyName: '小河原家', baseCapacity: 4 },
+            { id: 'c15', name: '古川カー', familyName: '古川家', baseCapacity: 8 },
+            { id: 'c16', name: 'コーチカー', familyName: 'スタッフ・個人', baseCapacity: 5 } // ★コーチ用の車（仮）
         ];
-    }
-    
-    // 参加者データを初期化
-    function initializeParticipantData() {
-        // フラットリストを生成
-        ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members.map(m => ({...m, familyName: f.familyName})));
-        
-        // フラグと備考の初期化
-        participantFlags.clear();
-        ALL_PARTICIPANTS_FLAT.forEach(p => {
-            participantFlags.set(p.id, {
-                grade: p.flags?.grade || '',
-                school: p.flags?.school || '',
-                other: p.flags?.other || '',
-                remarks: '' // 備考は常に空で初期化
-            });
-        });
-    }
 
-    // デフォルトドライバーを設定
-    function initializeDefaultDrivers() {
-        carSettings.clear();
-        AVAILABLE_CARS_INFO.forEach(car => {
-            let defaultDriverId = null;
-            const family = FAMILIES.find(f => f.familyName === car.familyName);
-            if (family) {
-                // 家族から「父」を優先して探す
-                const father = family.members.find(m => m.name.includes('父'));
-                if (father) {
-                    defaultDriverId = father.id;
+        let ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
+
+
+        // --- 状態変数 ---
+        let selectedParticipantIds = new Set();
+        let selectedCarIds = new Set();
+        let selectedDrivers = new Map(); // carId -> driverId
+        let selectedLuggage = new Set(); // carId
+        let excludedParticipantIds = new Set();
+        let participantData = new Map(); // participantId -> { grade, school, other, memo }
+        let currentAssignments = []; // 割り当て結果: { car..., driver: {p...}, members: [{p...}] }
+        
+        // ドラッグ＆ドロップ用一時変数
+        let dragTargetId = null; 
+        let dragSourceCarId = null; 
+        let dragIsDriver = false;
+        let currentDropMode = null; // 'swap', 'insert-before', 'insert-after', 'move-to-end'
+        let currentDropTargetId = null; // 挿入/スワップ対象のID
+
+        // ★タッチ操作用
+        let ghostElement = null;
+        let lastTouchMoveEvent = null; // touchmoveイベントを保持
+
+
+        // --- DOM参照 ---
+        const participantListEl = document.getElementById('participant-list');
+        const carListEl = document.getElementById('car-list');
+        const exclusionListEl = document.getElementById('exclusion-list');
+        const resultsEl = document.getElementById('results');
+        const assignButton = document.getElementById('assign-button');
+        const messageContainer = document.getElementById('message');
+        const messageText = document.getElementById('message-text');
+        const messageClose = document.getElementById('message-close');
+        const exportButton = document.getElementById('export-state-button');
+        const importInput = document.getElementById('import-state-input');
+        const showTextOutputButton = document.getElementById('show-text-output-button');
+        const textOutputContainer = document.getElementById('text-output-container');
+        const textOutputEl = document.getElementById('text-output');
+        const copyTextOutputButton = document.getElementById('copy-text-output-button');
+        const toggleDetailsButton = document.getElementById('toggle-details-button');
+        
+        const exportMasterButton = document.getElementById('export-master-button');
+        const importMasterInput = document.getElementById('import-master-input');
+
+
+        // --- 初期化処理 ---
+        document.addEventListener('DOMContentLoaded', () => {
+            document.documentElement.style.setProperty('--layout-columns', LAYOUT_COLUMNS);
+            
+            const resultsSection = document.getElementById('results-section');
+            function updateLayouts() { 
+                const placeholder = document.getElementById('results-placeholder');
+                
+                if (window.innerWidth >= 1024) { // lg breakpoint
+                    resultsSection.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
+                    if (placeholder) {
+                        placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
+                    }
                 } else {
-                    // 「父」がいなければ「母」を探す
-                    const mother = family.members.find(m => m.name.includes('母'));
-                    if (mother) {
-                        defaultDriverId = mother.id;
+                    resultsSection.style.gridColumn = 'auto';
+                    if (placeholder) {
+                        placeholder.style.gridColumn = 'auto';
                     }
                 }
             }
-            carSettings.set(car.id, {
-                driverId: defaultDriverId,
-                hasLuggage: false
-            });
-        });
-    }
-    
-    // 列数の設定
-    function setLayoutColumns() {
-        document.documentElement.style.setProperty('--layout-columns', LAYOUT_COLUMNS);
-    }
+            updateLayouts();
+            window.addEventListener('resize', updateLayouts); 
 
-    // --- 描画関数 ---
-
-    // ステップ1: 参加者リストを描画
-    function renderParticipantList() {
-        participantListEl.innerHTML = '';
-        FAMILIES.forEach(family => {
-            const details = document.createElement('details');
-            details.className = 'bg-gray-50 rounded border';
-            details.open = true; // デフォルトで開く
+            initializeParticipantData(); 
+            initializeDefaultDrivers(); // ★デフォルトドライバー設定を追加
+            renderParticipantList();
+            renderCarList();
             
-            const summary = document.createElement('summary');
-            summary.className = 'p-3 font-semibold cursor-pointer select-none';
-            summary.innerHTML = `
-                <div class="flex justify-between items-center">
+            participantListEl.addEventListener('change', handleParticipantChange);
+            participantListEl.addEventListener('input', handleParticipantDataInput); 
+            participantListEl.addEventListener('click', handleFamilySelectButtons); // ★家族一括選択リスナー
+            carListEl.addEventListener('change', handleCarChange);
+            exclusionListEl.addEventListener('change', handleExclusionChange);
+            assignButton.addEventListener('click', handleAssignment);
+            messageClose.addEventListener('click', hideMessage);
+
+            // 標準ドラッグイベント
+            resultsEl.addEventListener('dragstart', handleDragStart);
+            resultsEl.addEventListener('dragover', handleDragOver);
+            resultsEl.addEventListener('drop', handleDrop);
+            resultsEl.addEventListener('dragend', handleDragEnd);
+
+            // ★タッチイベントリスナーを追加 (passive: false で preventDefault を許可)
+            resultsEl.addEventListener('touchstart', handleTouchStart, { passive: false });
+            resultsEl.addEventListener('touchmove', handleTouchMove, { passive: false });
+            resultsEl.addEventListener('touchend', handleTouchEnd);
+            
+            exportButton.addEventListener('click', handleExportState);
+            importInput.addEventListener('change', handleImportState);
+            showTextOutputButton.addEventListener('click', handleShowTextOutput);
+            copyTextOutputButton.addEventListener('click', handleCopyTextOutput);
+            toggleDetailsButton.addEventListener('click', handleToggleDetails);
+
+            exportMasterButton.addEventListener('click', handleExportMasterData);
+            importMasterInput.addEventListener('change', handleImportMasterData);
+        });
+
+        // 参加者データ（備考含む）を初期化
+        function initializeParticipantData() {
+            participantData.clear(); 
+            FAMILIES.forEach(family => {
+                family.members.forEach(member => {
+                    const defaultData = { 
+                        grade: '', school: '', other: '', 
+                        ...member.data 
+                    };
+                    
+                    if (!member.isFlagTarget) {
+                        defaultData.grade = '';
+                        defaultData.school = '';
+                        defaultData.other = '';
+                    }
+                    participantData.set(member.id, defaultData);
+                });
+            });
+        }
+
+        // ★デフォルトドライバーを設定する関数を追加
+        function initializeDefaultDrivers() {
+            selectedDrivers.clear(); // 既存の設定をクリア
+            AVAILABLE_CARS_INFO.forEach(car => {
+                const family = FAMILIES.find(f => f.familyName === car.familyName);
+                if (family) {
+                    const father = family.members.find(m => m.name.includes('父') || m.name.includes('監督')); // '父' または '監督'
+                    const mother = family.members.find(m => m.name.includes('母')); // '母'
+
+                    if (father) {
+                        selectedDrivers.set(car.id, father.id);
+                    } else if (mother) {
+                        selectedDrivers.set(car.id, mother.id);
+                    }
+                    // 父も母も見つからない場合は設定しない
+                }
+            });
+        }
+
+
+        // ステップ1: 参加者リストを描画
+        function renderParticipantList() {
+            participantListEl.innerHTML = '';
+            FAMILIES.forEach(family => {
+                const details = document.createElement('details');
+                details.className = 'bg-gray-50 rounded border';
+                details.open = true; // ★デフォルトで開くように変更
+                
+                const summary = document.createElement('summary');
+                summary.className = 'p-3 font-semibold cursor-pointer select-none flex justify-between items-center'; // ★flexを追加
+                // ★家族名とボタンを内包するdivに変更
+                summary.innerHTML = `
                     <span>${family.familyName}</span>
                     <div class="space-x-1">
-                        <button type="button" data-family-name="${family.familyName}" data-action="family-select-all" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-1 px-2 rounded-lg" style="font-size: 0.7rem;">
+                         <button type="button" data-family-name="${family.familyName}" data-action="family-select-all" class="text-xs bg-blue-100 hover:bg-blue-200 text-blue-700 font-medium py-1 px-2 rounded-lg" style="font-size: 0.7rem;">
                             全員参加
-                        </button>
-                        <button type="button" data-family-name="${family.familyName}" data-action="family-select-none" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-1 px-2 rounded-lg" style="font-size: 0.7rem;">
+                         </button>
+                         <button type="button" data-family-name="${family.familyName}" data-action="family-select-none" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-1 px-2 rounded-lg" style="font-size: 0.7rem;">
                             全員不参加
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            const memberList = document.createElement('div');
-            memberList.className = 'p-3 border-t border-gray-200 space-y-4';
-            
-            family.members.forEach(p => {
-                const isSelected = selectedParticipantIds.has(p.id);
-                const flags = participantFlags.get(p.id) || { grade: '', school: '', other: '', remarks: '' };
-                const disabledClass = isSelected ? '' : 'opacity-50';
-                
-                memberList.innerHTML += `
-                    <div class="space-y-2" id="p-container-${p.id}">
-                        <div class="flex items-center">
-                            <input type="checkbox" id="p-${p.id}" data-action="select-participant" data-participant-id="${p.id}" class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isSelected ? 'checked' : ''}>
-                            <label for="p-${p.id}" class="ml-3 text-sm text-gray-800">
-                                ${p.name} <span class="text-gray-500">(${p.type})</span>
-                            </label>
-                        </div>
-                        <div id="data-inputs-${p.id}" class="pl-8 grid grid-cols-2 md:grid-cols-4 gap-2 ${disabledClass}">
-                            ${p.isFlagTarget ? `
-                                <input type="text" data-participant-id="${p.id}" data-field="grade" value="${flags.grade}" placeholder="学年" class="w-full text-xs p-1.5 border border-gray-300 rounded-md" ${!isSelected ? 'disabled' : ''}>
-                                <input type="text" data-participant-id="${p.id}" data-field="school" value="${flags.school}" placeholder="学校" class="w-full text-xs p-1.5 border border-gray-300 rounded-md" ${!isSelected ? 'disabled' : ''}>
-                                <input type="text" data-participant-id="${p.id}" data-field="other" value="${flags.other}" placeholder="他" class="w-full text-xs p-1.5 border border-gray-300 rounded-md" ${!isSelected ? 'disabled' : ''}>
-                            ` : '<div class="col-span-3"></div>'}
-                            <textarea data-participant-id="${p.id}" data-field="remarks" placeholder="備考" class="w-full text-xs p-1.5 border border-gray-300 rounded-md col-span-2 md:col-span-1" rows="1" ${!isSelected ? 'disabled' : ''}>${flags.remarks}</textarea>
-                        </div>
+                         </button>
                     </div>
                 `;
-            });
-            
-            details.appendChild(summary);
-            details.appendChild(memberList);
-            participantListEl.appendChild(details);
-        });
-    }
+                
+                const memberList = document.createElement('div');
+                memberList.className = 'p-3 border-t border-gray-200 space-y-3';
 
-    // ステップ2: 車リストを描画
-    function renderCarList() {
-        carListEl.innerHTML = '';
-        AVAILABLE_CARS_INFO.forEach(car => {
-            const isSelected = selectedCarIds.has(car.id);
-            const settings = carSettings.get(car.id) || { driverId: null, hasLuggage: false };
-            const disabledClass = isSelected ? '' : 'opacity-50';
-
-            // ドライバー選択肢
-            const family = FAMILIES.find(f => f.familyName === car.familyName);
-            let driverOptions = '<option value="">ドライバー未選択</option>';
-            if (family) {
                 family.members.forEach(p => {
-                    driverOptions += `<option value="${p.id}" ${settings.driverId === p.id ? 'selected' : ''}>${p.name}</option>`;
-                });
-            }
+                    const isChecked = selectedParticipantIds.has(p.id);
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'ml-4';
 
-            carListEl.innerHTML += `
-                <div class="border rounded-lg p-3 ${isSelected ? 'bg-blue-50' : 'bg-gray-50'}">
+                    // 参加者名とチェックボックス
+                    const participantDiv = document.createElement('div');
+                    participantDiv.className = 'flex items-center';
+                    participantDiv.innerHTML = `
+                        <input type="checkbox" id="p-${p.id}" data-id="${p.id}" data-action="select-participant" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
+                        <label for="p-${p.id}" class="text-gray-700">${p.name} (${p.type})</label>
+                    `;
+                    wrapper.appendChild(participantDiv);
+                    
+                    // データ入力欄
+                    const data = participantData.get(p.id) || { grade: '', school: '', other: '', memo: '' };
+                    const dataDiv = document.createElement('div');
+                    dataDiv.id = `data-inputs-${p.id}`; 
+                    dataDiv.className = `ml-8 mt-1.5 grid grid-cols-4 gap-2 ${isChecked ? '' : 'opacity-50'}`;
+                    
+                    if (p.isFlagTarget) {
+                        dataDiv.innerHTML = `
+                            <input type="text" data-id="${p.id}" data-type="grade" value="${data.grade || ''}" placeholder="学年" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                            <input type="text" data-id="${p.id}" data-type="school" value="${data.school || ''}" placeholder="学校" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                            <input type="text" data-id="${p.id}" data-type="other" value="${data.other || ''}" placeholder="その他" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                            <input type="text" data-id="${p.id}" data-type="memo" value="${data.memo || ''}" placeholder="備考" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                        `;
+                    } else {
+                        // isFlagTarget: false の場合は備考欄のみ
+                        dataDiv.innerHTML = `
+                            <div class="col-span-3"></div> <!-- 空白 -->
+                            <input type="text" data-id="${p.id}" data-type="memo" value="${data.memo || ''}" placeholder="備考" class="w-full text-sm p-1 border rounded shadow-sm" ${isChecked ? '' : 'disabled'}>
+                        `;
+                    }
+                    wrapper.appendChild(dataDiv);
+                    memberList.appendChild(wrapper);
+                });
+                details.appendChild(summary);
+                details.appendChild(memberList);
+                participantListEl.appendChild(details);
+            });
+            // 初期表示時は「すべて閉じる」ボタンにする
+             toggleDetailsButton.textContent = 'すべて閉じる';
+        }
+
+        // ステップ2: 車リストを描画
+        function renderCarList() {
+            carListEl.innerHTML = '';
+            AVAILABLE_CARS_INFO.forEach(car => {
+                const family = FAMILIES.find(f => f.familyName === car.familyName);
+                const driverOptions = family ? family.members : ALL_PARTICIPANTS_FLAT; 
+                const isChecked = selectedCarIds.has(car.id);
+                // ★ デフォルトドライバーIDを取得 (selectedDriversはinitializeDefaultDriversで設定済み)
+                const driverId = selectedDrivers.get(car.id) || ''; 
+                const hasLuggage = selectedLuggage.has(car.id);
+                const div = document.createElement('div');
+                div.className = 'bg-gray-50 rounded border p-3';
+                div.dataset.carId = car.id;
+                div.innerHTML = `
                     <div class="flex items-center">
-                        <input type="checkbox" id="c-${car.id}" data-action="select-car" data-car-id="${car.id}" class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isSelected ? 'checked' : ''}>
-                        <label for="c-${car.id}" class="ml-3 text-sm font-semibold text-gray-800">
-                            ${car.name} <span class="text-gray-500 font-normal">(${car.type} / ${car.capacity}名)</span>
-                        </label>
+                        <input type="checkbox" id="c-${car.id}" data-id="${car.id}" data-action="select-car" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${isChecked ? 'checked' : ''}>
+                        <label for="c-${car.id}" class="font-semibold">${car.name} (定員${car.baseCapacity}名)</label>
                     </div>
-                    <div class="pl-8 mt-3 space-y-3 ${disabledClass}">
+                    <div id="car-options-${car.id}" class="ml-8 mt-3 space-y-3 ${isChecked ? '' : 'hidden'}">
                         <div>
-                            <label for="driver-${car.id}" class="block text-xs font-medium text-gray-600 mb-1">ドライバー</label>
-                            <select id="driver-${car.id}" data-car-id="${car.id}" data-field="driverId" class="w-full text-sm p-2 border border-gray-300 rounded-md" ${!isSelected ? 'disabled' : ''}>
-                                ${driverOptions}
+                            <label for="driver-${car.id}" class="block text-sm font-medium text-gray-700">ドライバー:</label>
+                            <select id="driver-${car.id}" data-action="select-driver" class="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                <option value="">選択してください</option>
+                                ${driverOptions.map(p => `<option value="${p.id}" ${driverId === p.id ? 'selected' : ''}>${p.name} (${p.type})</option>`).join('')}
                             </select>
                         </div>
                         <div class="flex items-center">
-                            <input type="checkbox" id="luggage-${car.id}" data-car-id="${car.id}" data-field="hasLuggage" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${settings.hasLuggage ? 'checked' : ''} ${!isSelected ? 'disabled' : ''}>
-                            <label for="luggage-${car.id}" class="ml-2 text-sm text-gray-700">荷物あり (定員が運転手含め2名になります)</label>
+                            <input type="checkbox" id="luggage-${car.id}" data-action="select-luggage" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${hasLuggage ? 'checked' : ''}>
+                            <label for="luggage-${car.id}" class="text-sm text-gray-700">荷物あり (乗客定員1名)</label>
                         </div>
                     </div>
-                </div>
-            `;
-        });
-    }
-
-    // ステップ3: 除外リストを描画
-    function renderExclusionList() {
-        exclusionListEl.innerHTML = '';
-        if (selectedParticipantIds.size === 0) {
-            exclusionListEl.innerHTML = '<p class="text-sm text-gray-500">参加者が選択されていません。</p>';
-            return;
+                `;
+                carListEl.appendChild(div);
+            });
         }
 
-        let count = 0;
-        selectedParticipantIds.forEach(pId => {
-            const participant = ALL_PARTICIPANTS_FLAT.find(p => p.id === pId);
-            if (!participant) return;
-            
-            count++;
-            const isExcluded = excludedParticipantIds.has(pId);
-            
-            exclusionListEl.innerHTML += `
-                <div class="flex items-center">
-                    <input type="checkbox" id="ex-${pId}" data-action="exclude-participant" data-participant-id="${pId}" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isExcluded ? 'checked' : ''}>
-                    <label for="ex-${pId}" class="ml-2 text-sm text-gray-700">${participant.name}</label>
-                </div>
-            `;
-        });
-
-        if (count === 0) {
-            exclusionListEl.innerHTML = '<p class="text-sm text-gray-500">参加者が選択されていません。</p>';
-        }
-    }
-
-    // ステップ5: 割り当て結果を描画
-    function renderAssignmentResults() {
-        assignmentResultsEl.innerHTML = '';
-        textOutputEl.value = '';
-        let outputLines = [];
-
-        if (currentAssignments.size === 0) {
-            assignmentResultsEl.innerHTML = '<p class="text-sm text-gray-500 col-span-full">まだ割り当てが実行されていません。</p>';
-            return;
-        }
-
-        // 割り当てられた車を描画
-        currentAssignments.forEach((assignment, carId) => {
-            if (carId === 'c_excluded') return; // 別便は最後
-
-            const carInfo = AVAILABLE_CARS_INFO.find(c => c.id === carId);
-            const { driver, passengers, capacity, actualCapacity } = assignment;
-            const passengerCount = passengers.length;
-            const vacancy = actualCapacity - passengerCount;
-
-            const carCard = document.createElement('div');
-            carCard.className = 'bg-white rounded-lg shadow border border-gray-200 car-dropzone';
-            carCard.dataset.carId = carId;
-
-            // ドライバー欄
-            const driverEl = document.createElement('div');
-            driverEl.className = 'p-3 border-b-2 border-indigo-200 driver-dropzone';
-            driverEl.dataset.carId = carId;
-            driverEl.dataset.dropType = 'driver';
-
-            let driverName = 'ドライバー未設定';
-            let driverRemarks = '';
-            if (driver) {
-                driverEl.dataset.participantId = driver.id;
-                driverEl.setAttribute('draggable', true);
-                driverEl.dataset.dragType = 'driver';
-                const flags = participantFlags.get(driver.id);
-                driverRemarks = flags?.remarks ? ` (${flags.remarks})` : '';
-                driverName = `${driver.name}${driverRemarks}`;
+        // ステップ3: 除外リストを描画
+        function renderExclusionList() {
+            exclusionListEl.innerHTML = '';
+            const participants = ALL_PARTICIPANTS_FLAT.filter(p => selectedParticipantIds.has(p.id));
+            if (participants.length === 0) {
+                exclusionListEl.innerHTML = '<p class="text-gray-500 text-sm">ステップ1で参加者を選択してください。</p>';
+                return;
             }
-            
-            carCard.innerHTML = `
-                <div class="p-3 bg-gray-100 rounded-t-lg">
-                    <h3 class="font-bold text-lg text-gray-800">${carInfo.name}</h3>
-                    <p class="text-sm text-gray-600">
-                        ${assignment.hasLuggage ? '<span class="font-semibold text-red-600">[荷物あり]</span> ' : ''}
-                        定員 ${capacity}名 (空き ${vacancy}名)
-                    </p>
-                </div>
-            `;
+            participants.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center';
+                div.innerHTML = `
+                    <input type="checkbox" id="ex-${p.id}" data-id="${p.id}" data-action="exclude-participant" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${excludedParticipantIds.has(p.id) ? 'checked' : ''}>
+                    <label for="ex-${p.id}" class="text-gray-700">${p.name} (${p.type})</label>
+                `;
+                exclusionListEl.appendChild(div);
+            });
+        }
 
-            driverEl.innerHTML = `
-                <span class="text-xs font-semibold text-indigo-700">ドライバー</span>
-                <p class="font-semibold text-indigo-800" data-drag-handle="true">${driverName}</p>
-            `;
+        // ステップ5: 割り当て結果を描画
+        function renderResults(assignments) {
+            resultsEl.innerHTML = '';
             
-            // 乗客リスト
-            const passengerListEl = document.createElement('div');
-            passengerListEl.className = 'p-3 space-y-2 car-assignment-list passenger-dropzone';
-            passengerListEl.dataset.carId = carId;
-            passengerListEl.dataset.dropType = 'passenger-list';
-            
-            passengers.forEach((p, index) => {
-                const flags = participantFlags.get(p.id);
-                const remarks = flags?.remarks ? ` (${flags.remarks})` : '';
+            if (assignments.length === 0) {
+                resultsEl.innerHTML = `<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>`;
+                const placeholder = document.getElementById('results-placeholder');
+                if (placeholder) {
+                     if (window.innerWidth >= 1024) { 
+                        placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
+                    } else {
+                        placeholder.style.gridColumn = 'auto';
+                    }
+                }
+                return;
+            }
+
+            assignments.forEach(car => {
+                const card = document.createElement('div');
+                card.id = `car-result-${car.id}`;
+                card.dataset.carId = car.id; 
+                card.className = 'bg-white border rounded-lg shadow-md car-dropzone';
                 
-                const pEl = document.createElement('div');
-                pEl.className = 'p-2 bg-gray-50 rounded border border-gray-200 shadow-sm cursor-grab passenger-item';
-                pEl.setAttribute('draggable', true);
-                pEl.dataset.participantId = p.id;
-                pEl.dataset.carId = carId;
-                pEl.dataset.dragType = 'passenger';
-                pEl.dataset.index = index;
-                pEl.innerHTML = `<span data-drag-handle="true">${p.name}${remarks}</span> <span class="text-xs text-gray-500">(${p.type})</span>`;
-                passengerListEl.appendChild(pEl);
-            });
-            
-            carCard.appendChild(driverEl);
-            carCard.appendChild(passengerListEl);
-            assignmentResultsEl.appendChild(carCard);
+                let headerHtml = '';
+                let driverHtml = '';
+                
+                if (car.id === 'excluded-car') {
+                    headerHtml = `
+                        <div class="p-4 border-b bg-gray-100">
+                            <h4 class="font-bold text-lg text-gray-700">${car.name}</h4>
+                            <p class="text-sm text-gray-600">人数: ${car.members.length}名</p> <!-- 別便は人数のみ -->
+                        </div>`;
+                } else {
+                    // ★ 乗客定員 (capacity) と 実際の乗客数 (members.length) で計算
+                    const vacancy = car.capacity - car.members.length; 
+                    const luggageInfo = car.hasLuggage ? ' (荷物あり)' : '';
+                    // ★ 表示形式を変更
+                    headerHtml = `
+                        <div class="p-4 border-b">
+                            <h4 class="font-bold text-lg">${car.name} ${luggageInfo}</h4>
+                            <p class="text-sm font-medium ${vacancy < 0 ? 'text-red-600' : 'text-blue-600'}">
+                                定員 ${car.capacity}名 (空き ${vacancy}名) 
+                            </p>
+                        </div>`;
+                    
+                    const d = car.driver;
+                    if (d) {
+                        const memo = participantData.get(d.id)?.memo || '';
+                        driverHtml = `
+                        <div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone">
+                            <li id="p-result-${d.id}" data-participant-id="${d.id}" data-is-driver="true" draggable="true" 
+                                class="p-2 bg-blue-100 rounded shadow-sm flex justify-between items-center draggable-item">
+                                <div>
+                                    <span class="font-semibold text-blue-800">[D] ${d.name} (${d.type})</span>
+                                    ${memo ? `<span class="text-xs text-blue-600 ml-2">(${memo})</span>` : ''}
+                                </div>
+                            </li>
+                        </div>`;
+                    } else {
+                         driverHtml = `
+                         <div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone min-h-[50px] bg-red-50">
+                            <p class="text-red-700 text-sm">ドライバーがいません</p>
+                         </div>`;
+                    }
+                }
+                
+                const membersHtml = car.members.map(p => {
+                    const memo = participantData.get(p.id)?.memo || '';
+                    return `
+                    <li id="p-result-${p.id}" data-participant-id="${p.id}" data-is-driver="false" draggable="true" 
+                        class="p-2 bg-gray-100 rounded shadow-sm flex justify-between items-center draggable-item">
+                        <div>
+                            <span>${p.name} (${p.type})</span>
+                            ${memo ? `<span class="text-xs text-gray-500 ml-2">(${memo})</span>` : ''}
+                        </div>
+                        <span class="text-xs text-gray-400">${[participantData.get(p.id)?.grade, participantData.get(p.id)?.school, participantData.get(p.id)?.other].filter(Boolean).join(' ')}</span> <!-- 修正: participantDataから取得 -->
+                    </li>`;
+                }).join('');
 
-            // テキスト出力用
-            let line = `${carInfo.name}(${driver ? driver.name : '未設定'}`;
-            if (assignment.hasLuggage) line += ', 荷物';
-            passengers.forEach(p => {
-                const flags = participantFlags.get(p.id);
-                const remarks = flags?.remarks ? ` (${flags.remarks})` : '';
-                line += `, ${p.name}${remarks}`;
+                card.innerHTML = `
+                    ${headerHtml}
+                    ${driverHtml}
+                    <ul id="members-dropzone-${car.id}" class="p-4 space-y-2 min-h-[50px] members-dropzone">
+                        ${membersHtml}
+                    </ul>
+                `;
+                resultsEl.appendChild(card);
             });
-            line += ')';
-            outputLines.push(line);
-        });
+        }
+
+
+        // --- ドラッグ＆ドロップ ---
         
-        // 別便カーを描画
-        const excludedAssignment = currentAssignments.get('c_excluded');
-        if (excludedAssignment && excludedAssignment.passengers.length > 0) {
-            const carCard = document.createElement('div');
-            carCard.className = 'bg-white rounded-lg shadow border border-gray-200 car-dropzone';
-            carCard.dataset.carId = 'c_excluded';
-
-            carCard.innerHTML = `
-                <div class="p-3 bg-gray-100 rounded-t-lg">
-                    <h3 class="font-bold text-lg text-gray-800">別便カー</h3>
-                    <p class="text-sm text-gray-600">
-                        定員 ∞ (空き ∞)
-                    </p>
-                </div>
-            `;
-            
-            // ドライバー欄 (ダミー)
-            const driverEl = document.createElement('div');
-            driverEl.className = 'p-3 border-b-2 border-gray-200 driver-dropzone';
-            driverEl.dataset.carId = 'c_excluded';
-            driverEl.dataset.dropType = 'driver';
-            driverEl.innerHTML = `
-                <span class="text-xs font-semibold text-gray-700">ドライバー</span>
-                <p class="font-semibold text-gray-500">(なし)</p>
-            `;
-            
-            // 乗客リスト
-            const passengerListEl = document.createElement('div');
-            passengerListEl.className = 'p-3 space-y-2 car-assignment-list passenger-dropzone';
-            passengerListEl.dataset.carId = 'c_excluded';
-            passengerListEl.dataset.dropType = 'passenger-list';
-            
-            excludedAssignment.passengers.forEach((p, index) => {
-                const flags = participantFlags.get(p.id);
-                const remarks = flags?.remarks ? ` (${flags.remarks})` : '';
-                
-                const pEl = document.createElement('div');
-                pEl.className = 'p-2 bg-gray-50 rounded border border-gray-200 shadow-sm cursor-grab passenger-item';
-                pEl.setAttribute('draggable', true);
-                pEl.dataset.participantId = p.id;
-                pEl.dataset.carId = 'c_excluded';
-                pEl.dataset.dragType = 'passenger';
-                pEl.dataset.index = index;
-                pEl.innerHTML = `<span data-drag-handle="true">${p.name}${remarks}</span> <span class="text-xs text-gray-500">(${p.type})</span>`;
-                passengerListEl.appendChild(pEl);
+        function clearDragOverHighlights() {
+            document.querySelectorAll('.draggable-item').forEach(el => {
+                el.classList.remove('drop-target-swap', 'drop-target-insert-before', 'drop-target-insert-after');
             });
-
-            carCard.appendChild(driverEl);
-            carCard.appendChild(passengerListEl);
-            assignmentResultsEl.appendChild(carCard);
+            document.querySelectorAll('.driver-dropzone').forEach(el => {
+                el.classList.remove('drop-target-swap');
+            });
+            document.querySelectorAll('.members-dropzone').forEach(el => {
+                el.classList.remove('drop-target-move', 'drop-target-full');
+            });
         }
 
-        // テキスト出力
-        textOutputEl.value = outputLines.join('\n');
-    }
-    
-    // --- 割り当てロジック ---
-
-    function handleAssignment() {
-        // 1. バリデーション
-        if (selectedCarIds.size === 0) {
-            showMessage('車が選択されていません。', 'error');
-            return;
+        function handleDragStart(e) {
+            if (e.target.classList.contains('draggable-item')) {
+                dragTargetId = e.target.dataset.participantId;
+                dragSourceCarId = e.target.closest('.car-dropzone').dataset.carId;
+                dragIsDriver = e.target.dataset.isDriver === 'true';
+                e.dataTransfer.effectAllowed = 'move';
+                e.target.classList.add('opacity-50');
+                
+                currentDropMode = null;
+                currentDropTargetId = null;
+            }
         }
 
-        let totalCapacity = 0;
-        const assignments = new Map();
-        let validationError = false;
+        function handleDragOver(e) {
+            e.preventDefault(); 
+            const dropzone = e.target.closest('.car-dropzone');
+            if (!dropzone) return;
 
-        selectedCarIds.forEach(carId => {
-            const carInfo = AVAILABLE_CARS_INFO.find(c => c.id === carId);
-            const settings = carSettings.get(carId);
-
-            if (!settings.driverId) {
-                showMessage(`${carInfo.name} のドライバーが選択されていません。`, 'error');
-                validationError = true;
-                return;
-            }
-
-            if (!selectedParticipantIds.has(settings.driverId) || excludedParticipantIds.has(settings.driverId)) {
-                const driver = ALL_PARTICIPANTS_FLAT.find(p => p.id === settings.driverId);
-                showMessage(`${carInfo.name} のドライバー (${driver.name}) が参加者として選択されていないか、別便になっています。`, 'error');
-                validationError = true;
-                return;
-            }
-
-            const driver = ALL_PARTICIPANTS_FLAT.find(p => p.id === settings.driverId);
-            const capacity = carInfo.capacity;
-            let actualCapacity = 0;
+            const targetItem = e.target.closest('.draggable-item');
+            const targetDriverZone = e.target.closest('.driver-dropzone');
+            const targetMembersZone = e.target.closest('.members-dropzone');
             
-            if (settings.hasLuggage) {
-                actualCapacity = 1; // 荷物ありの場合、乗客は1名のみ
+            clearDragOverHighlights(); 
+            currentDropMode = null;
+            currentDropTargetId = null;
+            
+            if (targetItem) {
+                const targetIsDriver = targetItem.dataset.isDriver === 'true';
+                
+                if (targetIsDriver || dragIsDriver) {
+                    targetItem.classList.add('drop-target-swap');
+                    currentDropMode = 'swap';
+                    currentDropTargetId = targetItem.dataset.participantId;
+                } 
+                else {
+                    const rect = targetItem.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    
+                    if (e.clientY < midY) {
+                        targetItem.classList.add('drop-target-insert-before');
+                        currentDropMode = 'insert-before';
+                    } else {
+                        targetItem.classList.add('drop-target-insert-after');
+                        currentDropMode = 'insert-after';
+                    }
+                    currentDropTargetId = targetItem.dataset.participantId;
+                }
+            }
+            else if (targetDriverZone) {
+                targetDriverZone.classList.add('drop-target-swap');
+                currentDropMode = 'swap';
+                const carId = targetDriverZone.closest('.car-dropzone').dataset.carId;
+                currentDropTargetId = currentAssignments.find(c => c.id === carId)?.driver?.id || null;
+            } 
+            else if (targetMembersZone) {
+                currentDropMode = 'move-to-end';
+                
+                const targetCarId = dropzone.dataset.carId;
+                if (targetCarId === dragSourceCarId && !dragIsDriver) {
+                     // 同じ車
+                } else {
+                    const targetCar = currentAssignments.find(c => c.id === targetCarId);
+                    if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                        targetMembersZone.classList.add('drop-target-full');
+                    } else {
+                        targetMembersZone.classList.add('drop-target-move');
+                    }
+                }
+            }
+        }
+
+        function updateCarVacancyUI(carId) {
+            const car = currentAssignments.find(c => c.id === carId);
+            // ★ car.element が存在するかチェックを追加
+            if (!car || car.id === 'excluded-car' || !document.getElementById(`car-result-${carId}`)) return; 
+            
+            const cardElement = document.getElementById(`car-result-${carId}`);
+            const vacancy = car.capacity - car.members.length;
+            const pEl = cardElement.querySelector('p.font-medium'); // ★ car.element を cardElement に変更
+            if (pEl) {
+                pEl.textContent = `定員 ${car.capacity}名 (空き ${vacancy}名)`; // ★ 表示形式を変更
+                pEl.classList.toggle('text-red-600', vacancy < 0);
+                pEl.classList.toggle('text-blue-600', vacancy >= 0);
+            }
+        }
+        
+        function findAndRemoveParticipant(carId, pId, isDriver) {
+            const car = currentAssignments.find(c => c.id === carId);
+            if (!car) return null;
+            
+            if (isDriver) {
+                if (car.driver && car.driver.id === pId) {
+                    const p = car.driver;
+                    car.driver = null; 
+                    return p;
+                }
             } else {
-                actualCapacity = capacity - 1; // ドライバー分を引く
+                const index = car.members.findIndex(p => p.id === pId);
+                if (index > -1) {
+                    return car.members.splice(index, 1)[0]; 
+                }
             }
-
-            totalCapacity += actualCapacity;
-            assignments.set(carId, {
-                driver: driver,
-                passengers: [],
-                capacity: capacity, // 元の定員
-                actualCapacity: actualCapacity, // 実質の乗客定員
-                hasLuggage: settings.hasLuggage
-            });
-        });
-
-        if (validationError) return;
-        
-        // 別便カーの準備
-        const excludedPassengers = [];
-        excludedParticipantIds.forEach(pId => {
-            if (selectedParticipantIds.has(pId)) {
-                excludedPassengers.push(getParticipantWithFlags(pId));
-            }
-        });
-        assignments.set('c_excluded', {
-            driver: null,
-            passengers: excludedPassengers,
-            capacity: Infinity,
-            actualCapacity: Infinity,
-            hasLuggage: false
-        });
-
-        // 2. 割り当て対象の乗客リストを作成
-        let participantsToAssign = [];
-        selectedParticipantIds.forEach(pId => {
-            // ドライバーでもなく、別便でもない人
-            const isDriver = Array.from(assignments.values()).some(a => a.driver?.id === pId);
-            if (!isDriver && !excludedParticipantIds.has(pId)) {
-                participantsToAssign.push(getParticipantWithFlags(pId));
-            }
-        });
-
-        if (participantsToAssign.length > totalCapacity) {
-            showMessage(`定員オーバーです。参加者 ${participantsToAssign.length} 人に対し、車の乗客定員は合計 ${totalCapacity} 人です。`, 'error');
-            return;
+            return null;
         }
 
-        // 3. 割り当て実行
-        try {
-            const finalAssignments = allocateParticipants(participantsToAssign, assignments);
-            currentAssignments = finalAssignments;
-            
-            // 4. 結果描画
-            renderAssignmentResults();
-            showMessage('割り当てを実行しました。', 'success');
-            
-            // 5. D&Dイベントリスナーを設定
-            setupDragAndDrop();
-            
-        } catch (error) {
-            console.error("割り当てロジックでエラー:", error);
-            showMessage(`割り当て中にエラーが発生しました: ${error.message}`, 'error');
+        function handleDrop(e) {
+            e.preventDefault();
+            performDropOperation(e.target.closest('.car-dropzone')?.dataset.carId);
         }
-    }
-    
-    function getParticipantWithFlags(pId) {
-        const participant = ALL_PARTICIPANTS_FLAT.find(p => p.id === pId);
-        const flags = participantFlags.get(pId);
-        return { ...participant, flags: flags };
-    }
-    
-    // 参加者オブジェクトの優先順位を返す (低いほど優先)
-    function getParticipantPriority(participant) {
-        if (participant.type === '保護者') return 1;
-        if (participant.type === '兄弟') return 2;
-        if (participant.type === '選手') return 3;
-        return 4; // その他
-    }
 
-    // 割り当てロジック本体
-    function allocateParticipants(participants, assignments) {
-        let remainingParticipants = [...participants];
-
-        // --- 最優先: 自分の家族の車に乗る ---
-        const assignedInStep1 = new Set();
-        assignments.forEach((assignment, carId) => {
-            if (!assignment.driver || carId === 'c_excluded') return;
+        // ★クリーンアップロジックを分離
+        function handleDragEndCleanup() {
+            if (ghostElement) {
+                ghostElement.remove();
+                ghostElement = null;
+            }
             
-            const driverFamilyName = assignment.driver.familyName;
+            if (dragTargetId) {
+                const el = document.getElementById(`p-result-${dragTargetId}`);
+                if (el) el.classList.remove('opacity-50');
+            }
             
-            // この車に乗るべき家族メンバーを抽出 (ドライバー自身は除く)
-            const familyMembersToAssign = remainingParticipants
-                .filter(p => p.familyName === driverFamilyName && p.id !== assignment.driver.id)
-                .sort((a, b) => getParticipantPriority(a) - getParticipantPriority(b)); // 保護者 > 兄弟 > 選手
+            clearDragOverHighlights();
+            dragTargetId = null;
+            dragSourceCarId = null;
+            dragIsDriver = false;
+            currentDropMode = null;
+            currentDropTargetId = null;
+            lastTouchMoveEvent = null;
+        }
+        
+        function handleDragEnd(e) {
+            handleDragEndCleanup();
+        }
+        
+        // ★★★ タッチ操作ハンドラ ★★★
 
-            familyMembersToAssign.forEach(member => {
-                if (assignment.passengers.length < assignment.actualCapacity) {
-                    assignment.passengers.push(member);
-                    assignedInStep1.add(member.id);
+        function createGhostElement(targetElement) {
+            if (ghostElement) ghostElement.remove();
+            ghostElement = targetElement.cloneNode(true);
+            ghostElement.id = 'ghost-element';
+            ghostElement.style.position = 'absolute';
+            ghostElement.style.zIndex = '1000';
+            ghostElement.style.opacity = '0.8';
+            ghostElement.style.pointerEvents = 'none'; 
+            ghostElement.style.width = `${targetElement.offsetWidth}px`;
+            document.body.appendChild(ghostElement);
+        }
+
+        function updateGhostPosition(e) {
+            if (!ghostElement) return;
+            const touch = e.touches[0];
+            ghostElement.style.left = `${touch.clientX - ghostElement.offsetWidth / 2}px`;
+            ghostElement.style.top = `${touch.clientY - ghostElement.offsetHeight / 2}px`;
+        }
+
+        // ★タッチ開始 (ドラッグ開始)
+        function handleTouchStart(e) {
+            const targetElement = e.target.closest('.draggable-item');
+            if (!targetElement) return;
+            
+            e.preventDefault(); // テキスト選択やスクロールを防止
+
+            dragTargetId = targetElement.dataset.participantId;
+            dragSourceCarId = targetElement.closest('.car-dropzone').dataset.carId;
+            dragIsDriver = targetElement.dataset.isDriver === 'true';
+            
+            currentDropMode = null;
+            currentDropTargetId = null;
+            
+            targetElement.classList.add('opacity-50');
+            createGhostElement(targetElement);
+            updateGhostPosition(e);
+            
+            lastTouchMoveEvent = e; 
+        }
+
+        // ★タッチ移動 (ドラッグ中)
+        function handleTouchMove(e) {
+            if (!dragTargetId) return; 
+            
+            e.preventDefault(); 
+            lastTouchMoveEvent = e; 
+            
+            updateGhostPosition(e);
+            
+            const touch = e.touches[0];
+            ghostElement.style.display = 'none'; 
+            const elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+            ghostElement.style.display = ''; 
+            
+            if (!elementUnderFinger) {
+                clearDragOverHighlights();
+                currentDropMode = null;
+                currentDropTargetId = null;
+                return;
+            }
+
+            // handleDragOver と同じロジックをシミュレート (引数eの代わりにtouchを使用)
+            const dropzone = elementUnderFinger.closest('.car-dropzone');
+            if (!dropzone) {
+                clearDragOverHighlights();
+                currentDropMode = null;
+                currentDropTargetId = null;
+                return;
+            }
+
+            const targetItem = elementUnderFinger.closest('.draggable-item');
+            const targetDriverZone = elementUnderFinger.closest('.driver-dropzone');
+            const targetMembersZone = elementUnderFinger.closest('.members-dropzone');
+            
+            clearDragOverHighlights(); 
+            currentDropMode = null;
+            currentDropTargetId = null;
+            
+            if (targetItem) {
+                const targetIsDriver = targetItem.dataset.isDriver === 'true';
+                if (targetIsDriver || dragIsDriver) {
+                    targetItem.classList.add('drop-target-swap');
+                    currentDropMode = 'swap';
+                    currentDropTargetId = targetItem.dataset.participantId;
+                } else {
+                    const rect = targetItem.getBoundingClientRect();
+                    const midY = rect.top + rect.height / 2;
+                    if (touch.clientY < midY) {
+                        targetItem.classList.add('drop-target-insert-before');
+                        currentDropMode = 'insert-before';
+                    } else {
+                        targetItem.classList.add('drop-target-insert-after');
+                        currentDropMode = 'insert-after';
+                    }
+                    currentDropTargetId = targetItem.dataset.participantId;
                 }
-            });
-        });
-        
-        // ステップ1で割り当て済みの参加者を除外
-        remainingParticipants = remainingParticipants.filter(p => !assignedInStep1.has(p.id));
-        
-        // --- 次優先: フラグ一致 ---
-        const assignedInStep2 = new Set();
-        
-        // フラグが設定されている参加者のみ
-        let flagParticipants = remainingParticipants.filter(p => 
-            p.flags && (p.flags.grade || p.flags.school || p.flags.other)
-        );
-        
-        // ランダムシャッフルして順序による偏りをなくす
-        flagParticipants.sort(() => Math.random() - 0.5);
-
-        flagParticipants.forEach(participant => {
-            let bestCarId = null;
-            let maxScore = -1; // 0点(一致なし)は後回しにするため-1から
-            let bestCarCandidates = []; // 最高スコアが同じ車
-
-            assignments.forEach((assignment, carId) => {
-                if (carId === 'c_excluded' || assignment.passengers.length >= assignment.actualCapacity) {
-                    return; // 別便または満席
+            }
+            else if (targetDriverZone) {
+                targetDriverZone.classList.add('drop-target-swap');
+                currentDropMode = 'swap';
+                const carId = targetDriverZone.closest('.car-dropzone').dataset.carId;
+                currentDropTargetId = currentAssignments.find(c => c.id === carId)?.driver?.id || null;
+            } 
+            else if (targetMembersZone) {
+                currentDropMode = 'move-to-end';
+                const targetCarId = dropzone.dataset.carId;
+                if (targetCarId === dragSourceCarId && !dragIsDriver) {
+                    // 同じ車
+                } else {
+                    const targetCar = currentAssignments.find(c => c.id === targetCarId);
+                    if (targetCar && targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                        targetMembersZone.classList.add('drop-target-full');
+                    } else {
+                        targetMembersZone.classList.add('drop-target-move');
+                    }
                 }
+            }
+        }
+
+        // ★タッチ終了 (ドロップ)
+        function handleTouchEnd(e) {
+            if (!dragTargetId) return;
+
+            let targetCarId = null;
+            
+            if (lastTouchMoveEvent) {
+                const touch = lastTouchMoveEvent.touches[0] || lastTouchMoveEvent.changedTouches[0];
+                ghostElement.style.display = 'none';
+                const elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+                ghostElement.style.display = '';
+                targetCarId = elementUnderFinger?.closest('.car-dropzone')?.dataset.carId;
+            }
+
+            if (!targetCarId) {
+                // ドロップゾーン外ならキャンセル（ソース車に戻す）
+                targetCarId = dragSourceCarId; 
+                currentDropMode = 'move-to-end'; // キャンセル時は「末尾に移動」として扱う
+            }
+            
+            performDropOperation(targetCarId);
+            
+            handleDragEndCleanup();
+        }
+        
+        // ★★★ ドロップ共通処理 ★★★
+        function performDropOperation(targetCarId) {
+            if (!targetCarId || !dragTargetId) return; // 必要な情報がない
+            
+            const sourceCar = currentAssignments.find(c => c.id === dragSourceCarId);
+            const targetCar = currentAssignments.find(c => c.id === targetCarId);
+
+            if (!sourceCar || !targetCar) {
+                console.error("Drop failed: car data not found.");
+                return;
+            }
+            
+            const sourceParticipant = findAndRemoveParticipant(dragSourceCarId, dragTargetId, dragIsDriver);
+            if (!sourceParticipant) {
+                console.error("Drop failed: source participant not found.");
+                return; 
+            }
+
+            let operationDone = false;
+            
+            // --- 1. 入れ替え (Swap) ---
+            if (currentDropMode === 'swap' && currentDropTargetId) {
+                const targetIsDriver = (targetCar.driver && targetCar.driver.id === currentDropTargetId);
+                const targetParticipant = findAndRemoveParticipant(targetCarId, currentDropTargetId, targetIsDriver);
                 
-                let currentScore = 0;
-                // 現在の乗客と比較してスコア計算
-                assignment.passengers.forEach(passenger => {
-                    if (participant.flags.grade && passenger.flags.grade === participant.flags.grade) currentScore++;
-                    if (participant.flags.school && passenger.flags.school === participant.flags.school) currentScore++;
-                    if (participant.flags.other && passenger.flags.other === participant.flags.other) currentScore++;
+                if (targetParticipant) {
+                    if (targetIsDriver) targetCar.driver = sourceParticipant;
+                    else targetCar.members.push(sourceParticipant); 
+                    if (dragIsDriver) sourceCar.driver = targetParticipant;
+                    else sourceCar.members.push(targetParticipant);
+                    operationDone = true;
+                }
+            }
+            // --- 2. 挿入 (Insert Before / After) ---
+            else if ((currentDropMode === 'insert-before' || currentDropMode === 'insert-after') && currentDropTargetId) {
+                if (targetCar.id !== 'excluded-car' && targetCarId !== dragSourceCarId && targetCar.members.length >= targetCar.capacity) {
+                     showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
+                } else {
+                    const targetIndex = targetCar.members.findIndex(p => p.id === currentDropTargetId);
+                    if (targetIndex > -1) {
+                        const insertIndex = (currentDropMode === 'insert-before') ? targetIndex : targetIndex + 1;
+                        targetCar.members.splice(insertIndex, 0, sourceParticipant);
+                        operationDone = true;
+                        hideMessage();
+                    }
+                }
+            }
+            // --- 3. 末尾へ移動 (Move to End) ---
+            else if (currentDropMode === 'move-to-end') {
+                if (targetCarId === dragSourceCarId && !dragIsDriver) {
+                    sourceCar.members.push(sourceParticipant); 
+                    operationDone = true;
+                } else {
+                    if (targetCar.id !== 'excluded-car' && targetCar.members.length >= targetCar.capacity) {
+                        showMessage(`エラー: ${targetCar.name} は定員オーバーです。`, 'error');
+                    } else {
+                        targetCar.members.push(sourceParticipant);
+                        operationDone = true;
+                        hideMessage();
+                    }
+                }
+            }
+
+            // --- 4. 操作失敗/キャンセル -> 元に戻す ---
+            if (!operationDone) {
+                if (dragIsDriver) sourceCar.driver = sourceParticipant;
+                else sourceCar.members.push(sourceParticipant);
+            }
+            
+            // --- 5. ドライバー昇格処理 (sourceCar) ---
+            if (operationDone && dragIsDriver && !sourceCar.driver && sourceCar.id !== 'excluded-car') {
+                 if (sourceCar.members.length > 0) {
+                    sourceCar.driver = sourceCar.members.splice(0, 1)[0];
+                }
+            }
+
+            // 全体を再描画
+            renderResults(currentAssignments);
+            updateCarVacancyUI(dragSourceCarId);
+            updateCarVacancyUI(targetCarId);
+        }
+
+        // --- イベントハンドラ ---
+
+        function handleParticipantChange(e) {
+            const target = e.target;
+            if (target.type === 'checkbox' && target.dataset.action === 'select-participant') {
+                const id = target.dataset.id;
+                const dataEl = document.getElementById(`data-inputs-${id}`); 
+                
+                if (target.checked) {
+                    selectedParticipantIds.add(id);
+                    if (dataEl) {
+                        dataEl.classList.remove('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = false);
+                    }
+                } else {
+                    selectedParticipantIds.delete(id);
+                    if (dataEl) {
+                        dataEl.classList.add('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = true);
+                    }
+                    if (excludedParticipantIds.has(id)) {
+                        excludedParticipantIds.delete(id);
+                    }
+                }
+                renderExclusionList();
+            }
+        }
+        
+        // ★ 家族一括選択/解除ボタンのハンドラ
+        function handleFamilySelectButtons(e) {
+             const button = e.target.closest('button[data-family-name]');
+             if (!button) return;
+
+             e.preventDefault(); // detailsの開閉を防ぐ
+             e.stopPropagation(); // イベントの伝播を防ぐ
+
+             const familyName = button.dataset.familyName;
+             const action = button.dataset.action; // 'family-select-all' or 'family-select-none'
+             const family = FAMILIES.find(f => f.familyName === familyName);
+             if (!family) return;
+
+             const shouldSelect = (action === 'family-select-all');
+
+             family.members.forEach(member => {
+                 const checkbox = document.getElementById(`p-${member.id}`);
+                 const dataEl = document.getElementById(`data-inputs-${member.id}`);
+                 
+                 if (shouldSelect) {
+                    selectedParticipantIds.add(member.id);
+                    if (checkbox) checkbox.checked = true;
+                    if (dataEl) {
+                        dataEl.classList.remove('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = false);
+                    }
+                 } else {
+                    selectedParticipantIds.delete(member.id);
+                    excludedParticipantIds.delete(member.id); // 除外からも削除
+                    if (checkbox) checkbox.checked = false;
+                     if (dataEl) {
+                        dataEl.classList.add('opacity-50');
+                        dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = true);
+                    }
+                 }
+             });
+             renderExclusionList(); // 除外リストを更新
+        }
+
+
+        function handleParticipantDataInput(e) {
+            const target = e.target;
+            if (target.dataset.id && target.dataset.type) {
+                const id = target.dataset.id;
+                const type = target.dataset.type;
+                const value = target.value;
+                
+                const data = participantData.get(id) || { grade: '', school: '', other: '', memo: '' };
+                data[type] = value;
+                participantData.set(id, data);
+            }
+        }
+
+        function handleCarChange(e) {
+            const target = e.target;
+            const carId = target.closest('[data-car-id]')?.dataset.carId;
+            if (!carId) return;
+
+            const action = target.dataset.action;
+
+            if (action === 'select-car') {
+                if (target.checked) {
+                    selectedCarIds.add(carId);
+                    document.getElementById(`car-options-${carId}`).classList.remove('hidden');
+                } else {
+                    selectedCarIds.delete(carId);
+                    selectedDrivers.delete(carId);
+                    selectedLuggage.delete(carId);
+                    document.getElementById(`car-options-${carId}`).classList.add('hidden');
+                    document.getElementById(`driver-${carId}`).value = '';
+                }
+            } else if (action === 'select-driver') {
+                if (target.value) {
+                    selectedDrivers.set(carId, target.value);
+                } else {
+                    selectedDrivers.delete(carId);
+                }
+            } else if (action === 'select-luggage') {
+                if (target.checked) {
+                    selectedLuggage.add(carId);
+                } else {
+                    selectedLuggage.delete(carId);
+                }
+            }
+        }
+
+        function handleExclusionChange(e) {
+            const target = e.target;
+            if (target.type === 'checkbox' && target.dataset.action === 'exclude-participant') {
+                const id = target.dataset.id;
+                if (target.checked) {
+                    excludedParticipantIds.add(id);
+                } else {
+                    excludedParticipantIds.delete(id);
+                }
+            }
+        }
+
+        function handleAssignment() {
+            if (selectedCarIds.size === 0) {
+                showMessage('ステップ2で車を1台以上選択してください。', 'error');
+                return;
+            }
+
+            let errors = [];
+            let driverMap = new Map(); // carId -> driverObject
+            let selectedCarsData = [];
+            
+            const allParticipantsWithData = ALL_PARTICIPANTS_FLAT
+                .filter(p => selectedParticipantIds.has(p.id)) 
+                .map(p => {
+                    const family = FAMILIES.find(f => f.members.some(m => m.id === p.id));
+                    // ★ participantData を展開して含める
+                    return {
+                        ...p,
+                        ...(participantData.get(p.id) || {}), // grade, school, other, memo を展開
+                        familyName: family ? family.familyName : null
+                    };
                 });
 
-                if (currentScore > maxScore) {
-                    maxScore = currentScore;
-                    bestCarCandidates = [carId];
-                } else if (currentScore === maxScore) {
-                    bestCarCandidates.push(carId);
-                }
-            });
 
-            if (maxScore > 0 && bestCarCandidates.length > 0) {
-                // 最高スコアの車候補からランダムで選択
-                bestCarId = bestCarCandidates[Math.floor(Math.random() * bestCarCandidates.length)];
-                assignments.get(bestCarId).passengers.push(participant);
-                assignedInStep2.add(participant.id);
-            }
-        });
-        
-        // ステップ2で割り当て済みの参加者を除外
-        remainingParticipants = remainingParticipants.filter(p => !assignedInStep1.has(p.id) && !assignedInStep2.has(p.id));
-
-        // --- 残り: 個人 (ラウンドロビン) ---
-        if (remainingParticipants.length > 0) {
-            let carIds = Array.from(assignments.keys()).filter(id => id !== 'c_excluded');
-            let carIndex = 0;
-            
-            remainingParticipants.forEach(participant => {
-                let assigned = false;
-                let attemptCount = 0;
-                
-                while (!assigned && attemptCount < carIds.length) {
-                    const carId = carIds[carIndex];
-                    const assignment = assignments.get(carId);
-                    
-                    if (assignment.passengers.length < assignment.actualCapacity) {
-                        assignment.passengers.push(participant);
-                        assigned = true;
-                    }
-                    
-                    carIndex = (carIndex + 1) % carIds.length;
-                    attemptCount++;
-                }
-                
-                if (!assigned) {
-                    // 予期せぬエラー：満席のはずだが...
-                    console.warn("空きがあるはずの車に割り当てられませんでした:", participant);
-                    // どこでもいいから空いてる車にねじ込む
-                    const firstAvailableCar = Array.from(assignments.values()).find(a => a.passengers.length < a.actualCapacity);
-                    if (firstAvailableCar) {
-                        firstAvailableCar.passengers.push(participant);
-                    }
-                }
-            });
-        }
-
-        return assignments;
-    }
-
-
-    // --- D&D と タッチ操作 ---
-    
-    function setupDragAndDrop() {
-        const containers = assignmentResultsEl.querySelectorAll('.car-dropzone');
-        containers.forEach(container => {
-            // 標準D&D
-            container.addEventListener('dragstart', handleDragStart, false);
-            container.addEventListener('dragenter', handleDragEnter, false);
-            container.addEventListener('dragover', handleDragOver, false);
-            container.addEventListener('dragleave', handleDragLeave, false);
-            container.addEventListener('drop', handleDrop, false);
-            container.addEventListener('dragend', handleDragEnd, false);
-            
-            // タッチ操作
-            container.addEventListener('touchstart', handleTouchStart, { passive: false });
-            container.addEventListener('touchmove', handleTouchMove, { passive: false });
-            container.addEventListener('touchend', handleTouchEnd, false);
-            container.addEventListener('touchcancel', handleTouchEnd, false);
-        });
-    }
-
-    // --- 標準 D&D ハンドラ ---
-    
-    function handleDragStart(e) {
-        // ドラッグハンドル (名前部分) からドラッグ開始されたかチェック
-        const handle = e.target.closest('[data-drag-handle="true"]');
-        if (!handle) {
-            e.preventDefault();
-            return;
-        }
-
-        const target = handle.closest('[draggable="true"]');
-        if (!target) {
-            e.preventDefault();
-            return;
-        }
-        
-        draggedElement = target;
-        const type = target.dataset.dragType; // 'driver' or 'passenger'
-        const id = target.dataset.participantId;
-        const fromCar = target.closest('.car-dropzone').dataset.carId;
-        
-        draggedData = { type, id, fromCar };
-        
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', JSON.stringify(draggedData));
-        
-        // 少し遅れてゴーストを非表示化
-        setTimeout(() => {
-            if (draggedElement) { // dragendでnullになることがある
-                draggedElement.style.opacity = '0.4';
-            }
-        }, 0);
-    }
-
-    function handleDragEnter(e) {
-        e.preventDefault(); // dragoverでやるので不要かも
-    }
-
-    function handleDragOver(e) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-
-        clearHighlights();
-        
-        const target = e.target;
-        const dropZone = target.closest('.driver-dropzone, .passenger-item, .passenger-dropzone');
-        
-        if (!dropZone) return;
-
-        const targetCarId = dropZone.closest('.car-dropzone').dataset.carId;
-        
-        // 1. ドライバー欄へのドロップ (入れ替え)
-        if (dropZone.classList.contains('driver-dropzone')) {
-            dropZone.classList.add('drag-over-border');
-        }
-        // 2. 乗客アイテムへのドロップ (挿入)
-        else if (dropZone.classList.contains('passenger-item')) {
-            // 自分自身の上はハイライトしない
-            if (draggedElement && draggedElement === dropZone) return; 
-            
-            const rect = dropZone.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
-            if (e.clientY < midY) {
-                dropZone.classList.add('drag-over-insert-before');
-            } else {
-                dropZone.classList.add('drag-over-insert-after');
-            }
-        }
-        // 3. 乗客リストの背景へのドロップ (末尾に移動)
-        else if (dropZone.classList.contains('passenger-dropzone')) {
-            dropZone.classList.add('drag-over-bg');
-        }
-    }
-
-    function handleDragLeave(e) {
-        // ハイライト消去はdragoverでまとめてやる
-    }
-
-    function handleDrop(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        
-        if (!draggedElement) return;
-
-        const target = e.target;
-        const dropZone = target.closest('.driver-dropzone, .passenger-item, .passenger-dropzone');
-        
-        if (!dropZone) {
-            cleanupDrag();
-            return;
-        }
-
-        const targetCarId = dropZone.closest('.car-dropzone').dataset.carId;
-        
-        // ドロップ操作を実行
-        performDropOperation(targetCarId, dropZone);
-        cleanupDrag();
-    }
-    
-    function handleDragEnd(e) {
-        cleanupDrag();
-    }
-    
-    function cleanupDrag() {
-        if (draggedElement) {
-            draggedElement.style.opacity = '1';
-        }
-        draggedElement = null;
-        draggedData = null;
-        clearHighlights();
-    }
-
-    // --- タッチ操作ハンドラ ---
-    
-    function handleTouchStart(e) {
-        // ドラッグハンドル (名前部分) 以外は無視
-        const handle = e.target.closest('[data-drag-handle="true"]');
-        if (!handle) {
-            clearTimeout(longPressTimer);
-            return;
-        }
-
-        // 長押しでドラッグ開始
-        longPressTimer = setTimeout(() => {
-            longPressTimer = null;
-            
-            const target = handle.closest('[draggable="true"]');
-            if (!target) return;
-            
-            // 既存のゴーストがあれば削除
-            if (touchGhost) touchGhost.remove();
-
-            draggedElement = target;
-            const type = target.dataset.dragType;
-            const id = target.dataset.participantId;
-            const fromCar = target.closest('.car-dropzone').dataset.carId;
-            
-            draggedData = { type, id, fromCar };
-
-            // ゴースト要素作成
-            touchGhost = draggedElement.cloneNode(true);
-            touchGhost.classList.add('touch-ghost');
-            document.body.appendChild(touchGhost);
-            
-            // ゴーストの位置を更新
-            const touch = e.touches[0];
-            updateTouchGhostPosition(touch.clientX, touch.clientY);
-            
-            // 元の要素を非表示化
-            draggedElement.style.opacity = '0.4';
-            
-            // スクロールやテキスト選択を防止
-            // e.preventDefault(); // ここで呼ぶとクリックイベントが死ぬ
-            
-        }, 300); // 300msの長押しでドラッグ開始
-        
-        e.preventDefault(); // 画面スクロールを一旦止める
-    }
-
-    function handleTouchMove(e) {
-        // ドラッグが開始されていなければ何もしない
-        if (!draggedElement || !draggedData || !touchGhost) {
-            // 長押し前に指が動いたらタイマーキャンセル
-            clearTimeout(longPressTimer);
-            return;
-        }
-
-        // スクロールを防止
-        e.preventDefault();
-        
-        const touch = e.touches[0];
-        
-        // 1. ゴーストを移動
-        updateTouchGhostPosition(touch.clientX, touch.clientY);
-
-        // 2. 指の下の要素をハイライト (dragover相当)
-        clearHighlights();
-        
-        // ゴーストを一時的に隠して、指の下の要素を取得
-        touchGhost.style.display = 'none';
-        const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
-        touchGhost.style.display = ''; // すぐ戻す
-        
-        if (!elementUnderTouch) return;
-
-        const dropZone = elementUnderTouch.closest('.driver-dropzone, .passenger-item, .passenger-dropzone');
-        if (!dropZone) return;
-        
-        // dragoverと同じロジック
-        if (dropZone.classList.contains('driver-dropzone')) {
-            dropZone.classList.add('drag-over-border');
-        }
-        else if (dropZone.classList.contains('passenger-item')) {
-            // 自分自身の上はハイライトしない
-            if (draggedElement && draggedElement === dropZone) return; 
-
-            const rect = dropZone.getBoundingClientRect();
-            const midY = rect.top + rect.height / 2;
-            if (touch.clientY < midY) {
-                dropZone.classList.add('drag-over-insert-before');
-            } else {
-                dropZone.classList.add('drag-over-insert-after');
-            }
-        }
-        else if (dropZone.classList.contains('passenger-dropzone')) {
-            dropZone.classList.add('drag-over-bg');
-        }
-    }
-    
-    function handleTouchEnd(e) {
-        clearTimeout(longPressTimer); // タイマーキャンセル
-        
-        // ドラッグが開始されていなければ何もしない (通常のタップ/クリックとして処理される)
-        if (!draggedElement || !draggedData || !touchGhost) {
-            cleanupTouch();
-            return;
-        }
-
-        // e.preventDefault(); // リンク遷移などを防ぐ
-        
-        // 指が離れた位置の要素を取得 (drop相当)
-        const touch = e.changedTouches[0];
-        
-        // ゴーストを一時的に隠して、指の下の要素を取得
-        touchGhost.style.display = 'none';
-        const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
-        touchGhost.style.display = ''; // すぐ戻す (cleanupで消える)
-        
-        if (elementUnderTouch) {
-            const dropZone = elementUnderTouch.closest('.driver-dropzone, .passenger-item, .passenger-dropzone');
-            
-            if (dropZone) {
-                // 自分自身にドロップした場合は何もしない
-                if (draggedElement && draggedElement === dropZone) {
-                    // 何もしない
-                } else {
-                    const targetCarId = dropZone.closest('.car-dropzone').dataset.carId;
-                    performDropOperation(targetCarId, dropZone);
-                }
-            }
-        }
-        
-        cleanupTouch();
-    }
-    
-    function cleanupTouch() {
-        if (touchGhost) {
-            touchGhost.remove();
-            touchGhost = null;
-        }
-        if (draggedElement) {
-            draggedElement.style.opacity = '1';
-        }
-        draggedElement = null;
-        draggedData = null;
-        clearHighlights();
-    }
-    
-    function updateTouchGhostPosition(x, y) {
-        if (touchGhost) {
-            touchGhost.style.left = `${x}px`;
-            touchGhost.style.top = `${y}px`;
-        }
-    }
-
-
-    // --- 共通 D&D コアロジック ---
-
-    function clearHighlights() {
-        document.querySelectorAll('.drag-over-bg, .drag-over-border, .drag-over-insert-before, .drag-over-insert-after')
-            .forEach(el => el.classList.remove('drag-over-bg', 'drag-over-border', 'drag-over-insert-before', 'drag-over-insert-after'));
-    }
-    
-    // データ操作とUI再描画
-    function performDropOperation(targetCarId, dropZoneElement) {
-        if (!draggedData || !targetCarId) return;
-
-        const { type: dragType, id: dragId, fromCar: fromCarId } = draggedData;
-        
-        // 自分自身にドロップ
-        if (draggedElement && draggedElement === dropZoneElement) {
-            return; 
-        }
-        
-        const fromAssignment = currentAssignments.get(fromCarId);
-        const toAssignment = currentAssignments.get(targetCarId);
-        
-        const dragParticipant = (dragType === 'driver')
-            ? fromAssignment.driver
-            : fromAssignment.passengers.find(p => p.id === dragId);
-            
-        if (!dragParticipant) {
-            console.error("ドラッグ対象の参加者が見つかりません");
-            return;
-        }
-
-        // 操作タイプを決定
-        let operationType = 'move-to-list-end'; // デフォルト
-        let targetParticipantId = null;
-        let insertBefore = false;
-
-        if (dropZoneElement.classList.contains('driver-dropzone')) {
-            operationType = 'swap-driver';
-        } else if (dropZoneElement.classList.contains('passenger-item')) {
-            operationType = 'insert-before'; // デフォルトは前に挿入
-            targetParticipantId = dropZoneElement.dataset.participantId;
-            if (dropZoneElement.classList.contains('drag-over-insert-after')) {
-                operationType = 'insert-after';
-            }
-        }
-        
-        // --- 定員チェック ---
-        if (fromCarId !== targetCarId && operationType !== 'swap-driver') {
-            // 他の車への「移動」または「挿入」の場合のみ
-            if (toAssignment.passengers.length >= toAssignment.actualCapacity) {
-                // 「別便カー」以外は定員チェック
-                if (targetCarId !== 'c_excluded') {
-                    showMessage('移動先の車の定員がオーバーしています。', 'error');
+            selectedCarIds.forEach(carId => {
+                const driverId = selectedDrivers.get(carId);
+                if (!driverId) {
+                    errors.push(`${AVAILABLE_CARS_INFO.find(c=>c.id === carId).name} のドライバーが選択されていません。`);
                     return;
                 }
-            }
-        }
-
-        // --- データ操作 ---
-        
-        // 1. 元の場所から削除
-        if (dragType === 'driver') {
-            fromAssignment.driver = null; // ドライバー削除
-        } else {
-            fromAssignment.passengers = fromAssignment.passengers.filter(p => p.id !== dragId);
-        }
-
-        // 2. 新しい場所に配置
-        try {
-            switch (operationType) {
-                case 'swap-driver':
-                    const existingDriver = toAssignment.driver;
-                    toAssignment.driver = dragParticipant;
-                    
-                    // 元の車がドライバー欄だった場合、入れ替え
-                    if (dragType === 'driver') {
-                        if (existingDriver) {
-                            fromAssignment.driver = existingDriver;
-                        }
-                    } 
-                    // 元が乗客だった場合、入れ替え
-                    else {
-                        if (existingDriver) {
-                            // 定員チェック
-                            if (fromAssignment.passengers.length >= fromAssignment.actualCapacity && fromCarId !== 'c_excluded') {
-                                showMessage('元の車が定員オーバーになるため、ドライバーと入れ替えできません。', 'error');
-                                // 元に戻す
-                                fromAssignment.passengers.push(dragParticipant); 
-                                toAssignment.driver = existingDriver;
-                                return;
-                            }
-                            fromAssignment.passengers.push(existingDriver);
-                        }
-                    }
-                    break;
                 
-                case 'insert-before':
-                case 'insert-after':
-                    const targetIndex = toAssignment.passengers.findIndex(p => p.id === targetParticipantId);
-                    if (targetIndex > -1) {
-                        const insertIndex = (operationType === 'insert-before') ? targetIndex : targetIndex + 1;
-                        toAssignment.passengers.splice(insertIndex, 0, dragParticipant);
-                    } else {
-                        // 対象が見つからない場合、末尾に追加
-                        toAssignment.passengers.push(dragParticipant);
+                // ★ ドライバーが参加者として選択されているかチェック
+                const driver = allParticipantsWithData.find(p => p.id === driverId); 
+                if (!driver) { 
+                     const driverInfo = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId);
+                     // ★ 警告メッセージを変更
+                     errors.push(`ドライバー (${driverInfo?.name || '不明'} ${driverInfo?.type ? `(${driverInfo.type})` : ''}) がステップ1の参加者に含まれていません。`);
+                     return;
+                }
+                
+                if ([...driverMap.values()].some(d => d.id === driverId)) {
+                    errors.push(`ドライバー (${driver.name} (${driver.type})) が複数の車に割り当てられています。`);
+                }
+                driverMap.set(carId, driver);
+                
+                const carInfo = AVAILABLE_CARS_INFO.find(c => c.id === carId);
+                const hasLuggage = selectedLuggage.has(carId);
+                let actualCapacity = carInfo.baseCapacity - 1; 
+                if (hasLuggage) {
+                    actualCapacity = 1; 
+                }
+
+                selectedCarsData.push({
+                    id: carId,
+                    name: carInfo.name,
+                    familyName: carInfo.familyName,
+                    driverId: driverId, 
+                    capacity: actualCapacity, 
+                    hasLuggage: hasLuggage
+                });
+            });
+
+            if (errors.length > 0) {
+                showMessage(errors.join('<br>'), 'error');
+                return;
+            }
+
+            const driverIds = new Set([...driverMap.values()].map(d => d.id));
+            let participantsToAssign = allParticipantsWithData.filter(p => {
+                return !driverIds.has(p.id) && !excludedParticipantIds.has(p.id);
+            });
+            
+            let excludedParticipants = allParticipantsWithData.filter(p => {
+                return excludedParticipantIds.has(p.id) && !driverIds.has(p.id); 
+            });
+
+            const totalParticipants = participantsToAssign.length;
+            const totalCapacity = selectedCarsData.reduce((sum, car) => sum + car.capacity, 0);
+
+            if (totalParticipants > totalCapacity) {
+                showMessage(`定員オーバーです。参加者 ${totalParticipants}人 に対して、車の乗客定員は合計 ${totalCapacity}人 です。`, 'error');
+            } else {
+                hideMessage();
+            }
+
+            // ★修正されたロジックを呼び出す
+            const assignments = allocateParticipants(participantsToAssign, selectedCarsData, driverMap);
+
+            assignments.push({
+                id: 'excluded-car',
+                name: '別便',
+                capacity: 999,
+                driver: null,
+                members: excludedParticipants,
+                hasLuggage: false
+            });
+
+            currentAssignments = assignments; 
+            renderResults(currentAssignments);
+            
+            // ★ currentAssignments の各 car に DOM 要素への参照を追加 (D&D用)
+            currentAssignments.forEach(car => {
+                 car.element = document.getElementById(`car-result-${car.id}`);
+            });
+
+            updateTextOutput();
+        }
+        
+
+        // --- メッセージとロジック ---
+
+        function showMessage(message, type = 'info') {
+            messageText.innerHTML = message;
+            messageContainer.classList.remove('hidden', 'bg-red-100', 'border-red-400', 'text-red-700', 'bg-blue-100', 'border-blue-400', 'text-blue-700');
+            if (type === 'error') {
+                messageContainer.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+            } else {
+                messageContainer.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
+            }
+            messageContainer.classList.remove('hidden');
+        }
+
+        function hideMessage() {
+            messageContainer.classList.add('hidden');
+        }
+
+        // ★★★ 割り当てロジック (フラグ一致優先度を修正) ★★★
+        function allocateParticipants(participants, cars, driverMap) {
+            // 1. 割り当て結果の器を初期化 (ドライバーをセット)
+            let assignments = cars.map(car => ({ 
+                ...car, 
+                driver: driverMap.get(car.id) || null, // ドライバーをセット
+                members: [] 
+            }));
+            
+            if (participants.length === 0) return assignments;
+
+            let remainingParticipants = [...participants]; 
+            
+            const typePriority = { '保護者': 1, '兄弟': 2, '選手': 3, 'その他': 4 };
+
+            // --- 優先度1: 家族を自分の車に乗せる ---
+            assignments.forEach(car => {
+                if (!car.driver || !car.familyName) return;
+                
+                // ドライバーの家族名と車の家族名が一致する場合のみ
+                if (car.driver.familyName === car.familyName) {
+                    let familyMembersInThisCar = remainingParticipants
+                        .filter(p => p.familyName === car.familyName) // 同じ家族
+                        .sort((a, b) => (typePriority[a.type] || 9) - (typePriority[b.type] || 9));
+
+                    familyMembersInThisCar.forEach(member => {
+                        if (car.members.length < car.capacity) {
+                            car.members.push(member);
+                            remainingParticipants = remainingParticipants.filter(p => p.id !== member.id);
+                        }
+                    });
+                }
+            });
+
+            // --- 優先度2: フラグ一致 (新しいロジック) ---
+            
+            // フラグ一致スコアを計算する関数
+            function getFlagMatchScore(pA, pB) {
+                // ★ isFlagTarget が false の参加者はスコア計算対象外とする
+                if (!pA || !pB || !pA.isFlagTarget || !pB.isFlagTarget) return 0;
+                let score = 0;
+                // grade, school, other が空文字列やnullでないことを確認してから比較
+                if (pA.grade && pA.grade === pB.grade) score++;
+                if (pA.school && pA.school === pB.school) score++;
+                if (pA.other && pA.other === pB.other) score++;
+                return score;
+            }
+
+            // 残った参加者をシャッフルし、フラグ対象者を優先
+            let participantsToProcess = remainingParticipants.sort((a, b) => {
+                if (a.isFlagTarget !== b.isFlagTarget) {
+                    return a.isFlagTarget ? -1 : 1; // フラグ対象者を先に
+                }
+                return Math.random() - 0.5; // ランダム性
+            });
+            
+            let stillRemaining = []; // どの車とも一致しなかった参加者
+
+            participantsToProcess.forEach(participant => {
+                let bestCar = null;
+                let maxScore = 0;
+
+                // 参加者(participant)にとって最適な車を探す
+                assignments.forEach(car => {
+                    // 1. 定員に空きがあるか
+                    if (car.members.length >= car.capacity) return;
+
+                    // 2. 車内の乗客との合計一致スコアを計算
+                    let currentCarScore = 0;
+                    car.members.forEach(member => {
+                        currentCarScore += getFlagMatchScore(participant, member);
+                    });
+
+                    // 3. ベストスコアを更新
+                    if (currentCarScore > maxScore) {
+                        maxScore = currentCarScore;
+                        bestCar = car;
+                    } 
+                    // 4. 同一ポイントの場合はランダムで決定（すでに見つかっているbestCarを確率で上書き）
+                    else if (currentCarScore > 0 && currentCarScore === maxScore) {
+                        if (Math.random() > 0.5) {
+                            bestCar = car;
+                        }
                     }
-                    break;
-                    
-                case 'move-to-list-end':
-                default:
-                    toAssignment.passengers.push(dragParticipant);
-                    break;
-            }
-        } catch (e) {
-            console.error("Drop操作エラー:", e);
-            showMessage("操作に失敗しました。", "error");
-            // TODO: ロールバック処理
-            return;
-        }
+                });
 
-        // 3. UI再描画
-        renderAssignmentResults();
-        setupDragAndDrop(); // 再描画したのでリスナー再設定
-    }
-
-
-    // --- イベントハンドラ ---
-
-    // 家族一括選択ハンドラ
-    function handleParticipantFamilyClick(e) {
-        const target = e.target.closest('button');
-        if (!target) return;
-
-        const action = target.dataset.action;
-        const familyName = target.dataset.familyName;
-
-        if (!familyName || (action !== 'family-select-all' && action !== 'family-select-none')) {
-            return;
-        }
-
-        e.preventDefault(); // detailsの開閉をキャンセル
-        e.stopPropagation(); // イベント伝播を停止
-
-        const family = FAMILIES.find(f => f.familyName === familyName);
-        if (!family) return;
-
-        const shouldSelect = action === 'family-select-all';
-
-        family.members.forEach(p => {
-            const checkbox = document.getElementById(`p-${p.id}`);
-            const dataEl = document.getElementById(`data-inputs-${p.id}`);
-            
-            if (shouldSelect) {
-                selectedParticipantIds.add(p.id);
-                if (checkbox) checkbox.checked = true;
-                if (dataEl) {
-                    dataEl.classList.remove('opacity-50');
-                    dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = false);
-                }
-            } else {
-                selectedParticipantIds.delete(p.id);
-                excludedParticipantIds.delete(p.id); // 除外リストからも削除
-                if (checkbox) checkbox.checked = false;
-                if (dataEl) {
-                    dataEl.classList.add('opacity-50');
-                    dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = true);
-                }
-            }
-        });
-
-        renderExclusionList(); // 除外リストを即時更新
-    }
-
-    function handleParticipantChange(e) {
-        const target = e.target;
-        if (target.type === 'checkbox' && target.dataset.action === 'select-participant') {
-            const pId = target.dataset.participantId;
-            const dataEl = document.getElementById(`data-inputs-${pId}`);
-            
-            if (target.checked) {
-                selectedParticipantIds.add(pId);
-                if (dataEl) {
-                    dataEl.classList.remove('opacity-50');
-                    dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = false);
-                }
-            } else {
-                selectedParticipantIds.delete(pId);
-                excludedParticipantIds.delete(pId); // 除外リストからも削除
-                if (dataEl) {
-                    dataEl.classList.add('opacity-50');
-                    dataEl.querySelectorAll('input, textarea').forEach(input => input.disabled = true);
-                }
-            }
-            renderExclusionList();
-        }
-    }
-    
-    function handleParticipantDataInput(e) {
-        const target = e.target;
-        const pId = target.dataset.participantId;
-        const field = target.dataset.field;
-        
-        if (pId && field) {
-            const flags = participantFlags.get(pId);
-            if (flags) {
-                flags[field] = target.value;
-            }
-        }
-    }
-
-    function handleCarChange(e) {
-        const target = e.target;
-        const carId = target.dataset.carId;
-        const field = target.dataset.field;
-        
-        if (target.type === 'checkbox' && target.dataset.action === 'select-car') {
-            const inputs = target.closest('.border').querySelectorAll('select, input[type="checkbox"][data-field]');
-            if (target.checked) {
-                selectedCarIds.add(carId);
-                target.closest('.border').classList.add('bg-blue-50');
-                target.closest('.border').classList.remove('bg-gray-50');
-                inputs.forEach(input => input.disabled = false);
-                target.closest('.border').querySelector('.pl-8').classList.remove('opacity-50');
-            } else {
-                selectedCarIds.delete(carId);
-                target.closest('.border').classList.remove('bg-blue-50');
-                target.closest('.border').classList.add('bg-gray-50');
-                inputs.forEach(input => input.disabled = true);
-                target.closest('.border').querySelector('.pl-8').classList.add('opacity-50');
-            }
-        }
-        else if (carId && field) {
-            const settings = carSettings.get(carId);
-            if (settings) {
-                if (target.type === 'checkbox') {
-                    settings[field] = target.checked;
+                // 5. ベストな車（スコア>0）が見つかったら割り当て
+                if (bestCar) {
+                    bestCar.members.push(participant);
                 } else {
-                    settings[field] = target.value;
+                    // スコア0の参加者は後回し
+                    stillRemaining.push(participant);
                 }
+            });
+
+            
+            // --- 優先度3: 残りの個人 (スコア0の人たち) ---
+            if (stillRemaining.length > 0) {
+                
+                let carsWithVacancy = assignments
+                    .map(car => ({ carRef: car, vacancy: car.capacity - car.members.length }))
+                    .filter(c => c.vacancy > 0)
+                    .sort((a, b) => b.vacancy - a.vacancy); // 空きが多い順
+
+                let carIndex = 0;
+                stillRemaining.forEach(participant => {
+                    if (carsWithVacancy.length === 0) return; // 満車
+
+                    let assigned = false;
+                    let initialCarIndex = carIndex;
+                    
+                    while(!assigned) {
+                        if (carsWithVacancy.length === 0) break; // 途中で満車になった
+                        
+                        // carIndexが範囲外にならないように調整
+                        carIndex = carIndex % carsWithVacancy.length;
+                        
+                        const targetCarInfo = carsWithVacancy[carIndex];
+                        
+                        if (targetCarInfo.carRef.members.length < targetCarInfo.carRef.capacity) {
+                            targetCarInfo.carRef.members.push(participant);
+                        	targetCarInfo.vacancy--;
+                            assigned = true;
+                            
+                            // この車が満車になったらリストから削除
+                            if (targetCarInfo.vacancy <= 0) {
+                                carsWithVacancy.splice(carIndex, 1);
+                                // ★ carIndex が削除された要素を指さないように調整
+                                if (carIndex >= carsWithVacancy.length) {
+                                    carIndex = 0; // 配列の先頭に戻すか、0にする
+                                }
+                            } else {
+                                carIndex++; // 次の車へ
+                            }
+                        } else {
+                             // 満車だった場合（起こりにくいはずだが念のため）
+                             carsWithVacancy.splice(carIndex, 1);
+                             // ★ carIndex が削除された要素を指さないように調整
+                             if (carIndex >= carsWithVacancy.length) {
+                                 carIndex = 0;
+                             }
+                        }
+                        
+                        // ★ 無限ループ防止: 1周しても割り当てられなかった場合
+                        if (carsWithVacancy.length > 0 && carIndex === initialCarIndex && !assigned) {
+                             console.warn("Could not assign participant (all cars might be full unexpectedly):", participant);
+                             break; // ループを抜ける
+                        }
+                    }
+                });
+            }
+            
+            return assignments;
+        }
+
+
+        // アコーディオンの全開/全閉
+        function handleToggleDetails() {
+            const detailsElements = participantListEl.querySelectorAll('details');
+            const shouldOpen = toggleDetailsButton.textContent === 'すべて開く';
+            detailsElements.forEach(details => {
+                details.open = shouldOpen;
+            });
+            toggleDetailsButton.textContent = shouldOpen ? 'すべて閉じる' : 'すべて開く';
+        }
+
+
+        // --- ファイル入出力・テキスト出力機能 ---
+
+        function getCurrentState() {
+            return {
+                selectedParticipantIds: Array.from(selectedParticipantIds),
+                selectedCarIds: Array.from(selectedCarIds),
+                selectedDrivers: Array.from(selectedDrivers.entries()),
+                selectedLuggage: Array.from(selectedLuggage),
+                excludedParticipantIds: Array.from(excludedParticipantIds),
+                participantData: Array.from(participantData.entries()) 
+            };
+        }
+
+        function restoreState(state) {
+            selectedParticipantIds = new Set(state.selectedParticipantIds || []);
+            selectedCarIds = new Set(state.selectedCarIds || []);
+            selectedDrivers = new Map(state.selectedDrivers || []);
+            selectedLuggage = new Set(state.selectedLuggage || []);
+            excludedParticipantIds = new Set(state.excludedParticipantIds || []);
+            participantData = new Map(state.participantData || []); 
+            
+            if (participantData.size === 0) {
+                initializeParticipantData(); 
+            }
+
+            currentAssignments = [];
+        }
+
+        function handleExportState() {
+            const state = getCurrentState();
+            const jsonString = JSON.stringify(state, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `car_assignment_state_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showMessage('現在の状態をファイルに保存しました。', 'info');
+        }
+
+        function handleImportState(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const state = JSON.parse(event.target.result);
+                    restoreState(state);
+                    
+                    renderParticipantList();
+                    renderCarList();
+                    renderExclusionList();
+                    resultsEl.innerHTML = '<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>';
+                    const placeholder = document.getElementById('results-placeholder');
+                    if (placeholder) {
+                         if (window.innerWidth >= 1024) { 
+                            placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
+                        } else {
+                            placeholder.style.gridColumn = 'auto';
+                        }
+                    }
+                    textOutputContainer.classList.add('hidden'); 
+                    
+                    showMessage('状態を読み込みました。', 'info');
+                } catch (err) {
+                    console.error('Error parsing JSON state:', err);
+                    showMessage('ファイルの読み込みに失敗しました。無効なJSONファイルです。', 'error');
+                }
+                e.target.value = null;
+            };
+            reader.readAsText(file);
+        }
+
+        function handleShowTextOutput() {
+            if (currentAssignments.length === 0) {
+                showMessage('テキスト出力する結果がありません。先に「割り当て実行」を押してください。', 'error');
+                return;
+            }
+            textOutputContainer.classList.toggle('hidden');
+            if (!textOutputContainer.classList.contains('hidden')) {
+                updateTextOutput(); 
             }
         }
-    }
 
-    function handleExclusionChange(e) {
-        const target = e.target;
-        if (target.type === 'checkbox' && target.dataset.action === 'exclude-participant') {
-            const pId = target.dataset.participantId;
-            if (target.checked) {
-                excludedParticipantIds.add(pId);
-            } else {
-                excludedParticipantIds.delete(pId);
+        function updateTextOutput() {
+            if (currentAssignments.length === 0) {
+                textOutputEl.value = '';
+                return;
+            }
+
+            const outputLines = currentAssignments
+                .filter(car => car.id !== 'excluded-car') 
+                .map(car => {
+                
+                const carName = car.name.replace(/の車|家の車/g, 'カー');
+                
+                let driverName = ' (ドライバー未定)';
+                if (car.driver) {
+                    const memo = participantData.get(car.driver.id)?.memo || '';
+                    driverName = car.driver.name + (memo ? ` (${memo})` : '');
+                }
+                
+                const members = car.members.map(p => {
+                    let name = p.name;
+                    if (p.type === '選手') name = '★' + name;
+                    const memo = participantData.get(p.id)?.memo || '';
+                    return name + (memo ? ` [${memo}]` : '');
+                });
+                
+                const luggage = car.hasLuggage ? '荷物' : null;
+                
+                const parts = [driverName, ...members];
+                if (luggage) parts.push(luggage);
+                
+                return `${carName} (${parts.join(', ')})`;
+            });
+
+            textOutputEl.value = outputLines.join('\n');
+        }
+
+        function handleCopyTextOutput() {
+            if (!textOutputEl.value) return;
+
+            try {
+                navigator.clipboard.writeText(textOutputEl.value).then(() => {
+                    showMessage('クリップボードにコピーしました。', 'info');
+                }, (err) => {
+                    legacyCopy(textOutputEl.value);
+                });
+            } catch (err) {
+                legacyCopy(textOutputEl.value);
             }
         }
-    }
-    
-    function handleToggleAllParticipants() {
-        const allDetails = participantListEl.querySelectorAll('details');
-        // 最初のdetailsが開いているかどうかに基づいて、すべてをその逆に設定
-        const shouldOpen = allDetails.length > 0 ? !allDetails[0].open : true;
-        allDetails.forEach(details => details.open = shouldOpen);
-        toggleAllParticipantsBtn.textContent = shouldOpen ? 'すべて閉じる' : 'すべて開く';
-    }
 
-
-    // --- ユーティリティ ---
-
-    function showMessage(message, type = 'success') {
-        messageText.textContent = message;
-        
-        // Remove old classes
-        messageBox.classList.remove('bg-green-500', 'bg-red-500', 'bg-yellow-500');
-        
-        if (type === 'success') {
-            messageBox.classList.add('bg-green-500');
-        } else if (type === 'error') {
-            messageBox.classList.add('bg-red-500');
-        } else {
-            messageBox.classList.add('bg-yellow-500');
-        }
-        
-        messageBox.classList.add('show');
-        
-        setTimeout(() => {
-            messageBox.classList.remove('show');
-        }, 3000);
-    }
-    
-    function legacyCopy(text) {
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';  // 見えないように
-        textArea.style.top = '-9999px';
-        textArea.style.left = '-9999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-            const successful = document.execCommand('copy');
-            if (successful) {
-                showMessage('テキストをコピーしました。', 'success');
-            } else {
+        function legacyCopy(text) {
+             const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed'; 
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showMessage('クリップボードにコピーしました。', 'info');
+                } else {
+                    showMessage('コピーに失敗しました。', 'error');
+                }
+            } catch (err) {
                 showMessage('コピーに失敗しました。', 'error');
             }
-        } catch (err) {
-            showMessage('コピーに失敗しました。', 'error');
+            document.body.removeChild(textArea);
         }
-        document.body.removeChild(textArea);
-    }
 
-    // --- インポート/エクスポート ---
-    
-    function handleExportState() {
-        const state = {
-            selectedParticipantIds: Array.from(selectedParticipantIds),
-            selectedCarIds: Array.from(selectedCarIds),
-            excludedParticipantIds: Array.from(excludedParticipantIds),
-            participantFlags: Array.from(participantFlags.entries()),
-            carSettings: Array.from(carSettings.entries()),
-            currentAssignments: Array.from(currentAssignments.entries())
-        };
-        
-        const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'car_assignment_state.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
-    
-    function handleImportState(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const state = JSON.parse(event.target.result);
-                
-                selectedParticipantIds = new Set(state.selectedParticipantIds || []);
-                selectedCarIds = new Set(state.selectedCarIds || []);
-                excludedParticipantIds = new Set(state.excludedParticipantIds || []);
-                participantFlags = new Map(state.participantFlags || []);
-                carSettings = new Map(state.carSettings || []);
-                currentAssignments = new Map(state.currentAssignments || []);
+        // --- マスターデータ入出力 ---
 
-                // 読み込んだデータでUIを再描画
-                renderParticipantList();
-                renderCarList();
-                renderExclusionList();
-                renderAssignmentResults();
-                setupDragAndDrop();
-                
-                showMessage('状態を読み込みました。', 'success');
-            } catch (err) {
-                console.error("状態の読み込みに失敗:", err);
-                showMessage('状態ファイルの読み込みに失敗しました。', 'error');
-            } finally {
-                // 同じファイルを選択しても再度changeイベントが発火するように
-                e.target.value = null;
-            }
-        };
-        reader.readAsText(file);
-    }
-    
-    function handleExportMaster() {
-        const master = {
-            FAMILIES,
-            AVAILABLE_CARS_INFO
-        };
-        const blob = new Blob([JSON.stringify(master, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'car_assignment_master.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }
+        function handleExportMasterData() {
+            const masterData = {
+                families: FAMILIES,
+                cars: AVAILABLE_CARS_INFO
+            };
+            const jsonString = JSON.stringify(masterData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `car_assignment_master_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            showMessage('現在のマスターデータをファイルに保存しました。', 'info');
+        }
 
-    function handleImportMaster(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            try {
-                const master = JSON.parse(event.target.result);
-                
-                if (!master.FAMILIES || !master.AVAILABLE_CARS_INFO) {
-                    throw new Error("マスターデータの形式が正しくありません。");
+        function handleImportMasterData(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const masterData = JSON.parse(event.target.result);
+                    
+                    if (!masterData || !Array.isArray(masterData.families) || !Array.isArray(masterData.cars)) {
+                        throw new Error('JSONの形式が正しくありません。 "families" と "cars" の配列が必要です。');
+                    }
+
+                    FAMILIES = masterData.families;
+                    AVAILABLE_CARS_INFO = masterData.cars;
+                    
+                    ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
+
+                    restoreState({}); 
+                    
+                    initializeParticipantData(); 
+                    initializeDefaultDrivers(); // ★インポート後もデフォルトドライバーを設定
+                    renderParticipantList();
+                    renderCarList();
+                    renderExclusionList();
+                    resultsEl.innerHTML = '<p id="results-placeholder" class="text-gray-500 text-sm bg-white p-4 rounded-lg shadow min-h-[50px]">ステップ4の「割り当て実行」を押してください。</p>';
+                    const placeholder = document.getElementById('results-placeholder');
+                    if (placeholder) {
+                         if (window.innerWidth >= 1024) { 
+                            placeholder.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
+                        } else {
+                            placeholder.style.gridColumn = 'auto';
+                        }
+                    }
+                    textOutputContainer.classList.add('hidden'); 
+                    toggleDetailsButton.textContent = 'すべて閉じる'; // ★ボタンテキストもリセット
+                    
+                    showMessage('マスターデータを読み込み、アプリをリセットしました。', 'info');
+                } catch (err) {
+                    console.error('Error parsing master data JSON:', err);
+                    showMessage(`マスターデータの読み込みに失敗しました: ${err.message}`, 'error');
                 }
-                
-                // マスターデータを上書き
-                FAMILIES = master.FAMILIES;
-                AVAILABLE_CARS_INFO = master.AVAILABLE_CARS_INFO;
-
-                // 状態をすべてリセット
-                selectedParticipantIds.clear();
-                selectedCarIds.clear();
-                excludedParticipantIds.clear();
-                currentAssignments.clear();
-
-                // 関連データを再初期化
-                initializeParticipantData();
-                initializeDefaultDrivers();
-                
-                // UIを再描画
-                renderParticipantList();
-                renderCarList();
-                renderExclusionList();
-                renderAssignmentResults(); // クリアされる
-                
-                // アコーディオンボタンのテキストをリセット
-                toggleAllParticipantsBtn.textContent = 'すべて閉じる';
-
-                showMessage('マスターデータを読み込み、アプリをリセットしました。', 'success');
-                
-            } catch (err) {
-                console.error("マスターの読み込みに失敗:", err);
-                showMessage(`マスターファイルの読み込みに失敗しました: ${err.message}`, 'error');
-            } finally {
                 e.target.value = null;
-            }
-        };
-        reader.readAsText(file);
-    }
+            };
+            reader.readAsText(file);
+        }
 
+    </script>
 
-    // --- イベントリスナー設定 ---
-    document.addEventListener('DOMContentLoaded', () => {
-        // マスターデータ初期化
-        setDefaultMasterData();
-        initializeParticipantData();
-        initializeDefaultDrivers();
-        
-        // レイアウト設定
-        setLayoutColumns();
-        
-        // 初期描画
-        renderParticipantList();
-        renderCarList();
-        renderExclusionList();
-        renderAssignmentResults();
-
-        // イベントリスナー
-        participantListEl.addEventListener('change', handleParticipantChange);
-        participantListEl.addEventListener('input', handleParticipantDataInput); 
-        participantListEl.addEventListener('click', handleParticipantFamilyClick); // 家族一括選択リスナー
-        carListEl.addEventListener('change', handleCarChange);
-        exclusionListEl.addEventListener('change', handleExclusionChange);
-        assignButton.addEventListener('click', handleAssignment);
-        toggleAllParticipantsBtn.addEventListener('click', handleToggleAllParticipants);
-        
-        copyTextBtn.addEventListener('click', () => legacyCopy(textOutputEl.value));
-        
-        exportStateBtn.addEventListener('click', handleExportState);
-        importStateInput.addEventListener('change', handleImportState);
-        exportMasterBtn.addEventListener('click', handleExportMaster);
-        importMasterInput.addEventListener('change', handleImportMaster);
-    });
-
-</script>
 </body>
 </html>
