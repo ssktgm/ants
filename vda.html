@@ -18,7 +18,7 @@
             --layout-columns: 3; /* デフォルト */
         }
         
-        @media (min-width: 1024px) { /* lg */
+        @media (min-width: 768px) { /* md */
             .grid-layout-dynamic {
                 grid-template-columns: repeat(var(--layout-columns), minmax(0, 1fr));
             }
@@ -93,7 +93,7 @@
         </div>
 
         <!-- メインコンテンツグリッド -->
-        <div id="main-grid" class="grid grid-cols-1 lg:grid-layout-dynamic gap-6">
+        <div id="main-grid" class="grid grid-cols-1 md:grid-layout-dynamic gap-6">
 
             <!-- ステップ1: 参加者 -->
             <section id="step1-participants" class="bg-white p-4 rounded-lg shadow">
@@ -131,7 +131,7 @@
         <!-- ステップ5: 割り当て結果 -->
         <section id="step5-results" class="mt-8">
             <h2 class="text-2xl font-bold text-gray-700 mb-4">5. 割り当て結果</h2>
-            <div id="assignment-results" class="grid grid-cols-1 md:grid-cols-2 lg:grid-layout-dynamic gap-6">
+            <div id="assignment-results" class="grid grid-cols-1 md:grid-layout-dynamic gap-6">
                 <!-- JSで描画 -->
             </div>
         </section>
@@ -363,21 +363,21 @@
         ];
 
         AVAILABLE_CARS_INFO = [
-            { id: 'c_kodaka', name: '小高カー', type: 'セレナ', number: '', capacity: 6, familyName: '小高家' },
-            { id: 'c_namba', name: '難波カー', type: 'アルファード', number: '', capacity: 7, familyName: '難波家' },
-            { id: 'c_namikawa_1', name: '浪川カー①', type: 'セレナ', number: '5', capacity: 6, familyName: '浪川家' },
-            { id: 'c_namikawa_2', name: '浪川カー②', type: 'プリウス', number: '', capacity: 5, familyName: '浪川家' },
-            { id: 'c_yamada_1', name: '山田カー①', type: 'アルファード', number: '777', capacity: 7, familyName: '山田家' },
-            { id: 'c_yamada_2', name: '山田カー②', type: 'プリウス', number: '', capacity: 5, familyName: '山田家' },
-            { id: 'c_hishinuma', name: '菱沼カー', type: 'セレナ', number: '919', capacity: 6, familyName: '菱沼家' },
-            { id: 'c_ono', name: '小野カー', type: 'ステップワゴン', number: '', capacity: 8, familyName: '小野家' },
-            { id: 'c_asano', name: '浅野カー', type: 'ステップワゴン', number: '619', capacity: 8, familyName: '浅野家' },
-            { id: 'c_kondo', name: '近藤カー', type: 'セレナ', number: '', capacity: 6, familyName: '近藤家' },
-            { id: 'c_chinomi', name: '知野見カー', type: 'VOXY', number: '14', capacity: 7, familyName: '知野見家' }, // 定員仮
-            { id: 'c_fujiyama', name: '藤山カー', type: '?', number: '9', capacity: 4, familyName: '藤山家' },
-            { id: 'c_ogawara_1', name: '小河原カー①', type: 'クラウン', number: '', capacity: 4, familyName: '小河原家' },
-            { id: 'c_ogawara_2', name: '小河原カー②', type: '?', number: '', capacity: 4, familyName: '小河原家' },
-            { id: 'c_furukawa', name: '古川カー', type: 'ステップワゴン', number: '1123', capacity: 8, familyName: '古川家' },
+            { id: 'c_kodaka', name: '小高カー', type: 'セレナ', capacity: 6, familyName: '小高家' },
+            { id: 'c_namba', name: '難波カー', type: 'アルファード', capacity: 7, familyName: '難波家' },
+            { id: 'c_namikawa_1', name: '浪川カー①', type: 'セレナ', capacity: 6, familyName: '浪川家' },
+            { id: 'c_namikawa_2', name: '浪川カー②', type: 'プリウス', capacity: 5, familyName: '浪川家' },
+            { id: 'c_yamada_1', name: '山田カー①', type: 'アルファード', capacity: 7, familyName: '山田家' },
+            { id: 'c_yamada_2', name: '山田カー②', type: 'プリウス', capacity: 5, familyName: '山田家' },
+            { id: 'c_hishinuma', name: '菱沼カー', type: 'セレナ', capacity: 6, familyName: '菱沼家' },
+            { id: 'c_ono', name: '小野カー', type: 'ステップワゴン', capacity: 8, familyName: '小野家' },
+            { id: 'c_asano', name: '浅野カー', type: 'ステップワゴン', capacity: 8, familyName: '浅野家' },
+            { id: 'c_kondo', name: '近藤カー', type: 'セレナ', capacity: 6, familyName: '近藤家' },
+            { id: 'c_chinomi', name: '知野見カー', type: 'VOXY', capacity: 7, familyName: '知野見家' }, // 定員仮
+            { id: 'c_fujiyama', name: '藤山カー', type: '?', capacity: 4, familyName: '藤山家' },
+            { id: 'c_ogawara_1', name: '小河原カー①', type: 'クラウン', capacity: 4, familyName: '小河原家' },
+            { id: 'c_ogawara_2', name: '小河原カー②', type: '?', capacity: 4, familyName: '小河原家' },
+            { id: 'c_furukawa', name: '古川カー', type: 'ステップワゴン', capacity: 8, familyName: '古川家' },
         ];
     }
     
@@ -511,7 +511,7 @@
                     <div class="flex items-center">
                         <input type="checkbox" id="c-${car.id}" data-action="select-car" data-car-id="${car.id}" class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" ${isSelected ? 'checked' : ''}>
                         <label for="c-${car.id}" class="ml-3 text-sm font-semibold text-gray-800">
-                            ${car.name} <span class="text-gray-500 font-normal">(${car.type} / ${car.number} / ${car.capacity}名)</span>
+                            ${car.name} <span class="text-gray-500 font-normal">(${car.type} / ${car.capacity}名)</span>
                         </label>
                     </div>
                     <div class="pl-8 mt-3 space-y-3 ${disabledClass}">
@@ -1690,4 +1690,5 @@
 </script>
 </body>
 </html>
+
 
