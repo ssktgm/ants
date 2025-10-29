@@ -6,9 +6,6 @@
     <title>配車調整アプリ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* ドラッグ中の要素のスタイル */
-        /* ★ 修正: D&D関連のCSSを削除 */
-        
         /* details[open] summary のスタイル */
         details[open] > summary {
             border-bottom: 1px solid #e5e7eb; /* gray-200 */
@@ -55,7 +52,14 @@
 <body class="bg-gray-100 font-sans">
 
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
-        <h1 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-2">配車調整アプリ</h1>
+        
+        <!-- ★ 修正: タイトルとマニュアルリンクを横並びに -->
+        <div class="flex justify-between items-center mb-6 border-b pb-2">
+            <h1 class="text-3xl font-bold text-gray-800">配車調整アプリ</h1>
+            <a href="./manual.md" target="_blank" class="text-sm bg-gray-500 hover:bg-gray-600 text-white font-bold py-1 px-3 rounded-lg shadow transition duration-200">
+                利用マニュアル
+            </a>
+        </div>
 
         <!-- ファイル入出力ボタン -->
         <section class="mb-6 grid grid-cols-2 gap-2 max-w-md">
@@ -156,28 +160,103 @@
 
         // --- 事前定義データ ---
         
+        
         let FAMILIES = [
-            { familyName: '小高家', members: [ { id: 'p1', name: '斗愛', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: '' } }, { id: 'p2', name: '小高監督', type: '保護者', data: { memo: '' } }, { id: 'p3', name: '小高母', type: '保護者', data: { memo: '' } }, { id: 'p22', name: '愛之佑', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '東小', other: '', memo: '' } } ] },
-            { familyName: '難波家', members: [ { id: 'p4', name: '諒成', type: '選手', isFlagTarget: true, data: { grade: '5年', school: 'x小', other: '', memo: '' } }, { id: 'p5', name: '難波父', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '浪川家', members: [ { id: 'p6', name: '長政', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '小金小', other: '', memo: '' } }, { id: 'p7', name: '浪川父', type: '保護者', data: { memo: '' } }, { id: 'p8', name: '浪川母', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '高橋家', members: [ { id: 'p9', name: '湊多', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: '' } } ] },
-            { familyName: '山田家', members: [ { id: 'p10', name: '颯真', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } }, { id: 'p11', name: '山田父', type: '保護者', data: { memo: '' } }, { id: 'p12', name: '山田母', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '菱沼家', members: [ { id: 'p13', name: '颯介', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } }, { id: 'p14', name: '菱沼父', type: '保護者', data: { memo: '' } }, { id: 'p15', name: '菱沼母', type: '保護者', data: { memo: '' } }, { id: 'p16', name: 'つぐみ', type: '兄弟', isFlagTarget: false, data: { grade: '2年', school: '小金小', other: '', memo: '' } } ] },
-            { familyName: '小野家', members: [ { id: 'p17', name: '暁人', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } }, { id: 'p18', name: '小野母', type: '保護者', data: { memo: '' } }, { id: 'p19', name: 'ななか', type: '兄弟', isFlagTarget: true, data: { grade: '2年', school: '小金小', other: '', memo: '' } } ] },
+            { familyName: '小高家', members: [
+                    { id: 'p1', name: '斗愛', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: ''}},
+                    { id: 'p2', name: '小高監督', type: '保護者', data: { memo: ''}},
+                    { id: 'p3', name: '小高母', type: '保護者', data: { memo: ''}},
+                    { id: 'p22', name: '愛之佑', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '東小', other: '', memo: ''}}
+                ]
+            },
+            { familyName: '難波家', members: [
+                    { id: 'p4', name: '諒成', type: '選手', isFlagTarget: true, data: { grade: '5年', school: 'x小', other: '', memo: ''}},
+                    { id: 'p5', name: '難波父', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '浪川家', members: [
+                    { id: 'p6', name: '長政', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p7', name: '浪川父', type: '保護者', data: { memo: ''}},
+                    { id: 'p8', name: '浪川母', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '高橋家', members: [
+                    { id: 'p9', name: '湊多', type: '選手', isFlagTarget: true, data: { grade: '5年', school: '東小', other: '', memo: ''}}
+                ]
+            },
+            { familyName: '山田家', members: [
+                    { id: 'p10', name: '颯真', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p11', name: '山田父', type: '保護者', data: { memo: ''}},
+                    { id: 'p12', name: '山田母', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '菱沼家', members: [
+                    { id: 'p13', name: '颯介', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p14', name: '菱沼父', type: '保護者', data: { memo: ''}},
+                    { id: 'p15', name: '菱沼母', type: '保護者', data: { memo: ''}},
+                    { id: 'p16', name: 'つぐみ', type: '兄弟', isFlagTarget: false, data: { grade: '2年', school: '小金小', other: '', memo: ''}}
+                ]
+            },
+            { familyName: '小野家', members: [
+                    { id: 'p17', name: '暁人', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p18', name: '小野母', type: '保護者', data: { memo: ''}},
+                    { id: 'p19', name: 'ななか', type: '兄弟', isFlagTarget: true, data: { grade: '2年', school: '小金小', other: '', memo: ''}}
+                ]
+            },
             { familyName: '野中家', members: [
                     { id: 'p45', name: '悠生', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '小金小', other: '', memo: '' } },
                     { id: 'p46', name: '野中父', type: '保護者', data: { memo: ''}},
                     { id: 'p47', name: '野中母', type: '保護者', data: { memo: ''}}
             ]},
-            { familyName: '津村家', members: [ { id: 'p20', name: '一樹', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '東小', other: '', memo: '' } }, { id: 'p21', name: '津村父', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '浅野家', members: [ { id: 'p23', name: '泰地', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } }, { id: 'p24', name: '浅野父', type: '保護者', data: { memo: '' } }, { id: 'p25', name: '浅野母', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '近藤家', members: [ { id: 'p26', name: '謙成', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '八木南小', other: '', memo: '' } }, { id: 'p44', name: '茉莉', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '八木南小', other: '', memo: '' } } , { id: 'p27', name: '近藤父', type: '保護者', data: { memo: '' } }, { id: 'p28', name: '近藤母', type: '保護者', data: { memo: '' } }, { id: 'p29', name: 'おうすけ', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: '' } } ] },
-            { familyName: '知野見家', members: [ { id: 'p30', name: '怜央', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } }, { id: 'p31', name: '知野見父', type: '保護者', data: { memo: '' } }, { id: 'p32', name: '知野見母', type: '保護者', data: { memo: '' } }, { id: 'p33', name: 'ゆな', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: '' } } ] },
-            { familyName: '藤山家', members: [ { id: 'p34', name: '琉杜', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } }, { id: 'p35', name: '藤山父', type: '保護者', data: { memo: '' } }, { id: 'p36', name: '藤山母', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '小河原家', members: [ { id: 'p37', name: '維', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: '' } }, { id: 'p38', name: '小河原父', type: '保護者', data: { memo: '' } }, { id: 'p39', name: '小河原母', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '古川家', members: [ { id: 'p40', name: '峻丞', type: '選手', isFlagTarget: true, data: { grade: '2年', school: '新松戸南小', other: '', memo: '' } }, { id: 'p41', name: '古川父', type: '保護者', data: { memo: '' } } ] },
-            { familyName: '坪井家', members: [ { id: 'p42', name: '雄也', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '東小', other: '', memo: '' } }, { id: 'p43', name: '坪井父', type: '保護者', data: { memo: '' } } ] },
-             { familyName: '鈴木家', members: [
+            { familyName: '津村家', members: [
+                    { id: 'p20', name: '一樹', type: '選手', isFlagTarget: true, data: { grade: '4年', school: '東小', other: '', memo: ''}},
+                    { id: 'p21', name: '津村父', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '浅野家', members: [
+                    { id: 'p23', name: '泰地', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p24', name: '浅野父', type: '保護者', data: { memo: ''}},
+                    { id: 'p25', name: '浅野母', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '近藤家', members: [
+                    { id: 'p26', name: '謙成', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '八木南小', other: '', memo: ''}},
+                    { id: 'p44', name: '茉莉', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '八木南小', other: '', memo: ''}},
+                    { id: 'p27', name: '近藤父', type: '保護者', data: { memo: ''}},
+                    { id: 'p28', name: '近藤母', type: '保護者', data: { memo: ''}},
+                    { id: 'p29', name: 'おうすけ', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: ''}}
+                ]
+            },
+            { familyName: '知野見家', members: [
+                    { id: 'p30', name: '怜央', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p31', name: '知野見父', type: '保護者', data: { memo: ''}},
+                    { id: 'p32', name: '知野見母', type: '保護者', data: { memo: ''}},
+                    { id: 'p33', name: 'ゆな', type: '兄弟', isFlagTarget: true, data: { grade: '', school: '', other: '', memo: ''}}
+                ]
+            },
+            { familyName: '藤山家', members: [
+                    { id: 'p34', name: '琉杜', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p35', name: '藤山父', type: '保護者', data: { memo: ''}},
+                    { id: 'p36', name: '藤山母', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '小河原家', members: [
+                    { id: 'p37', name: '維', type: '選手', isFlagTarget: true, data: { grade: '3年', school: '小金小', other: '', memo: ''}},
+                    { id: 'p38', name: '小河原父', type: '保護者', data: { memo: ''}},
+                    { id: 'p39', name: '小河原母', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '古川家', members: [
+                    { id: 'p40', name: '峻丞', type: '選手', isFlagTarget: true, data: { grade: '2年', school: '新松戸南小', other: '', memo: ''}},
+                    { id: 'p41', name: '古川父', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '坪井家', members: [
+                    { id: 'p42', name: '雄也', type: '選手', isFlagTarget: true, data: { grade: '1年', school: '東小', other: '', memo: ''}},
+                    { id: 'p43', name: '坪井父', type: '保護者', data: { memo: ''}}
+                ]
+            },
+            { familyName: '鈴木家', members: [
                     { id: 'p48', name: 'チヒロ', type: '選手', isFlagTarget: true, data: { grade: 'x年', school: 'y小', other: '', memo: '' } },
                     { id: 'p49', name: '鈴木父', type: '保護者', data: { memo: ''}},
                     { id: 'p50', name: '鈴木母', type: '保護者', data: { memo: ''}}
@@ -187,13 +266,36 @@
                     { id: 'p52', name: 'ナカハラ父', type: '保護者', data: { memo: ''}},
                     { id: 'p53', name: 'ナカハラ母', type: '保護者', data: { memo: ''}}
             ]},
-            { familyName: 'スタッフ・個人', members: [ { id: 'p94', name: '渡邉会長', type: 'その他', data: { memo: '' } }, { id: 'p99', name: '木村代表', type: 'その他', data: { memo: '' } }, { id: 'p98', name: '吉田さん', type: 'その他', data: { memo: '' } }, { id: 'p97', name: '前田さん', type: 'その他', data: { memo: '' } }, { id: 'p96', name: '中田さん', type: 'その他', data: { memo: '' } }, { id: 'p95', name: '渡辺さん', type: 'その他', data: { memo: '' } }, ] }
-        ];
+
+            { familyName: 'スタッフ・個人', members: [
+                    { id: 'p94', name: '渡邉会長', type: 'その他', data: { memo: ''} },
+                    { id: 'p99', name: '木村代表', type: 'その他', data: { memo: ''} },
+                    { id: 'p98', name: '吉田さん', type: 'その他', data: { memo: ''} },
+                    { id: 'p97', name: '前田さん', type: 'その他', data: { memo: ''} },
+                    { id: 'p96', name: '中田さん', type: 'その他', data: { memo: ''} },
+                    { id: 'p95', name: '渡辺さん', type: 'その他', data: { memo: ''} }
+                ]
+            }        ];
 
         let AVAILABLE_CARS_INFO = [
-            { id: 'c1', name: '小高カー', familyName: '小高家', baseCapacity: 6 }, { id: 'c2', name: '難波カー', familyName: '難波家', baseCapacity: 7 }, { id: 'c3', name: '浪川カー①', familyName: '浪川家', baseCapacity: 6 }, { id: 'c4', name: '浪川カー②', familyName: '浪川家', baseCapacity: 5 }, { id: 'c5', name: '山田カー①', familyName: '山田家', baseCapacity: 7 }, { id: 'c6', name: '山田カー②', familyName: '山田家', baseCapacity: 5 }, { id: 'c7', name: '菱沼カー', familyName: '菱沼家', baseCapacity: 6 }, { id: 'c8', name: '小野カー', familyName: '小野家', baseCapacity: 8 }, { id: 'c9', name: '浅野カー', familyName: '浅野家', baseCapacity: 8 }, { id: 'c10', name: '近藤カー', familyName: '近藤家', baseCapacity: 6 }, { id: 'c11', name: '知野見カー', familyName: '知野見家', baseCapacity: 7 }, { id: 'c12', name: '藤山カー', familyName: '藤山家', baseCapacity: 4 }, { id: 'c13', name: '小河原カー①', familyName: '小河原家', baseCapacity: 4 }, { id: 'c14', name: '小河原カー②', familyName: '小河原家', baseCapacity: 4 }, { id: 'c15', name: '古川カー', familyName: '古川家', baseCapacity: 8 }, { id: 'c16', name: 'コーチカー', familyName: 'スタッフ・個人', baseCapacity: 5 }
+            { id: 'c1', name: '小高カー', familyName: '小高家', baseCapacity: 6},
+            { id: 'c2', name: '難波カー', familyName: '難波家', baseCapacity: 7},
+            { id: 'c3', name: '浪川カー①', familyName: '浪川家', baseCapacity: 6},
+            { id: 'c4', name: '浪川カー②', familyName: '浪川家', baseCapacity: 5},
+            { id: 'c5', name: '山田カー①', familyName: '山田家', baseCapacity: 7},
+            { id: 'c6', name: '山田カー②', familyName: '山田家', baseCapacity: 5},
+            { id: 'c7', name: '菱沼カー', familyName: '菱沼家', baseCapacity: 6},
+            { id: 'c8', name: '小野カー', familyName: '小野家', baseCapacity: 8},
+            { id: 'c9', name: '浅野カー', familyName: '浅野家', baseCapacity: 8},
+            { id: 'c10', name: '近藤カー', familyName: '近藤家', baseCapacity: 6},
+            { id: 'c11', name: '知野見カー', familyName: '知野見家', baseCapacity: 7},
+            { id: 'c12', name: '藤山カー', familyName: '藤山家', baseCapacity: 4},
+            { id: 'c13', name: '小河原カー①', familyName: '小河原家', baseCapacity: 4},
+            { id: 'c14', name: '小河原カー②', familyName: '小河原家', baseCapacity: 4},
+            { id: 'c15', name: '古川カー', familyName: '古川家', baseCapacity: 8},
+            { id: 'c16', name: 'コーチカー', familyName: 'スタッフ・個人', baseCapacity: 5}
         ];
-
+        
         let ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
 
 
@@ -426,7 +528,7 @@
                         </div>
                         <div class="flex items-center">
                             <input type="checkbox" id="luggage-${car.id}" data-action="select-luggage" class="mr-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${hasLuggage ? 'checked' : ''}>
-                            <label for="luggage-${car.id}" class="text-sm text-gray-700">荷物あり (乗客定員1名)</label>
+                            <label for="luggage-${car.id}" class="text-sm text-gray-700">荷物あり (総定員2名)</label>
                         </div>
                     </div>
                 `;
@@ -484,7 +586,7 @@
                     headerHtml = `<div class="p-4 border-b bg-gray-100 flex-shrink-0"><h4 class="font-bold text-lg text-gray-700">${car.name}</h4><p class="text-sm text-gray-600">合計: ${car.members.length}名</p></div>`;
                     
                     // 別便のメンバー
-                    membersHtml = car.members.map((p, i) => { // ★ 修正: slotIndex の代わりに i を使用
+                    membersHtml = car.members.map((p, i) => { 
                         const memo = (participantData.get(p.id)?.memo || '').trim();
                         const flags = (p.isFlagTarget && (p.grade || p.school || p.other)) ? [p.grade, p.school, p.other].filter(Boolean).join(' ') : '';
                         const id = `seat-${car.id}-${p.id}`;
@@ -622,6 +724,12 @@
             if (seatB.participantId !== 'empty') {
                  participantB = seatB.isDriver ? carB.driver : carB.members[seatB.slotIndex];
             }
+            
+             // ★ 修正: 同一人物をチェックした場合（バグ回避）
+            if (participantA && participantB && participantA.id === participantB.id) {
+                 return; // 何もしない
+            }
+
 
             // --- 定員チェック ---
             let carAMembersCount = carA.members.filter(p => p !== null).length;
@@ -642,23 +750,46 @@
             }
 
             // --- データ操作 ---
-            // 1. Aの座席から削除 (空席にする)
-            if (seatA.isDriver) carA.driver = null;
-            else if (seatA.carId !== 'excluded-car') carA.members[seatA.slotIndex] = null;
-            else if (participantA) carA.members = carA.members.filter(p => p.id !== participantA.id); // 別便から削除
             
-            // 2. Bの座席から削除 (空席にする)
-            if (seatB.isDriver) carB.driver = null;
-            else if (seatB.carId !== 'excluded-car') carB.members[seatB.slotIndex] = null;
-            else if (participantB) carB.members = carB.members.filter(p => p.id !== participantB.id); // 別便から削除
+            // ★★★ 修正: 同一車内と別車間でロジックを分岐 ★★★
 
-            // 3. Aの座席に B を追加
-            addParticipant(carA, participantB, seatA.isDriver, seatA.slotIndex);
-            
-            // 4. Bの座席に A を追加
-            addParticipant(carB, participantA, seatB.isDriver, seatB.slotIndex);
+            if (carA.id === carB.id) {
+                // --- 同一車内でのスワップ ---
+                if (seatA.isDriver && !seatB.isDriver) { // D <-> P
+                    carA.driver = participantB;
+                    carA.members[seatB.slotIndex] = participantA;
+                } else if (!seatA.isDriver && seatB.isDriver) { // P <-> D
+                    carA.members[seatA.slotIndex] = participantB;
+                    carA.driver = participantA;
+                } else if (!seatA.isDriver && !seatB.isDriver) { // P <-> P
+                    // slotIndex を使って配列内で直接入れ替え
+                    carA.members[seatA.slotIndex] = participantB;
+                    carA.members[seatB.slotIndex] = participantA;
+                }
+                // D <-> D (ありえない)
+                
+            } else {
+                // --- 別車間でのスワップ ---
+                
+                // 1. Aの座席から削除 (空席にする)
+                if (seatA.isDriver) carA.driver = null;
+                else if (carA.id === 'excluded-car') carA.members = carA.members.filter(p => p?.id !== participantA?.id); // 別便から削除
+                else if (seatA.slotIndex > -1) carA.members[seatA.slotIndex] = null;
 
-            // 5. 空きを詰める + D昇格
+                // 2. Bの座席から削除 (空席にする)
+                if (seatB.isDriver) carB.driver = null;
+                else if (carB.id === 'excluded-car') carB.members = carB.members.filter(p => p?.id !== participantB?.id); // 別便から削除
+                else if (seatB.slotIndex > -1) carB.members[seatB.slotIndex] = null;
+
+                // 3. Aの座席に B を追加
+                addParticipant(carA, participantB, seatA.isDriver, seatA.slotIndex);
+                
+                // 4. Bの座席に A を追加
+                addParticipant(carB, participantA, seatB.isDriver, seatB.slotIndex);
+            }
+
+
+            // 5. 空きを詰める + D昇格 (両方の車を対象)
             [carA, carB].filter((car, index, self) => car && self.findIndex(c => c.id === car.id) === index)
                 .forEach(car => {
                      if (car.id !== 'excluded-car') {
@@ -679,14 +810,11 @@
             updateTextOutput();
         }
 
-        // ★ 修正: チェックボックス操作用の検索・削除関数 (使用停止)
-        // function findAndRemoveParticipant(car, pId, isDriver) { ... }
 
         // ★ 修正: チェックボックス操作用の追加関数 (slotIndex引数を追加)
         function addParticipant(car, participant, isDriver, slotIndex = -1) {
             if (!car) return; 
             
-            // ★ 修正: participantがnullの場合の処理
             if (participant === null) {
                 if (isDriver) {
                     car.driver = null;
@@ -697,7 +825,7 @@
             }
             
             if (car.id === 'excluded-car') {
-                 if (!car.members.some(m => m && m.id === participant.id)) { // ★ 修正: m && m.id
+                 if (!car.members.some(m => m && m.id === participant.id)) { 
                      car.members.push(participant);
                  }
                  return;
@@ -709,7 +837,7 @@
                 }
                 car.driver = participant;
             } else {
-                 if (!car.members.some(m => m && m.id === participant.id) && // ★ 修正: m && m.id
+                 if (!car.members.some(m => m && m.id === participant.id) && 
                      (!car.driver || car.driver.id !== participant.id)) 
                  {
                      if (slotIndex !== -1 && car.id !== 'excluded-car' && slotIndex < car.members.length && car.members[slotIndex] === null) { 
@@ -751,7 +879,16 @@
             const target = e.target; if (target.type === 'checkbox' && target.dataset.action === 'exclude-participant') { const id = target.dataset.id; if (target.checked) { excludedParticipantIds.add(id); } else { excludedParticipantIds.delete(id); } }
         }
         function handleAssignment() { 
-             if (selectedCarIds.size === 0) { showMessage('ステップ2で車を1台以上選択してください。', 'error'); return; } let errors = []; let driverMap = new Map(); let selectedCarsData = []; const allParticipantsWithData = ALL_PARTICIPANTS_FLAT .filter(p => selectedParticipantIds.has(p.id)) .map(p => { const family = FAMILIES.find(f => f.members.some(m => m.id === p.id)); const currentData = participantData.get(p.id) || {}; const masterData = p.data || {}; return { ...p, grade: currentData.grade !== undefined ? currentData.grade : masterData.grade || '', school: currentData.school !== undefined ? currentData.school : masterData.school || '', other: currentData.other !== undefined ? currentData.other : masterData.other || '', memo: currentData.memo !== undefined ? currentData.memo : masterData.memo || '', familyName: family ? family.familyName : null }; }); selectedCarIds.forEach(carId => { const driverId = selectedDrivers.get(carId); const carInfo = AVAILABLE_CARS_INFO.find(c=>c.id === carId); if (!carInfo) return; if (!driverId) { errors.push(`${carInfo.name} のドライバーが選択されていません。`); return; } const driver = allParticipantsWithData.find(p => p.id === driverId); if (!driver) { const masterDriverInfo = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId); if (masterDriverInfo) { errors.push(`ドライバー (${masterDriverInfo.name}) が参加者に含まれていません。`); } else { errors.push(`${carInfo.name} のドライバー(ID: ${driverId})が見つかりません。`); } return; } if (Array.from(driverMap.values()).some(d => d.id === driverId)) { errors.push(`ドライバー (${driver.name}) が複数の車に割り当てられています。`); } driverMap.set(carId, driver); const hasLuggage = selectedLuggage.has(carId); let actualCapacity = carInfo.baseCapacity - 1; if (hasLuggage) actualCapacity = 1; selectedCarsData.push({ id: carId, name: carInfo.name, familyName: carInfo.familyName, baseCapacity: carInfo.baseCapacity, driverId: driverId, capacity: actualCapacity, hasLuggage: hasLuggage }); }); if (errors.length > 0) { showMessage(errors.join('<br>'), 'error'); return; } const driverIds = new Set(Array.from(driverMap.values()).map(d => d.id)); let participantsToAssign = allParticipantsWithData.filter(p => !driverIds.has(p.id) && !excludedParticipantIds.has(p.id) ); let excludedParticipants = allParticipantsWithData.filter(p => excludedParticipantIds.has(p.id) && !driverIds.has(p.id) ); const totalParticipants = participantsToAssign.length; const totalCapacity = selectedCarsData.reduce((sum, car) => sum + car.capacity, 0); if (totalParticipants > totalCapacity) { showMessage(`定員オーバーです。乗客 ${totalParticipants}人 に対して定員は合計 ${totalCapacity}人 です。`, 'warning'); } else { hideMessage(); } const assignments = allocateParticipants(participantsToAssign, selectedCarsData, driverMap); assignments.push({ id: 'excluded-car', name: '別便', capacity: 999, baseCapacity: 999, driver: null, members: excludedParticipants, hasLuggage: false }); currentAssignments = assignments; renderResults(currentAssignments); currentAssignments.forEach(car => { car.element = document.getElementById(`car-result-${car.id}`); }); updateTextOutput();
+             if (selectedCarIds.size === 0) { showMessage('ステップ2で車を1台以上選択してください。', 'error'); return; } let errors = []; let driverMap = new Map(); let selectedCarsData = []; const allParticipantsWithData = ALL_PARTICIPANTS_FLAT .filter(p => selectedParticipantIds.has(p.id)) .map(p => { const family = FAMILIES.find(f => f.members.some(m => m.id === p.id)); const currentData = participantData.get(p.id) || {}; const masterData = p.data || {}; return { ...p, grade: currentData.grade !== undefined ? currentData.grade : masterData.grade || '', school: currentData.school !== undefined ? currentData.school : masterData.school || '', other: currentData.other !== undefined ? currentData.other : masterData.other || '', memo: currentData.memo !== undefined ? currentData.memo : masterData.memo || '', familyName: family ? family.familyName : null }; }); selectedCarIds.forEach(carId => { const driverId = selectedDrivers.get(carId); const carInfo = AVAILABLE_CARS_INFO.find(c=>c.id === carId); if (!carInfo) return; if (!driverId) { errors.push(`${carInfo.name} のドライバーが選択されていません。`); return; } const driver = allParticipantsWithData.find(p => p.id === driverId); if (!driver) { const masterDriverInfo = ALL_PARTICIPANTS_FLAT.find(p=>p.id === driverId); if (masterDriverInfo) { errors.push(`ドライバー (${masterDriverInfo.name}) が参加者に含まれていません。`); } else { errors.push(`${carInfo.name} のドライバー(ID: ${driverId})が見つかりません。`); } return; } if (Array.from(driverMap.values()).some(d => d.id === driverId)) { errors.push(`ドライバー (${driver.name}) が複数の車に割り当てられています。`); } driverMap.set(carId, driver); const hasLuggage = selectedLuggage.has(carId); 
+             
+             let actualCapacity = carInfo.baseCapacity - 1; 
+             let actualBaseCapacity = carInfo.baseCapacity;
+             if (hasLuggage) {
+                actualBaseCapacity = 2; 
+                actualCapacity = 1; 
+             }
+             
+             selectedCarsData.push({ id: carId, name: carInfo.name, familyName: carInfo.familyName, baseCapacity: actualBaseCapacity, driverId: driverId, capacity: actualCapacity, hasLuggage: hasLuggage }); }); if (errors.length > 0) { showMessage(errors.join('<br>'), 'error'); return; } const driverIds = new Set(Array.from(driverMap.values()).map(d => d.id)); let participantsToAssign = allParticipantsWithData.filter(p => !driverIds.has(p.id) && !excludedParticipantIds.has(p.id) ); let excludedParticipants = allParticipantsWithData.filter(p => excludedParticipantIds.has(p.id) && !driverIds.has(p.id) ); const totalParticipants = participantsToAssign.length; const totalCapacity = selectedCarsData.reduce((sum, car) => sum + car.capacity, 0); if (totalParticipants > totalCapacity) { showMessage(`定員オーバーです。乗客 ${totalParticipants}人 に対して定員は合計 ${totalCapacity}人 です。`, 'warning'); } else { hideMessage(); } const assignments = allocateParticipants(participantsToAssign, selectedCarsData, driverMap); assignments.push({ id: 'excluded-car', name: '別便', capacity: 999, baseCapacity: 999, driver: null, members: excludedParticipants, hasLuggage: false }); currentAssignments = assignments; renderResults(currentAssignments); currentAssignments.forEach(car => { car.element = document.getElementById(`car-result-${car.id}`); }); updateTextOutput();
         }
         function allocateParticipants(participants, cars, driverMap){ 
              let assignments = cars.map(car => ({ ...car, driver: driverMap.get(car.id) || null, members: [] })); if (participants.length === 0) return assignments; let remainingParticipants = [...participants]; const typePriority = { '保護者': 1, '兄弟': 2, '選手': 3, 'その他': 4 }; assignments.forEach(car => { if (!car.driver || !car.familyName || car.driver.familyName !== car.familyName) return; let familyMembers = remainingParticipants .filter(p => p.familyName === car.familyName) .sort((a, b) => (typePriority[a.type] || 9) - (typePriority[b.type] || 9)); familyMembers.forEach(member => { if (car.members.length < car.capacity) { car.members.push(member); remainingParticipants = remainingParticipants.filter(p => p.id !== member.id); } }); }); function getFlagMatchScore(pA, pB) { if (!pA || !pB || !pA.isFlagTarget || !pB.isFlagTarget) return 0; let score = 0; if (pA.grade && pA.grade === pB.grade) score++; if (pA.school && pA.school === pB.school) score++; if (pA.other && pA.other === pB.other) score++; return score; } let participantsToProcess = remainingParticipants.sort((a, b) => (a.isFlagTarget !== b.isFlagTarget) ? (a.isFlagTarget ? -1 : 1) : Math.random() - 0.5); let stillRemaining = []; participantsToProcess.forEach(participant => { let bestCarCandidates = []; let maxScore = 0; assignments.forEach(car => { if (car.members.length >= car.capacity) return; let currentCarScore = car.members.filter(p => p !== null).reduce((score, member) => score + getFlagMatchScore(participant, member), 0); if (currentCarScore > maxScore) { maxScore = currentCarScore; bestCarCandidates = [car]; } else if (currentCarScore > 0 && currentCarScore === maxScore) { bestCarCandidates.push(car); } }); if (bestCarCandidates.length > 0) { const bestCar = bestCarCandidates[Math.floor(Math.random() * bestCarCandidates.length)]; bestCar.members.push(participant); } else { stillRemaining.push(participant); } }); if (stillRemaining.length > 0) { let carsWithVacancy = assignments.map(car => ({ carRef: car, vacancy: car.capacity - car.members.filter(p => p !== null).length })).filter(c => c.vacancy > 0).sort((a, b) => b.vacancy - a.vacancy); let carIndex = 0; stillRemaining.forEach(participant => { if (carsWithVacancy.length === 0) return; let assigned = false, initialCarIndex = carIndex; while(!assigned) { if (carsWithVacancy.length === 0) break; carIndex = carIndex % carsWithVacancy.length; const targetCarInfo = carsWithVacancy[carIndex]; if (targetCarInfo.carRef.members.filter(p => p !== null).length < targetCarInfo.carRef.capacity) { targetCarInfo.carRef.members.push(participant); targetCarInfo.vacancy--; assigned = true; if (targetCarInfo.vacancy <= 0) carsWithVacancy.splice(carIndex, 1); else carIndex++; } else { carsWithVacancy.splice(carIndex, 1); } if (carsWithVacancy.length > 0 && carIndex % carsWithVacancy.length === initialCarIndex && !assigned) break; } }); } 
@@ -776,23 +913,45 @@
                 case 'warning': messageContainer.classList.add('bg-yellow-100', 'border-yellow-400', 'text-yellow-700'); break;
                 default: messageContainer.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
              }
-             // ★ 修正: メッセージエリアを表示
              messageContainer.classList.remove('hidden');
         }
         function hideMessage(){ 
              messageContainer.classList.add('hidden');
         }
         function getCurrentState(){ 
-             return { selectedParticipantIds: Array.from(selectedParticipantIds), selectedCarIds: Array.from(selectedCarIds), selectedDrivers: Array.from(selectedDrivers.entries()), selectedLuggage: Array.from(selectedLuggage), excludedParticipantIds: Array.from(excludedParticipantIds), participantData: Array.from(participantData.entries()) };
+             // ★ 修正: currentAssignments も保存
+             return { selectedParticipantIds: Array.from(selectedParticipantIds), selectedCarIds: Array.from(selectedCarIds), selectedDrivers: Array.from(selectedDrivers.entries()), selectedLuggage: Array.from(selectedLuggage), excludedParticipantIds: Array.from(excludedParticipantIds), participantData: Array.from(participantData.entries()), currentAssignments: currentAssignments };
         }
         function restoreState(state){ 
-             selectedParticipantIds = new Set(state.selectedParticipantIds || []); selectedCarIds = new Set(state.selectedCarIds || []); selectedDrivers = new Map(state.selectedDrivers || []); selectedLuggage = new Set(state.selectedLuggage || []); excludedParticipantIds = new Set(state.excludedParticipantIds || []); participantData = new Map(state.participantData || []); if (participantData.size === 0) { initializeParticipantData(); } currentAssignments = [];
+             selectedParticipantIds = new Set(state.selectedParticipantIds || []); selectedCarIds = new Set(state.selectedCarIds || []); selectedDrivers = new Map(state.selectedDrivers || []); selectedLuggage = new Set(state.selectedLuggage || []); excludedParticipantIds = new Set(state.excludedParticipantIds || []); participantData = new Map(state.participantData || []); 
+             if (participantData.size === 0) { initializeParticipantData(); }
+             
+             // ★ 修正: currentAssignments も復元
+             currentAssignments = state.currentAssignments || [];
+             if (currentAssignments.length > 0) {
+                renderResults(currentAssignments);
+                currentAssignments.forEach(car => {
+                    car.element = document.getElementById(`car-result-${car.id}`);
+                });
+                updateTextOutput();
+                textOutputContainer.classList.add('hidden'); 
+            } else {
+                renderResults([]); // 空の結果を描画
+            }
         }
         function handleExportState(){ 
-             const state = getCurrentState(); const jsonString = JSON.stringify(state, null, 2); const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `car_assignment_state_${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showMessage('現在の状態をファイルに保存しました。', 'info');
+             const state = getCurrentState(); const jsonString = JSON.stringify(state, null, 2); // ★ 修正: 整形
+             const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `car_assignment_state_${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showMessage('現在の状態をファイルに保存しました。', 'info');
         }
         function handleImportState(e){ 
-             const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const state = JSON.parse(event.target.result); restoreState(state); renderParticipantList(); renderCarList(); renderExclusionList(); renderResults([]); textOutputContainer.classList.add('hidden'); showMessage('状態を読み込みました。', 'info'); } catch (err) { console.error('Error parsing JSON state:', err); showMessage('ファイルの読み込みに失敗しました。無効なJSONファイルです。', 'error'); } e.target.value = null; }; reader.readAsText(file);
+             const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const state = JSON.parse(event.target.result); 
+                restoreState(state); 
+                renderParticipantList(); 
+                renderCarList(); 
+                renderExclusionList(); 
+                // renderResults([]) は restoreState が呼び出す
+                // textOutputContainer.classList.add('hidden'); 
+                showMessage('状態を読み込みました。', 'info'); } catch (err) { console.error('Error parsing JSON state:', err); showMessage('ファイルの読み込みに失敗しました。無効なJSONファイルです。', 'error'); } e.target.value = null; }; reader.readAsText(file);
         }
         function handleShowTextOutput(){ 
               if (currentAssignments.length === 0) { showMessage('テキスト出力する結果がありません。先に「割り当て実行」を押してください。', 'error'); return; } textOutputContainer.classList.toggle('hidden'); if (!textOutputContainer.classList.contains('hidden')) { updateTextOutput(); }
@@ -807,7 +966,8 @@
               const textArea = document.createElement('textarea'); textArea.value = text; textArea.style.position = 'fixed'; textArea.style.opacity = '0'; document.body.appendChild(textArea); textArea.focus(); textArea.select(); try { const successful = document.execCommand('copy'); if (successful) { showMessage('クリップボードにコピーしました。', 'info'); } else { showMessage('コピーに失敗しました。', 'error'); } } catch (err) { showMessage('コピーに失敗しました。', 'error'); } document.body.removeChild(textArea);
         }
         function handleExportMasterData(){ 
-              const masterData = { families: FAMILIES, cars: AVAILABLE_CARS_INFO }; const jsonString = JSON.stringify(masterData, null, 2); const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `car_assignment_master_${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showMessage('現在のマスターデータをファイルに保存しました。', 'info');
+              const masterData = { families: FAMILIES, cars: AVAILABLE_CARS_INFO }; const jsonString = JSON.stringify(masterData, null, 2); // ★ 修正: 整形
+              const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `car_assignment_master_${new Date().toISOString().slice(0,10)}.json`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); showMessage('現在のマスターデータをファイルに保存しました。', 'info');
         }
         function handleImportMasterData(e){ 
               const file = e.target.files[0]; if (!file) return; const reader = new FileReader(); reader.onload = (event) => { try { const masterData = JSON.parse(event.target.result); if (!masterData || !Array.isArray(masterData.families) || !Array.isArray(masterData.cars)) { throw new Error('JSONの形式が正しくありません。 "families" と "cars" の配列が必要です。'); } FAMILIES = masterData.families; AVAILABLE_CARS_INFO = masterData.cars; ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members); restoreState({}); initializeParticipantData(); renderParticipantList(); renderCarList(); renderExclusionList(); renderResults([]); textOutputContainer.classList.add('hidden'); toggleDetailsButton.textContent = 'すべて閉じる'; showMessage('マスターデータを読み込み、アプリをリセットしました。', 'info'); } catch (err) { console.error('Error parsing master data JSON:', err); showMessage(`マスターデータの読み込みに失敗しました: ${err.message}`, 'error'); } e.target.value = null; }; reader.readAsText(file);
