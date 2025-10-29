@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配車調整アプリ 利用マニュアル</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Tailwind CSSのproseプラグイン風の基本スタイル */
+        .prose {
+            color: #374151; /* gray-700 */
+            line-height: 1.75;
+        }
+        .prose h1 {
+            font-size: 2.25rem; /* text-3xl */
+            font-weight: 800; /* extrabold */
+            margin-bottom: 1em;
+            padding-bottom: 0.5em;
+            border-bottom: 1px solid #e5e7eb; /* gray-200 */
+        }
+        .prose h2 {
+            font-size: 1.875rem; /* text-2xl */
+            font-weight: 700; /* bold */
+            margin-top: 2em;
+            margin-bottom: 1em;
+            padding-bottom: 0.25em;
+            border-bottom: 1px solid #e5e7eb; /* gray-200 */
+        }
+        .prose h3 {
+            font-size: 1.5rem; /* text-xl */
+            font-weight: 600; /* semibold */
+            margin-top: 1.6em;
+            margin-bottom: 0.6em;
+        }
+        .prose p {
+            margin-top: 1.25em;
+            margin-bottom: 1.25em;
+        }
+        .prose ul, .prose ol {
+            margin-top: 1.25em;
+            margin-bottom: 1.25em;
+            padding-left: 1.75em;
+        }
+        .prose ul {
+            list-style-type: disc;
+        }
+        .prose ol {
+            list-style-type: decimal;
+        }
+        .prose li {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
+        }
+        .prose code {
+            background-color: #F3F4F6; /* gray-100 */
+            padding: 0.25em 0.5em;
+            border-radius: 0.25rem;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        .prose pre {
+            background-color: #1F2937; /* gray-800 */
+            color: #F9FAFB; /* gray-50 */
+            padding: 1em;
+            border-radius: 0.375rem;
+            overflow-x: auto;
+        }
+        .prose pre code {
+            background-color: transparent;
+            padding: 0;
+        }
+        .prose strong {
+            font-weight: 600; /* semibold */
+        }
+        .prose .image-placeholder {
+            display: block;
+            width: 100%;
+            padding: 4rem 1rem;
+            background-color: #F9FAFB; /* gray-50 */
+            border: 1px dashed #D1D5DB; /* gray-300 */
+            border-radius: 0.375rem;
+            text-align: center;
+            color: #6B7280; /* gray-500 */
+            font-style: italic;
+            margin-top: 1.25em;
+            margin-bottom: 1.25em;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto max-w-3xl p-8 my-8 bg-white shadow-lg rounded-lg">
+        <article class="prose lg:prose-xl">
+            <h1>配車調整アプリ 利用マニュアル</h1>
+
+            <h2>1. 画面説明</h2>
+            <p>アプリは大きく分けて、上部の「ファイル操作エリア」と、メインの「作業エリア（3カラム）」、下部の「割り当て結果エリア」で構成されています。</p>
+            
+            <div class="image-placeholder"></div>
+
+            <h3>① ファイル操作エリア</h3>
+            <p>状態やマスターデータをJSONファイルとして保存（エクスポート）したり、読み込む（インポート）したりできます。</p>
+
+            <h3>② 作業エリア</h3>
+            <p>配車調整のメイン作業を行うエリアです。</p>
+            <ul>
+                <li><strong>1. 参加者を選択:</strong> 家族ごとに参加するメンバーを選択し、必要に応じて備考などを入力します。</li>
+                <li><strong>2. 車とドライバーを選択:</strong> 利用する車を選択し、ドライバーや荷物の有無を指定します。</li>
+                <li><strong>3. 別便の人を除外:</strong> 参加者のうち、配車が不要な人（現地集合など）を選択します。</li>
+                <li><strong>4. 割り当て実行:</strong> 上記の入力内容に基づき、配車案を自動生成します。</li>
+            </ul>
+
+            <h3>③ 割り当て結果エリア</h3>
+            <p>自動生成された配車案が表示されます。このエリアで手動調整（入れ替え）も行えます。</p>
+
+            <h2>2. 利用方法</h2>
+            <p>基本的な操作の流れは、画面のステップ番号（1〜5）に沿って進みます。</p>
+
+            <h3>2.1 出席者を確認し入力 (ステップ1)</h3>
+            <div class="image-placeholder"></div>
+            <ol>
+                <li>
+                    <strong>参加者選択:</strong>
+                    <ul>
+                        <li>家族ごとに参加するメンバーのチェックボックスをオンにします。</li>
+                        <li>家族名の右にある「全員参加」「全員不参加」ボタンで、その家族のメンバーを一括でチェック/解除できます。</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>フラグ・備考入力:</strong>
+                    <ul>
+                        <li>参加者（主に選手）には、「学年」「学校」「その他」のフラグ情報を入力できます。これは「3. 配車案生成ロジック」で利用されます。</li>
+                        <li>「備考」欄に入力した内容は、最終的なテキスト出力時に名前の後ろに <code>[備考内容]</code> として表示されます。（例: <code>★太郎 [初参加]</code>）</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h3>2.2 車出し可能な車を確認し入力 (ステップ2)</h3>
+            <div class="image-placeholder"></div>
+            <ol>
+                <li><strong>車選択:</strong>
+                    <ul>
+                        <li>当日利用する車のチェックボックスをオンにします。</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>ドライバー選択:</strong>
+                    <ul>
+                        <li>車ごとに、ドライバーを選択します。ドライバーは、その車を所有する家族のメンバー（父または母）が自動で設定されますが、ドロップダウンから変更も可能です。</li>
+                        <li><strong>重要:</strong> ドライバーは、ステップ1で「参加者」としてチェックされている必要があります。</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>荷物の有無:</strong>
+                    <ul>
+                        <li>「荷物あり」にチェックを入れると、その車の<strong>総定員が強制的に「2名」</strong>（ドライバー1名、乗客1名）として計算されます。大きな荷物を積む場合に使用します。</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h3>2.3 配車案作成 (ステップ3 & 4)</h3>
+            <ol>
+                <li><strong>別便除外 (ステップ3):</strong>
+                    <ul>
+                        <li>ステップ1で選択した参加者のうち、配車が不要な人（現地集合、電車移動など）のチェックボックスをオンにします。</li>
+                    </ul>
+                </li>
+                <li><strong>割り当て実行 (ステップ4):</strong>
+                    <ul>
+                        <li>「割り当て実行」ボタンを押すと、「5. 割り当て結果」エリアに配車案が自動生成されます。</li>
+                        <li>「別便」にチェックした人は、「別便」カードにまとめられます。</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h3>2.4 調整 (ステップ5, チェックボックス操作)</h3>
+            <div class="image-placeholder"></div>
+            <p>自動割り当て後、手動でメンバーを入れ替えることができます。<strong>2つのチェックボックスを選択する</strong>ことで入れ替えを行います。</p>
+            <ol>
+                <li>移動・交換したい1人目（または空席）のチェックボックスをクリックします。背景が青くハイライトされます。</li>
+                <li>移動・交換したい2人目（または空席）のチェックボックスをクリックします。</li>
+                <li><strong>2つ目をクリックした瞬間に、2つの座席のメンバー（または空席）が入れ替わります。</strong></li>
+            </ol>
+            <p>この操作により、以下の調整が可能です。</p>
+            <ul>
+                <li><strong>順序入れ替え:</strong> 同じ車の中で、乗客同士を入れ替える。（例: <code>乗客A</code> ⇔ <code>乗客B</code>）</li>
+                <li><strong>車間の移動:</strong> 車Aの <code>乗客A</code> と、車Bの <code>-- 空席 --</code> を入れ替える。</li>
+                <li><strong>車間の入れ替え:</strong> 車Aの <code>乗客A</code> と、車Bの <code>乗客C</code> を入れ替える。</li>
+                <li><strong>ドライバーの変更:</strong> <code>ドライバーA</code> と <code>乗客B</code> を入れ替える。</li>
+                <li><strong>別便への移動:</strong> 車Aの <code>乗客A</code> と、別便カードの <code>-- 別便へ移動 --</code> を入れ替える。</li>
+            </ul>
+            <p>※乗客が <code>null</code>（空席）で埋められているため、操作後は「空きを詰める」処理が自動で実行され、空席は常にリストの下部に移動します。</p>
+
+            <h3>2.5 テキストの出力（LINEのノートに貼り付け）</h3>
+            <ol>
+                <li>「5. 割り当て結果」エリアの右上にある「テキスト出力」ボタンを押します。</li>
+                <li>テキストエリアが表示されます。配車結果がLINEなどに貼り付けやすい形式で表示されます。</li>
+                <li>「コピー」ボタンを押すと、内容がクリップボードにコピーされます。</li>
+                <li>LINEのノートなどに貼り付けて共有します。</li>
+            </ol>
+            <p><strong>出力例:</strong></p>
+            <pre><code>小高カー ([D] 小高監督 [初参加], ★斗愛, ★愛之佑)
+浪川カー① ([D] 浪川父, ★長政, 難波父)
+...
+-------
+□別便
+坪井父 [別便]
+</code></pre>
+
+            <h2>3. 配車案生成ロジック</h2>
+            <p>「割り当て実行」ボタンを押した際、以下の優先順位で自動割り当てが行われます。</p>
+            <ol>
+                <li>
+                    <strong>最優先 (家族の車):</strong>
+                    <ul>
+                        <li>ドライバーが運転する車（＝その家族の車）に、その家族のメンバーを割り当てます。</li>
+                        <li>席が埋まる優先順位は「1. 保護者」→「2. 兄弟」→「3. 選手」→「4. その他」です。</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>次優先 (フラグ一致):</strong>
+                    <ul>
+                        <li>残った参加者のうち、フラグ（学年、学校など）が設定されている人をグループ化します。</li>
+                        <li>その車の「すでに乗っている乗客」と、自分（参加者）との間で、<code>grade</code>, <code>school</code>, <code>other</code> のフラグ一致数を計算し、合計スコアを出します。</li>
+                        <li>参加者は、この「合計スコア」が最も高い車に割り当てられます。（同級生や同じ学校の子が乗っている車が優先されます）</li>
+                        <li>最高スコアが同じ車が複数あった場合は、ランダムで決定されます。</li>
+                    </ul>
+                </li>
+                <li>
+                    <strong>残り (個人):</strong>
+                    <ul>
+                        <li>ステップ1, 2で割り当てられなかった参加者（どの車ともフラグが一致しなかった人）は、空いている席に均等に割り当てられます。</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h2>4. エクスポート／インポート方法</h2>
+            <p>作業の途中経過や、作成したマスターデータをファイルとして保存（エクスポート）したり、後で読み込む（インポート）したりできます。</p>
+            <div class="image-placeholder"></div>
+
+            <h3>状態の保存／読み込み</h3>
+            <p>現在の<strong>入力内容</strong>（誰が参加するか、どの車を使うか、備考欄、<strong>配車結果</strong>など）を保存します。遠征の前日に入力した内容を保存しておき、当日読み込むといった使い方を想定しています。</p>
+            <ul>
+                <li>
+                    <strong>保存 (エクスポート):</strong>
+                    <ol>
+                        <li>「状態を保存 (JSON)」ボタンを押します。</li>
+                        <li><code>car_assignment_state_YYYY-MM-DD.json</code> というファイルがダウンロードされます。このファイルをPCやスマートフォンのわかりやすい場所に保存してください。</li>
+                    </ol>
+                </li>
+                <li>
+                    <strong>読込 (インポート):</strong>
+                    <ol>
+                        <li>「状態を読み込む (JSON)」ボタンを押します。</li>
+                        <li>ファイル選択画面が開くので、以前に保存した <code>car_assignment_state_...json</code> ファイルを選択します。</li>
+                        <li>アプリの入力内容と、ステップ5の配車結果がファイルから読み込んだ状態に復元されます。</li>
+                    </ol>
+                </li>
+            </ul>
+
+            <h3>マスターの保存／読み込み</h3>
+            <p><strong>大元のデータ</strong>（参加者名簿や車リスト自体）を保存・読み込みします。年度の変わり目や、メンバーが大幅に変更された際に使用します。（詳細は「5. マスターデータの編集方法」を参照）</p>
+            <ul>
+                <li>
+                    <strong>保存 (エクスポート):</strong>
+                    <ol>
+                        <li>「マスターを保存 (JSON)」ボタンを押します。</li>
+                        <li>現在のマスターデータ（<code>FAMILIES</code> と <code>AVAILABLE_CARS_INFO</code>）が <code>car_assignment_master_...json</code> としてダウンロードされます。</li>
+                    </ol>
+                </li>
+                <li>
+                    <strong>読込 (インポート):</strong>
+                    <ol>
+                        <li>「マスターを読み込む (JSON)」ボタンを押します。</li>
+                        <li>編集した、またはバックアップしておいた <code>car_assignment_master_...json</code> ファイルを選択します。</li>
+                        <li><strong>注意:</strong> アプリ全体がリセットされ、マスターデータがファイルの内容に置き換わります。現在の入力内容はすべて消去されます。</li>
+                    </ol>
+                </li>
+            </ul>
+
+            <h2>5. マスターデータの編集方法（JSONがわからない人にも）</h2>
+            <p>マスターデータ（参加者名簿や車リスト）は、JSONという形式のテキストファイルで管理されています。直接編集することで、アプリのデータを最新の状態に更新できます。</p>
+
+            <h3>JSONとは？</h3>
+            <p>「見出し」と「値」をペアで管理する、メモ帳のようなものです。
+            <code>"見出し": "値"</code> のように書きます。</p>
+
+            <h3>編集の基本的な流れ</h3>
+            <ol>
+                <li>アプリの「マスターを保存 (JSON)」ボタンを押し、<code>car_assignment_master_...json</code> ファイルをダウンロードします。</li>
+                <li>このファイルをPCの<strong>メモ帳</strong>や<strong>テキストエディタ</strong>（VSCodeなど）で開きます。</li>
+                <li>以下を参考に、内容を編集します。（<strong>重要: <code>"</code> や <code>,</code> <code>{</code> <code>}</code> <code>[</code> <code>]</code> を消さないように注意してください</strong>）</li>
+                <li>編集が終わったら、ファイルを保存します。</li>
+                <li>アプリの「マスターを読み込む (JSON)」ボタンで、編集したファイルを読み込みます。</li>
+            </ol>
+
+            <h3>編集例：参加者 (FAMILIES)</h3>
+            <p><code>FAMILIES</code> は、<code>[</code> と <code>]</code> で囲まれた「家族」のリストです。</p>
+            <pre><code>  "families": [
+    {
+      "familyName": "小高家",
+      "members": [
+        {
+          "id": "p1",
+          "name": "斗愛",
+          "type": "選手",
+          "isFlagTarget": true,
+          "data": {
+            "grade": "5年",
+            "school": "東小",
+            "other": "",
+            "memo": ""
+          }
+        },
+        {
+          "id": "p2",
+          "name": "小高監督",
+          "type": "保護者",
+          "data": {
+            "memo": ""
+          }
+        }
+      ]
+    },
+    {
+      "familyName": "難波家",
+      "members": [
+        /* ... */
+      ]
+    }
+  ]
+</code></pre>
+            <ul>
+                <li><strong>家族を追加する:</strong>
+                <code>{ ... }</code> で囲まれた「家族ブロック」をコピーし、リストの最後（<code>]</code> の直前）に貼り付け、内容を書き換えます。<strong>ブロックの間は <code>,</code>（カンマ）で区切る</strong>必要があります。</li>
+                <li><strong>メンバーを追加する:</strong>
+                <code>{ ... }</code> で囲まれた「メンバーブロック」をコピーし、その家族の <code>members: [ ... ]</code> の中に追加します。<code>id</code> は <code>p</code> + 連番（例: <code>p54</code>）のように、他の人と重複しないように設定してください。</li>
+                <li><strong>フラグ（学年など）:</strong>
+                選手の <code>data</code> ブロック内で、<code>"grade": "5年"</code> のようにデフォルト値を設定できます。</li>
+            </ul>
+
+            <h3>編集例：車 (CARS)</h3>
+            <p><code>CARS</code> は、<code>[</code> と <code>]</code> で囲まれた「車」のリストです。</p>
+            <pre><code>  "cars": [
+    {
+      "id": "c1",
+      "name": "小高カー",
+      "familyName": "小高家",
+      "baseCapacity": 6
+    },
+    {
+      "id": "c2",
+      "name": "難波カー",
+      "familyName": "難波家",
+      "baseCapacity": 7
+    }
+  ]
+</code></pre>
+            <ul>
+                <li><strong>車を追加する:</strong>
+                <code>{ ... }</code> で囲まれた「車ブロック」をコピーし、リストの最後（<code>]</code> の直前）に追加します。<code>id</code> は <code>c</code> + 連番（例: <code>c17</code>）のように重複しないようにし、<code>name</code>（車の名前）、<code>familyName</code>（所有家族の名前）、<code>baseCapacity</code>（<strong>ドライバーを含めた総定員</strong>）を編集します。</li>
+                <li><strong>重要:</strong> <code>familyName</code> は、<code>FAMILIES</code> に登録されている <code>familyName</code> と<strong>完全に一致</strong>させてください。これにより、デフォルトのドライバーが自動選択されます。</li>
+            </ul>
+        </article>
+    </div>
+</body>
+</html>
