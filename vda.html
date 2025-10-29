@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>配車調整アプリ ver.1.0</title>
+    <title>配車調整アプリ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         /* ドラッグ中の要素のスタイル */
@@ -17,6 +17,7 @@
             -webkit-user-select: none;
             -ms-user-select: none;
             -moz-user-select: none;
+            position: relative; /* ::before, ::after の基準点 */
         }
 
         /* ★ドロップ先(移動)のハイライト */
@@ -31,20 +32,26 @@
         }
         
         /* ★ドロップ先(挿入)のハイライト */
-        .draggable-item.drop-target-insert-before::before {
+         .draggable-item.drop-target-insert-before::before {
             content: '';
-            display: block;
+            position: absolute;
+            top: -2px; /* Adjust position slightly above the item */
+            left: 0;
+            right: 0;
             height: 3px;
             background-color: #3B82F6; /* blue-500 */
-            margin-bottom: -1px; /* Adjust spacing */
-        }
-        .draggable-item.drop-target-insert-after::after {
-             content: '';
-            display: block;
+            z-index: 10;
+         }
+         .draggable-item.drop-target-insert-after::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; /* Adjust position slightly below the item */
+            left: 0;
+            right: 0;
             height: 3px;
             background-color: #3B82F6; /* blue-500 */
-             margin-top: -1px; /* Adjust spacing */
-        }
+             z-index: 10;
+         }
 
         /* ★ドロップ先(定員オーバー) */
         .members-dropzone.drop-target-full, .driver-dropzone.drop-target-full, .draggable-item.drop-target-full { 
@@ -124,12 +131,6 @@
         </section>
 
 
-        <!-- メッセージエリア -->
-        <div id="message" class="hidden p-4 mb-4 border rounded-lg" role="alert">
-            <span id="message-text"></span>
-            <button id="message-close" type="button" class="float-right font-bold text-lg leading-none">&times;</button>
-        </div>
-
         <!-- メインコンテンツグリッド -->
         <div id="main-content" class="main-grid-layout">
 
@@ -176,6 +177,13 @@
                         テキスト出力
                     </button>
                 </div>
+                
+                <!-- ★ メッセージエリアをここに移動 -->
+                <div id="message" class="hidden p-4 mb-4 border rounded-lg" role="alert">
+                    <span id="message-text"></span>
+                    <button id="message-close" type="button" class="float-right font-bold text-lg leading-none">&times;</button>
+                </div>
+
 
                 <!-- テキスト出力エリア -->
                 <div id="text-output-container" class="mb-4 hidden">
@@ -334,7 +342,6 @@
             { id: 'c15', name: '古川カー', familyName: '古川家', baseCapacity: 8},
             { id: 'c16', name: 'コーチカー', familyName: 'スタッフ・個人', baseCapacity: 5}
         ];
-
         let ALL_PARTICIPANTS_FLAT = FAMILIES.flatMap(f => f.members);
 
 
@@ -349,11 +356,11 @@
         
         // ★ ドラッグ操作の状態変数 ★
         let isDragging = false;     // ドラッグ操作中か (マウス/タッチ共通)
-        let dragTargetIdInternal = null;  // ★ 内部変数名変更
-        let dragSourceCarIdInternal = null; // ★ 内部変数名変更
-        let dragIsDriverInternal = false; // ★ 内部変数名変更
-        let currentDropModeInternal = null; // ★ 内部変数名変更
-        let currentDropTargetIdInternal = null;// ★ 内部変数名変更
+        let dragTargetIdInternal = null;  
+        let dragSourceCarIdInternal = null; 
+        let dragIsDriverInternal = false; 
+        let currentDropModeInternal = null; 
+        let currentDropTargetIdInternal = null;
         let ghostElement = null; // タッチ操作時のゴースト要素
         let lastTouchMoveClientX = null; // 最後のタッチ座標
         let lastTouchMoveClientY = null;
@@ -440,7 +447,7 @@
             resultsEl.addEventListener('touchmove', handleTouchMove, { passive: false });
             resultsEl.addEventListener('touchend', handleTouchEnd);
             // ★タッチキャンセルも考慮
-            resultsEl.addEventListener('touchcancel', _handleDragEnd); // Use _handleDragEnd directly
+            resultsEl.addEventListener('touchcancel', _handleDragEnd); 
             
             exportButton.addEventListener('click', handleExportState);
             importInput.addEventListener('change', handleImportState);
@@ -459,7 +466,7 @@
                 family.members.forEach(member => {
                     const defaultData = { 
                         grade: '', school: '', other: '', memo: '',
-                        ...(member.data || {}) // マスターデータにdataがない場合も考慮
+                        ...(member.data || {}) 
                     };
                     
                     if (!member.isFlagTarget) {
@@ -547,22 +554,16 @@
         function handleFamilyCheck(e) {
             const target = e.target.closest('button[data-check-action]');
             if (!target) return;
-            
-            // summaryの開閉をキャンセル
             e.preventDefault(); 
-            
             const familyName = target.dataset.familyId;
             const action = target.dataset.checkAction;
             const shouldCheck = (action === 'check');
-            
             const family = FAMILIES.find(f => f.familyName === familyName);
             if (!family) return;
-            
             family.members.forEach(member => {
                 const checkbox = participantListEl.querySelector(`#p-${member.id}`);
                 if (checkbox && checkbox.checked !== shouldCheck) {
                     checkbox.checked = shouldCheck;
-                    // changeイベントを強制発火させて状態を更新
                     checkbox.dispatchEvent(new Event('change', { bubbles: true })); 
                 }
             });
@@ -575,27 +576,17 @@
                 const family = FAMILIES.find(f => f.familyName === car.familyName);
                 const driverOptions = family ? family.members : ALL_PARTICIPANTS_FLAT; 
                 const isChecked = selectedCarIds.has(car.id);
-                
-                // ★デフォルトドライバーの選定
                 let defaultDriverId = '';
                 if (family) {
-                    // 優先順位：「父」を含む保護者 -> 「母」を含む保護者
                     const father = family.members.find(m => m.type === '保護者' && (m.name.includes('父') || m.name.includes('監督')));
                     const mother = family.members.find(m => m.type === '保護者' && m.name.includes('母'));
-                    
-                    if (father) {
-                        defaultDriverId = father.id;
-                    } else if (mother) {
-                        defaultDriverId = mother.id;
-                    }
+                    if (father) defaultDriverId = father.id;
+                    else if (mother) defaultDriverId = mother.id;
                 }
-                
-                // 既に選択済みの値があればそちらを優先
                 const driverId = selectedDrivers.get(car.id) || defaultDriverId;
                 if(defaultDriverId && !selectedDrivers.has(car.id)) {
-                     selectedDrivers.set(car.id, defaultDriverId); // 状態にもセット
+                     selectedDrivers.set(car.id, defaultDriverId); 
                 }
-                
                 const hasLuggage = selectedLuggage.has(car.id);
                 const div = document.createElement('div');
                 div.className = 'bg-gray-50 rounded border p-3';
@@ -663,75 +654,34 @@
                 const card = document.createElement('div');
                 card.id = `car-result-${car.id}`;
                 card.dataset.carId = car.id; 
-                card.className = 'bg-white border rounded-lg shadow-md car-dropzone flex flex-col'; // flex-colを追加
+                card.className = 'bg-white border rounded-lg shadow-md car-dropzone flex flex-col'; 
                 
                 let headerHtml = '';
                 let driverHtml = '';
                 
                 if (car.id === 'excluded-car') {
-                    headerHtml = `
-                        <div class="p-4 border-b bg-gray-100 flex-shrink-0">
-                            <h4 class="font-bold text-lg text-gray-700">${car.name}</h4>
-                            <p class="text-sm text-gray-600">合計: ${car.members.length}名</p>
-                        </div>`;
-                    driverHtml = `<div id="driver-dropzone-${car.id}" class="driver-dropzone flex-shrink-0"></div>`; // 空だが必須
+                    headerHtml = `<div class="p-4 border-b bg-gray-100 flex-shrink-0"><h4 class="font-bold text-lg text-gray-700">${car.name}</h4><p class="text-sm text-gray-600">合計: ${car.members.length}名</p></div>`;
+                    driverHtml = `<div id="driver-dropzone-${car.id}" class="driver-dropzone flex-shrink-0"></div>`;
                 } else {
                     const vacancy = car.capacity - car.members.length;
                     const luggageInfo = car.hasLuggage ? ' (荷物あり)' : '';
-                    headerHtml = `
-                        <div class="p-4 border-b flex-shrink-0">
-                            <h4 class="font-bold text-lg">${car.name} ${luggageInfo}</h4>
-                            <p class="text-sm font-medium ${vacancy < 0 ? 'text-red-600' : 'text-blue-600'}">
-                                定員 ${car.capacity}名 (空き ${vacancy}名)
-                            </p>
-                        </div>`;
-                    
+                    headerHtml = `<div class="p-4 border-b flex-shrink-0"><h4 class="font-bold text-lg">${car.name} ${luggageInfo}</h4><p class="text-sm font-medium ${vacancy < 0 ? 'text-red-600' : 'text-blue-600'}">定員 ${car.capacity}名 (空き ${vacancy}名)</p></div>`;
                     const d = car.driver;
                     if (d) {
                         const memo = (participantData.get(d.id)?.memo || '').trim();
-                        // ドライバー要素に data-drag-handle を追加
-                        driverHtml = `
-                        <div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone flex-shrink-0" data-drop-type="driver">
-                            <li id="p-result-${d.id}" data-participant-id="${d.id}" data-is-driver="true" draggable="true" 
-                                class="p-2 bg-blue-100 rounded shadow-sm flex justify-between items-center draggable-item">
-                                <div data-drag-handle="true" class="min-w-0">
-                                    <span class="font-semibold text-blue-800 break-words" data-drag-handle="true">[D] ${d.name} (${d.type})</span>
-                                    ${memo ? `<span class="text-xs text-blue-600 ml-2 break-words" data-drag-handle="true">[${memo}]</span>` : ''}
-                                </div>
-                            </li>
-                        </div>`;
+                        driverHtml = `<div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone flex-shrink-0" data-drop-type="driver"><li id="p-result-${d.id}" data-participant-id="${d.id}" data-is-driver="true" draggable="true" class="p-2 bg-blue-100 rounded shadow-sm flex justify-between items-center draggable-item"><div data-drag-handle="true" class="min-w-0"><span class="font-semibold text-blue-800 break-words" data-drag-handle="true">[D] ${d.name} (${d.type})</span>${memo ? `<span class="text-xs text-blue-600 ml-2 break-words" data-drag-handle="true">[${memo}]</span>` : ''}</div></li></div>`;
                     } else {
-                         driverHtml = `
-                         <div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone min-h-[50px] bg-red-50 flex-shrink-0" data-drop-type="driver">
-                             <p class="text-red-700 text-sm">ドライバーがいません</p>
-                         </div>`;
+                         driverHtml = `<div id="driver-dropzone-${car.id}" class="p-4 border-b driver-dropzone min-h-[50px] bg-red-50 flex-shrink-0" data-drop-type="driver"><p class="text-red-700 text-sm">ドライバーがいません</p></div>`;
                     }
                 }
                 
                 const membersHtml = car.members.map(p => {
                     const memo = (participantData.get(p.id)?.memo || '').trim();
-                    const flags = (p.isFlagTarget && (p.grade || p.school || p.other)) 
-                        ? [p.grade, p.school, p.other].filter(Boolean).join(' ') 
-                        : '';
-                    // 乗客要素に data-drag-handle を追加
-                    return `
-                    <li id="p-result-${p.id}" data-participant-id="${p.id}" data-is-driver="false" draggable="true" 
-                        class="p-2 bg-gray-100 rounded shadow-sm flex justify-between items-center draggable-item">
-                        <div data-drag-handle="true" class="min-w-0">
-                            <span data-drag-handle="true" class="break-words">${p.name} (${p.type})</span>
-                            ${memo ? `<span class="text-xs text-gray-500 ml-2 break-words" data-drag-handle="true">[${memo}]</span>` : ''}
-                        </div>
-                        <span class="text-xs text-gray-400 ml-2 flex-shrink-0" data-drag-handle="true">${flags}</span>
-                    </li>`;
+                    const flags = (p.isFlagTarget && (p.grade || p.school || p.other)) ? [p.grade, p.school, p.other].filter(Boolean).join(' ') : '';
+                    return `<li id="p-result-${p.id}" data-participant-id="${p.id}" data-is-driver="false" draggable="true" class="p-2 bg-gray-100 rounded shadow-sm flex justify-between items-center draggable-item"><div data-drag-handle="true" class="min-w-0"><span data-drag-handle="true" class="break-words">${p.name} (${p.type})</span>${memo ? `<span class="text-xs text-gray-500 ml-2 break-words" data-drag-handle="true">[${memo}]</span>` : ''}</div><span class="text-xs text-gray-400 ml-2 flex-shrink-0" data-drag-handle="true">${flags}</span></li>`;
                 }).join('');
 
-                card.innerHTML = `
-                    ${headerHtml}
-                    ${driverHtml}
-                    <ul id="members-dropzone-${car.id}" class="p-4 space-y-2 min-h-[50px] members-dropzone flex-grow overflow-y-auto" data-drop-type="member">
-                        ${membersHtml}
-                    </ul>
-                `;
+                card.innerHTML = `${headerHtml}${driverHtml}<ul id="members-dropzone-${car.id}" class="p-4 space-y-2 min-h-[50px] members-dropzone flex-grow overflow-y-auto" data-drop-type="member">${membersHtml}</ul>`;
                 resultsEl.appendChild(card);
             });
         }
@@ -742,11 +692,7 @@
         // (共通) ドラッグ開始 (マウス/タッチ)
         function _handleDragStart(targetItem, clientX, clientY) {
             if (!targetItem || isDragging) return false;
-
-            // Ensure we are targeting the LI element
             if (!targetItem.classList.contains('draggable-item')) return false; 
-            
-            // Allow drag start even if clicking on text inside the handle div
             const targetHandle = targetItem.querySelector('[data-drag-handle="true"]');
             if (!targetHandle && !targetItem.closest('[data-drag-handle="true"]')) return false;
 
@@ -757,9 +703,8 @@
             currentDropModeInternal = null;
             currentDropTargetIdInternal = null;
 
-            // ★ 修正: setTimeout を削除
-             const element = document.getElementById(targetItem.id); 
-             if (element) element.classList.add('dragging');
+            const element = document.getElementById(targetItem.id); 
+            if (element) element.classList.add('dragging');
 
             if (typeof TouchEvent !== 'undefined' && clientX !== undefined) { 
                 createGhostElement(targetItem);
@@ -777,9 +722,7 @@
                 updateGhostPosition({ clientX, clientY });
                 ghostElement.style.visibility = 'hidden';
             }
-
             const elementUnder = document.elementFromPoint(clientX, clientY);
-
             if (ghostElement) {
                 ghostElement.style.visibility = 'visible';
             }
@@ -788,44 +731,43 @@
         }
 
         // (共通) ドロップ/タッチ終了
-        function _handleDrop(targetCarId) { // ★ Receive targetCarId
+        function _handleDrop(targetCarId) { 
             if (!isDragging) return;
 
-             // ★ 修正: ドロップ時にローカル変数に現在の状態をコピー
              const localDragTargetId = dragTargetIdInternal;
              const localDragSourceCarId = dragSourceCarIdInternal;
              const localDragIsDriver = dragIsDriverInternal;
              const localCurrentDropMode = currentDropModeInternal;
              const localCurrentDropTargetId = currentDropTargetIdInternal;
             
-             performDropOperation(
-                 targetCarId, // ★ Pass target car ID received from event handler
-                 localDragTargetId,
-                 localDragSourceCarId,
-                 localDragIsDriver,
-                 localCurrentDropMode,
-                 localCurrentDropTargetId
-             );
-            // Cleanup happens in _handleDragEnd which is called after drop/touchend
+             try {
+                performDropOperation(
+                    targetCarId, 
+                    localDragTargetId,
+                    localDragSourceCarId,
+                    localDragIsDriver,
+                    localCurrentDropMode,
+                    localCurrentDropTargetId
+                );
+             } finally {
+                 // Cleanup will be called by dragend/touchend handlers
+             }
         }
 
         // (共通) ドラッグ終了/キャンセル (マウス/タッチ)
         function _handleDragEnd() {
-            // ★ 修正: isDragging フラグチェックを先頭に
-            if (!isDragging) return;
+            if (!isDragging) return; 
             isDragging = false; 
 
             if (ghostElement) {
                 ghostElement.remove();
                 ghostElement = null;
             }
-            // ★ 修正: draggingクラスを持つ要素を探して削除
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
                 draggingElement.classList.remove('dragging');
             }
             clearDragOverHighlights();
-            // ★ 修正: 状態変数のリセットはここで行う
             dragTargetIdInternal = null;
             dragSourceCarIdInternal = null;
             dragIsDriverInternal = false;
@@ -861,10 +803,10 @@
                  isCapacityFullForMove = targetCar.members.length >= targetCar.capacity;
              }
              let isCapacityFullForSwap = false;
+             const targetIsDriverInCheck = (targetItem && targetItem.dataset.isDriver === 'true') || !!targetDriverZone;
              if (isMovingToDifferentCar && targetCar.id !== 'excluded-car' && sourceCar.id !== 'excluded-car') {
-                 const targetIsDriver = (targetItem && targetItem.dataset.isDriver === 'true') || !!targetDriverZone;
-                 if (dragIsDriverInternal && !targetIsDriver && targetCar.members.length >= targetCar.capacity) isCapacityFullForSwap = true; 
-                 if (!dragIsDriverInternal && targetIsDriver && sourceCar.members.length >= sourceCar.capacity) isCapacityFullForSwap = true; 
+                 if (dragIsDriverInternal && !targetIsDriverInCheck && targetCar.members.length >= targetCar.capacity) isCapacityFullForSwap = true; 
+                 if (!dragIsDriverInternal && targetIsDriverInCheck && sourceCar.members.length >= sourceCar.capacity) isCapacityFullForSwap = true; 
              }
              const isEmptyDriverMoveOverCapacity = isMovingToDifferentCar && !dragIsDriverInternal && targetCar.id !== 'excluded-car' && !targetCar.driver && targetCar.members.length >= targetCar.capacity; 
 
@@ -927,7 +869,6 @@
         
         // (共通) クリーンアップ
         function handleDragEndCleanup() {
-            // ★ 修正: isDragging フラグチェックを先頭に
             if (!isDragging) return; 
             isDragging = false; 
 
@@ -935,13 +876,11 @@
                 ghostElement.remove();
                 ghostElement = null;
             }
-            // ★ 修正: dragging クラスを持つ要素を探して削除
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
                 draggingElement.classList.remove('dragging');
             }
             clearDragOverHighlights();
-            // ★ 修正: 状態変数のリセットはここで行う
             dragTargetIdInternal = null;
             dragSourceCarIdInternal = null;
             dragIsDriverInternal = false;
@@ -953,41 +892,32 @@
 
         // ★★★ (共通) ドロップ処理 (データ更新) ★★★
         function performDropOperation(
-            targetCarId, // ★ Argument
+            targetCarId, 
             pDragTargetId, 
             pDragSourceCarId,
             pDragIsDriver,
             pCurrentDropMode,
             pCurrentDropTargetId
         ) {
-             // ★ 修正: dragTargetId が null なら早期リターン
-             if (!pDragTargetId) {
-                // console.log("performDropOperation cancelled: pDragTargetId is null");
-                return;
-             }
+             if (!pDragTargetId) return; 
 
              if (document.querySelector('.drop-target-full') || !pCurrentDropMode) {
                 if(document.querySelector('.drop-target-full')) showMessage('定員オーバーのため操作できません。', 'error');
-                // console.log("performDropOperation cancelled: full or no drop mode");
                 return; 
              }
-             if (!targetCarId) {
-                // console.log("performDropOperation cancelled: no targetCarId");
-                 return; // Drop outside valid zone
-             }
+             if (!targetCarId) return; // Drop outside valid zone
 
              const sourceCar = currentAssignments.find(c => c.id === pDragSourceCarId);
              const targetCar = currentAssignments.find(c => c.id === targetCarId);
              if (!sourceCar || !targetCar) {
-                 console.error("Source or target car not found during drop.");
-                 return;
+                 console.error("Source or target car not found."); return;
              }
 
              // --- 操作実行 ---
              const sourceInfo = findAndRemoveParticipantById(pDragSourceCarId, pDragTargetId);
              if (!sourceInfo) {
-                 // エラーログは findAndRemoveParticipantById 内で行うため、ここではメッセージ表示のみ
-                 showMessage('ドラッグ元の参加者が見つかりませんでした。', 'error');
+                 // Error logged inside findAndRemove...
+                 showMessage('ドラッグ元の参加者が見つかりませんでした (データ不整合の可能性)。', 'error'); 
                  return;
              }
              const { participant: sourceParticipant, wasDriver: sourceWasDriver } = sourceInfo;
@@ -1004,8 +934,10 @@
                          targetWasDriver = targetInfo.wasDriver;
                      }
                      
-                     const targetElement = document.getElementById(`p-result-${pCurrentDropTargetId}`) || document.getElementById(`driver-dropzone-${targetCarId}`);
-                     const addSourceAsDriverInTarget = targetWasDriver || (targetElement?.closest('.driver-dropzone') && !targetParticipant);
+                     // ★ 修正: ドロップ先の役割を決定
+                     // 1. ターゲットが元々ドライバーだったか？
+                     // 2. または、ターゲットが存在せず(null)、ドロップ先がドライバーゾーンだったか？
+                     const addSourceAsDriverInTarget = targetWasDriver || (!targetParticipant && targetCar.id !== 'excluded-car' && !targetCar.driver); 
 
                      addParticipant(targetCar, sourceParticipant, addSourceAsDriverInTarget); 
                      
@@ -1020,14 +952,13 @@
                          const insertIndex = (pCurrentDropMode === 'insert-before') ? targetIndex : targetIndex + 1;
                          targetCar.members.splice(insertIndex, 0, sourceParticipant);
                          operationSuccessful = true;
-                     } else {
-                         // Insert target not found (edge case?), add to end
-                         addParticipant(targetCar, sourceParticipant, false);
+                     } else { // Fallback
+                         addParticipant(targetCar, sourceParticipant, false); 
                          operationSuccessful = true; 
                      }
                  }
                  else if (pCurrentDropMode === 'move-to-end') {
-                     addParticipant(targetCar, sourceParticipant, false); // Add as passenger
+                     addParticipant(targetCar, sourceParticipant, false); 
                      operationSuccessful = true;
                  }
              } catch (err) {
@@ -1036,11 +967,10 @@
 
              // --- 後処理 ---
              if (!operationSuccessful) {
-                 addParticipant(sourceCar, sourceParticipant, sourceWasDriver); // Revert source
-                 if (pCurrentDropMode === 'swap' && targetParticipant) { // Revert target if swapped
+                 addParticipant(sourceCar, sourceParticipant, sourceWasDriver); 
+                 if (pCurrentDropMode === 'swap' && targetParticipant) { 
                      addParticipant(targetCar, targetParticipant, targetWasDriver);
                  }
-                 // Avoid showing generic error if capacity error was already shown
                  if (!document.querySelector('.drop-target-full')) { 
                      showMessage('操作に失敗しました。', 'error');
                  }
@@ -1048,7 +978,7 @@
                   // Promote driver if needed
                   [sourceCar, targetCar].filter((car, index, self) => car && self.findIndex(c => c.id === car.id) === index) 
                       .forEach(car => {
-                          if (car.id !== 'excluded-car' && !car.driver && car.members.length > 0) {
+                          if (car && car.id !== 'excluded-car' && !car.driver && car.members.length > 0) {
                               car.driver = car.members.shift();
                           }
                       });
@@ -1066,10 +996,9 @@
                  console.warn(`findAndRemoveParticipantById: Car (${carId}) not found.`);
                  return null;
             }
-             // ★ 修正: pId が null または undefined の場合も考慮
-            if (pId === null || pId === undefined) { // Check for null or undefined specifically
-                 // console.warn(`findAndRemoveParticipantById: Participant ID is invalid (null/undefined) for car ${carId}.`);
-                return null;
+            // Allow removing null target (for empty driver swap)
+            if (pId === null || pId === undefined) { 
+                return null; // Return null if pId is invalid but don't warn
             }
             if (car.driver && car.driver.id === pId) {
                 const p = car.driver; car.driver = null; 
@@ -1080,7 +1009,7 @@
                 const p = car.members.splice(index, 1)[0]; 
                 return { participant: p, wasDriver: false };
             }
-             console.warn(`Participant ${pId} not found in car ${carId} for removal.`); // Keep warning if ID is valid but not found
+             console.warn(`Participant ${pId} not found in car ${carId} for removal.`); 
             return null;
         }
 
@@ -1107,14 +1036,12 @@
         // --- マウスイベントラッパー ---
         function handleDragStart(e) { 
             _handleDragStart(e.target.closest('.draggable-item'), e.clientX, e.clientY)
-            // No preventDefault needed for dragstart to allow dataTransfer
         }
         function handleDragOver(e) { e.preventDefault(); _handleDragMove(e.clientX, e.clientY); }
         function handleDrop(e) { 
             e.preventDefault(); 
-            // Pass target car ID explicitly
             const targetCarId = e.target.closest('.car-dropzone')?.dataset.carId;
-             _handleDrop(targetCarId); // ★ Pass targetCarId
+             _handleDrop(targetCarId); 
         }
         function handleDragEnd(e) { _handleDragEnd(); } 
 
@@ -1122,34 +1049,32 @@
         function handleTouchStart(e) {
             if (e.touches.length === 1) {
                  if(_handleDragStart(e.target.closest('.draggable-item'), e.touches[0].clientX, e.touches[0].clientY)) {
-                     // e.preventDefault(); // Prevent scroll only if drag started - Re-enabled default scroll
+                    // Start drag only prevents default if drag actually starts
                  }
             }
         }
         function handleTouchMove(e) {
             if (e.touches.length === 1 && isDragging) {
-                 e.preventDefault(); // Prevent scroll while dragging 
+                 e.preventDefault(); // Prevent scroll while actively dragging
                  lastTouchMoveClientX = e.touches[0].clientX;
                  lastTouchMoveClientY = e.touches[0].clientY;
                  _handleDragMove(lastTouchMoveClientX, lastTouchMoveClientY);
             }
         }
         function handleTouchEnd(e) {
+            // ★ 修正: touchend では isDragging のチェックのみ
             if (isDragging) {
-                 // Pass target car ID explicitly
                  let targetCarId = null;
                  const touch = e.changedTouches[0]; 
                  if (touch) {
                      let elementUnderFinger = null;
                      if (ghostElement) ghostElement.style.visibility = 'hidden';
-                     // Get element at the touch end point
                      elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY); 
                      if (ghostElement) ghostElement.style.visibility = 'visible';
                      targetCarId = elementUnderFinger?.closest('.car-dropzone')?.dataset.carId;
                  }
-                 // ★ 修正: _handleDrop を呼び出す前に targetCarId を渡す
-                 _handleDrop(targetCarId); 
-                 _handleDragEnd(); 
+                 _handleDrop(targetCarId); // Perform drop logic
+                 _handleDragEnd(); // Then cleanup
             }
         }
 
