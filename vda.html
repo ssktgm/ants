@@ -378,7 +378,6 @@
         const exportMasterButton = document.getElementById('export-master-button');
         const importMasterInput = document.getElementById('import-master-input');
 
-        // ★★★ 修正: clearDragOverHighlights の定義を先頭に移動 ★★★
         // --- ドラッグ＆ドロップ用 ヘルパー ---
         function clearDragOverHighlights() {
              document.querySelectorAll('.drop-target-swap, .drop-target-insert-before, .drop-target-insert-after, .drop-target-move, .drop-target-full')
@@ -758,10 +757,9 @@
             currentDropModeInternal = null;
             currentDropTargetIdInternal = null;
 
-            setTimeout(() => { 
-                 const element = document.getElementById(targetItem.id); 
-                 if (element) element.classList.add('dragging');
-            }, 0);
+            // ★ 修正: setTimeout を削除
+             const element = document.getElementById(targetItem.id); 
+             if (element) element.classList.add('dragging');
 
             if (typeof TouchEvent !== 'undefined' && clientX !== undefined) { 
                 createGhostElement(targetItem);
@@ -793,7 +791,7 @@
         function _handleDrop(targetCarId) { // ★ Receive targetCarId
             if (!isDragging) return;
 
-             // ★ 修正: ローカル変数に現在の状態をコピー
+             // ★ 修正: ドロップ時にローカル変数に現在の状態をコピー
              const localDragTargetId = dragTargetIdInternal;
              const localDragSourceCarId = dragSourceCarIdInternal;
              const localDragIsDriver = dragIsDriverInternal;
@@ -808,11 +806,12 @@
                  localCurrentDropMode,
                  localCurrentDropTargetId
              );
-            // Cleanup happens in _handleDragEnd
+            // Cleanup happens in _handleDragEnd which is called after drop/touchend
         }
 
         // (共通) ドラッグ終了/キャンセル (マウス/タッチ)
         function _handleDragEnd() {
+            // ★ 修正: isDragging フラグチェックを先頭に
             if (!isDragging) return;
             isDragging = false; 
 
@@ -820,11 +819,13 @@
                 ghostElement.remove();
                 ghostElement = null;
             }
+            // ★ 修正: draggingクラスを持つ要素を探して削除
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
                 draggingElement.classList.remove('dragging');
             }
             clearDragOverHighlights();
+            // ★ 修正: 状態変数のリセットはここで行う
             dragTargetIdInternal = null;
             dragSourceCarIdInternal = null;
             dragIsDriverInternal = false;
@@ -926,6 +927,7 @@
         
         // (共通) クリーンアップ
         function handleDragEndCleanup() {
+            // ★ 修正: isDragging フラグチェックを先頭に
             if (!isDragging) return; 
             isDragging = false; 
 
@@ -933,11 +935,13 @@
                 ghostElement.remove();
                 ghostElement = null;
             }
+            // ★ 修正: dragging クラスを持つ要素を探して削除
             const draggingElement = document.querySelector('.dragging');
             if (draggingElement) {
                 draggingElement.classList.remove('dragging');
             }
             clearDragOverHighlights();
+            // ★ 修正: 状態変数のリセットはここで行う
             dragTargetIdInternal = null;
             dragSourceCarIdInternal = null;
             dragIsDriverInternal = false;
@@ -956,11 +960,21 @@
             pCurrentDropMode,
             pCurrentDropTargetId
         ) {
-             if (document.querySelector('.drop-target-full') || !pCurrentDropMode || !pDragTargetId) {
+             // ★ 修正: dragTargetId が null なら早期リターン
+             if (!pDragTargetId) {
+                // console.log("performDropOperation cancelled: pDragTargetId is null");
+                return;
+             }
+
+             if (document.querySelector('.drop-target-full') || !pCurrentDropMode) {
                 if(document.querySelector('.drop-target-full')) showMessage('定員オーバーのため操作できません。', 'error');
+                // console.log("performDropOperation cancelled: full or no drop mode");
                 return; 
              }
-             if (!targetCarId) return; // Drop outside valid zone
+             if (!targetCarId) {
+                // console.log("performDropOperation cancelled: no targetCarId");
+                 return; // Drop outside valid zone
+             }
 
              const sourceCar = currentAssignments.find(c => c.id === pDragSourceCarId);
              const targetCar = currentAssignments.find(c => c.id === targetCarId);
@@ -972,7 +986,7 @@
              // --- 操作実行 ---
              const sourceInfo = findAndRemoveParticipantById(pDragSourceCarId, pDragTargetId);
              if (!sourceInfo) {
-                 console.error(`Source participant not found during drop: ID=${pDragTargetId}, Car=${pDragSourceCarId}`); // More informative error
+                 // エラーログは findAndRemoveParticipantById 内で行うため、ここではメッセージ表示のみ
                  showMessage('ドラッグ元の参加者が見つかりませんでした。', 'error');
                  return;
              }
@@ -990,7 +1004,6 @@
                          targetWasDriver = targetInfo.wasDriver;
                      }
                      
-                     // ★ Determine role based on where it was dropped (driver zone or driver item)
                      const targetElement = document.getElementById(`p-result-${pCurrentDropTargetId}`) || document.getElementById(`driver-dropzone-${targetCarId}`);
                      const addSourceAsDriverInTarget = targetWasDriver || (targetElement?.closest('.driver-dropzone') && !targetParticipant);
 
@@ -1007,6 +1020,10 @@
                          const insertIndex = (pCurrentDropMode === 'insert-before') ? targetIndex : targetIndex + 1;
                          targetCar.members.splice(insertIndex, 0, sourceParticipant);
                          operationSuccessful = true;
+                     } else {
+                         // Insert target not found (edge case?), add to end
+                         addParticipant(targetCar, sourceParticipant, false);
+                         operationSuccessful = true; 
                      }
                  }
                  else if (pCurrentDropMode === 'move-to-end') {
@@ -1023,6 +1040,7 @@
                  if (pCurrentDropMode === 'swap' && targetParticipant) { // Revert target if swapped
                      addParticipant(targetCar, targetParticipant, targetWasDriver);
                  }
+                 // Avoid showing generic error if capacity error was already shown
                  if (!document.querySelector('.drop-target-full')) { 
                      showMessage('操作に失敗しました。', 'error');
                  }
@@ -1044,8 +1062,13 @@
         // (共通) ヘルパー: IDで参加者を探して削除
         function findAndRemoveParticipantById(carId, pId) {
             const car = currentAssignments.find(c => c.id === carId);
-            if (!car || !pId) {
-                 // console.warn(`findAndRemoveParticipantById: Car (${carId}) or Participant ID (${pId}) is invalid.`);
+            if (!car) {
+                 console.warn(`findAndRemoveParticipantById: Car (${carId}) not found.`);
+                 return null;
+            }
+             // ★ 修正: pId が null または undefined の場合も考慮
+            if (pId === null || pId === undefined) { // Check for null or undefined specifically
+                 // console.warn(`findAndRemoveParticipantById: Participant ID is invalid (null/undefined) for car ${carId}.`);
                 return null;
             }
             if (car.driver && car.driver.id === pId) {
@@ -1057,7 +1080,7 @@
                 const p = car.members.splice(index, 1)[0]; 
                 return { participant: p, wasDriver: false };
             }
-            // console.warn(`Participant ${pId} not found in car ${carId} for removal.`);
+             console.warn(`Participant ${pId} not found in car ${carId} for removal.`); // Keep warning if ID is valid but not found
             return null;
         }
 
@@ -1071,19 +1094,10 @@
                  if (!car.members.some(m => m.id === participant.id)) car.members.push(participant);
                  return;
              }
-             // Add as driver if specified or if driver slot is empty
              if ((isDriver || !car.driver) && car.id !== 'excluded-car') {
-                 // If there's already a driver AND it's not the same person we're adding, demote current driver
-                 if (car.driver && car.driver.id !== participant.id) {
-                     car.members.unshift(car.driver);
-                 }
-                 // Avoid setting self as driver if already a member
-                 const existingMemberIndex = car.members.findIndex(m => m.id === participant.id);
-                 if (existingMemberIndex > -1) car.members.splice(existingMemberIndex, 1);
-
+                 if (car.driver && car.driver.id !== participant.id) car.members.unshift(car.driver);
                  car.driver = participant;
              } else {
-                 // Add as passenger, avoid duplicates
                   if (!car.members.some(m => m.id === participant.id) && (!car.driver || car.driver.id !== participant.id)) {
                       car.members.push(participant);
                   }
@@ -1108,13 +1122,13 @@
         function handleTouchStart(e) {
             if (e.touches.length === 1) {
                  if(_handleDragStart(e.target.closest('.draggable-item'), e.touches[0].clientX, e.touches[0].clientY)) {
-                     e.preventDefault(); // Prevent scroll only if drag started
+                     // e.preventDefault(); // Prevent scroll only if drag started - Re-enabled default scroll
                  }
             }
         }
         function handleTouchMove(e) {
             if (e.touches.length === 1 && isDragging) {
-                 e.preventDefault(); 
+                 e.preventDefault(); // Prevent scroll while dragging 
                  lastTouchMoveClientX = e.touches[0].clientX;
                  lastTouchMoveClientY = e.touches[0].clientY;
                  _handleDragMove(lastTouchMoveClientX, lastTouchMoveClientY);
@@ -1128,11 +1142,13 @@
                  if (touch) {
                      let elementUnderFinger = null;
                      if (ghostElement) ghostElement.style.visibility = 'hidden';
-                     elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY);
+                     // Get element at the touch end point
+                     elementUnderFinger = document.elementFromPoint(touch.clientX, touch.clientY); 
                      if (ghostElement) ghostElement.style.visibility = 'visible';
                      targetCarId = elementUnderFinger?.closest('.car-dropzone')?.dataset.carId;
                  }
-                 _handleDrop(targetCarId); // ★ Pass targetCarId
+                 // ★ 修正: _handleDrop を呼び出す前に targetCarId を渡す
+                 _handleDrop(targetCarId); 
                  _handleDragEnd(); 
             }
         }
