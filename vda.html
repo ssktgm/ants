@@ -33,13 +33,12 @@
             .main-grid-layout {
                 grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
             }
-            /* ★ 修正: results-grid-layout は各駐車場セクション内で可変にする */
              .results-grid-layout {
                  grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
              }
         }
         
-        /* ★ 修正: 選択中のチェックボックスのスタイル */
+        /* 選択中のチェックボックスのスタイル */
         .swap-selected {
             background-color: #DBEAFE; /* blue-100 */
         }
@@ -61,7 +60,6 @@
 
     <div class="container mx-auto p-4 md:p-8 max-w-7xl">
         
-        <!-- ★ 修正: マニュアルリンクのパスを修正 -->
         <div class="flex justify-between items-center mb-6 border-b pb-2">
             <h1 class="text-3xl font-bold text-gray-800">配車調整アプリ</h1>
             <a href="./manual.html" target="_blank" class="text-sm bg-gray-500 hover:bg-gray-600 text-white font-bold py-1 px-3 rounded-lg shadow transition duration-200">
@@ -245,14 +243,12 @@
         let excludedParticipantIds = new Set();
         let participantData = new Map(); // participantId -> { grade, school, other, memo }
         
-        // ★ 修正: 駐車場情報と割り当て結果（駐車場含む）
         let parkingInfo = {
             designated: { name: '', limit: 0, memo: '' },
             other: { name: '', memo: '' }
         };
         let currentAssignments = []; // { id, name, ..., assignedParking: 'designated' | 'other' | 'excluded' }
         
-        // ★ 修正: チェックボックス選択用の状態変数 (車と座席を区別)
         let selectedSwapItems = {
             car: null,  // { carId, element }
             seat: null // { participantId, carId, isDriver, slotIndex, element }
@@ -279,7 +275,6 @@
         const exportMasterButton = document.getElementById('export-master-button');
         const importMasterInput = document.getElementById('import-master-input');
 
-        // ★ 修正: 駐車場DOM参照
         const parkingDesignatedNameEl = document.getElementById('parking-designated-name');
         const parkingDesignatedLimitEl = document.getElementById('parking-designated-limit');
         const parkingDesignatedMemoEl = document.getElementById('parking-designated-memo');
@@ -296,18 +291,11 @@
                 const placeholder = document.getElementById('results-placeholder');
                 
                 if (window.innerWidth >= 768) { // md breakpoint
-                    // ★ 修正: main-content のレイアウト設定
                     document.getElementById('main-content').style.gridTemplateColumns = `repeat(${LAYOUT_COLUMNS}, minmax(0, 1fr))`;
                     resultsSection.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
-                    if (placeholder) {
-                        // placeholderは col-span 3 で良い
-                    }
                 } else {
                     document.getElementById('main-content').style.gridTemplateColumns = 'repeat(1, minmax(0, 1fr))';
                     resultsSection.style.gridColumn = 'auto';
-                    if (placeholder) {
-                        placeholder.style.gridColumn = 'auto';
-                    }
                 }
             }
             updateLayouts();
@@ -326,7 +314,6 @@
             assignButton.addEventListener('click', handleAssignment);
             messageClose.addEventListener('click', hideMessage);
 
-            // ★ 修正: チェックボックス操作用のイベントリスナーを追加
             resultsEl.addEventListener('change', handleSwapCheckboxChange);
             
             exportButton.addEventListener('click', handleExportState);
@@ -454,19 +441,26 @@
             carListEl.innerHTML = '';
             AVAILABLE_CARS_INFO.forEach(car => {
                 const family = FAMILIES.find(f => f.familyName === car.familyName);
-                const driverOptions = family ? family.members : ALL_PARTICIPANTS_FLAT; 
+                
+                // ★ 修正: ドライバー候補から選手と兄弟を除外
+                const driverCandidates = family ? family.members : ALL_PARTICIPANTS_FLAT;
+                const driverOptions = driverCandidates.filter(p => p.type !== '選手' && p.type !== '兄弟');
+                
                 const isChecked = selectedCarIds.has(car.id);
                 let defaultDriverId = '';
                 if (family) {
-                    const father = family.members.find(m => m.type === '保護者' && (m.name.includes('父') || m.name.includes('監督')));
-                    const mother = family.members.find(m => m.type === '保護者' && m.name.includes('母'));
+                    // ★ 修正: フィルタリングされた候補からデフォルトドライバーを探す
+                    const father = driverOptions.find(m => m.type === '保護者' && (m.name.includes('父') || m.name.includes('監督')));
+                    const mother = driverOptions.find(m => m.type === '保護者' && m.name.includes('母'));
                     if (father) defaultDriverId = father.id;
                     else if (mother) defaultDriverId = mother.id;
                 }
+                
                 const driverId = selectedDrivers.get(car.id) || defaultDriverId;
                 if(defaultDriverId && !selectedDrivers.has(car.id)) {
                      selectedDrivers.set(car.id, defaultDriverId); 
                 }
+                
                 const hasLuggage = selectedLuggage.has(car.id);
                 const div = document.createElement('div');
                 div.className = 'bg-gray-50 rounded border p-3';
@@ -541,7 +535,6 @@
         // ★ 新関数: 駐車場セクションを描画
         function createParkingSection(type, info, cars) {
             const section = document.createElement('div');
-            // ★ 修正: results-grid-layout が col-span-3 を持たないように
             section.className = 'bg-white rounded-lg shadow-inner border border-gray-200 p-4';
             
             let memoHtml = info.memo.replace(/\n/g, '<br>');
@@ -811,11 +804,11 @@
             } else {
                 // --- 別車間でのスワップ ---
                 if (seatA.isDriver) carA.driver = null;
-                else if (carA.id === 'excluded-car') carA.members = carA.members.filter(p => p?.id !== participantA?.id);
+                else if (carA.id === 'excluded-car') carA.members = carA.members.filter(p => p && p.id !== participantA?.id); // ★ nullチェック
                 else if (seatA.slotIndex > -1) carA.members[seatA.slotIndex] = null;
                 
                 if (seatB.isDriver) carB.driver = null;
-                else if (carB.id === 'excluded-car') carB.members = carB.members.filter(p => p?.id !== participantB?.id);
+                else if (carB.id === 'excluded-car') carB.members = carB.members.filter(p => p && p.id !== participantB?.id); // ★ nullチェック
                 else if (seatB.slotIndex > -1) carB.members[seatB.slotIndex] = null;
 
                 addParticipant(carA, participantB, seatA.isDriver, seatA.slotIndex);
@@ -853,7 +846,7 @@
             }
             
             if (car.id === 'excluded-car') {
-                 if (!car.members.some(m => m && m.id === participant.id)) { 
+                 if (!car.members.some(m => m && m.id === participant.id)) { // ★ 修正: m && m.id
                      car.members.push(participant);
                  }
                  return;
@@ -865,7 +858,7 @@
                 }
                 car.driver = participant;
             } else {
-                 if (!car.members.some(m => m && m.id === participant.id) && 
+                 if (!car.members.some(m => m && m.id === participant.id) && // ★ 修正: m && m.id
                      (!car.driver || car.driver.id !== participant.id)) 
                  {
                      if (slotIndex !== -1 && car.id !== 'excluded-car' && slotIndex < car.members.length && car.members[slotIndex] === null) { 
