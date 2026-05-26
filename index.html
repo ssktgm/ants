@@ -320,25 +320,19 @@
     <!-- ========================================== -->
     <script>
         // ==========================================
-        // ★Supabase 初期設定（ここを書き換えてください）
+        // ★Vercel環境変数からSupabase情報を読み込む
         // ==========================================
-        const SUPABASE_URL = 'https://arcdgbzqfengqyvfbodt.supabase.co'; // 必ず https:// から始まる有効なURL形式にしてください
-        const SUPABASE_ANON_KEY = 'sb_publishable_Ei6ti5lKjAECmi36haftpw_DQsKMp4p';
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+        const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-        let supabaseClient = null;
-        try {
-            supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        } catch (e) {
-            console.error("Supabase初期化エラー:", e);
-        }
-        
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         let currentUser = null;
         let isAppInitialized = false;
 
         // --- ローディングラッパー ---
         async function withLoading(asyncFunc) {
-            if (SUPABASE_URL.includes('YOUR_')) {
-                alert("コード内の SUPABASE_URL と SUPABASE_ANON_KEY が設定されていません。\nソースコードを編集して設定してください！");
+            if (!SUPABASE_URL) {
+                alert("環境変数 (VITE_SUPABASE_URL) が設定されていません。Vercelの設定を確認してください。");
                 return;
             }
             document.getElementById('loading-overlay').classList.remove('hidden');
