@@ -579,7 +579,7 @@
 
             saveParking: async (parking, name) => {
                 return withLoading(async () => {
-                    const id = 'p' + Date.now();
+                    const id = 'p' + Date.now() + Math.floor(Math.random() * 1000);
                     const { error } = await supabaseClient.from('parkings').insert({
                         id: id,
                         name: name,
@@ -625,7 +625,7 @@
             },
 
             addParkingMaster: (parking, name) => {
-                localParkings.push({ id: 'p' + Date.now(), name: name, timestamp: Date.now(), parking: parking, isNew: true });
+                localParkings.push({ id: 'p' + Date.now() + Math.floor(Math.random() * 1000), name: name, timestamp: Date.now(), parking: parking, isNew: true });
             },
             updateParkingMaster: (parkingItem) => {
                 const idx = localParkings.findIndex(p => p.id === parkingItem.id);
@@ -1555,7 +1555,15 @@
                 if(m.parking) {
                     localParkings.forEach(p => deletedParkingIds.add(p.id));
                     localParkings = [];
-                    for(let p of m.parking) db.addParkingMaster(p.parking, p.name);
+                    for(let p of m.parking) {
+                        localParkings.push({
+                            id: p.id || 'p' + Date.now() + Math.floor(Math.random() * 1000),
+                            name: p.name,
+                            timestamp: p.timestamp || Date.now(),
+                            parking: p.parking,
+                            isNew: true
+                        });
+                    }
                 }
                 renderFamilies_master();
                 loadCars_master();
