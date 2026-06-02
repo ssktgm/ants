@@ -1251,7 +1251,3 @@ function showMasterMessage(msg, type='info') {
     if(masterMessageTimer) clearTimeout(masterMessageTimer); masterMessageTimer = setTimeout(hideMasterMessage, 5000);
 }
 function hideMasterMessage() { document.getElementById('master-message').classList.add('hidden'); }
-```
-<!--
-[PROMPT_SUGGESTION]分離した `main.js` ファイルのコードフォーマットやリファクタリングを提案して[/PROMPT_SUGGESTION]
-[PROMPT_SUGGESTION]次に、`index.html` に残っている CSS 部分を別の `.css` ファイルに分離して[/PROMPT_SUGGESTION]
