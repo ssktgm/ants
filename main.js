@@ -306,20 +306,24 @@ async function initApp() {
     isAppInitialized = true;
     
     // ナビゲーションイベント設定
-    navDispatch.addEventListener('click', async () => {
-        viewDispatch.classList.remove('hidden'); viewMaster.classList.add('hidden');
-        navDispatch.classList.add('text-blue-300'); navDispatch.classList.remove('text-gray-400');
-        navMaster.classList.remove('text-blue-300'); navMaster.classList.add('text-gray-400');
-        viewDispatch.classList.remove('hidden'); viewMaster.classList.add('hidden'); document.getElementById('view-users').classList.add('hidden');
-        navDispatch.classList.add('text-blue-300'); navDispatch.classList.remove('text-gray-400'); navMaster.classList.remove('text-blue-300'); document.getElementById('nav-users').classList.remove('text-blue-300');
+    navDispatch?.addEventListener('click', async () => {
+        viewDispatch?.classList.remove('hidden'); 
+        viewMaster?.classList.add('hidden');
+        document.getElementById('view-users')?.classList.add('hidden');
+        
+        navDispatch?.classList.add('text-blue-300'); navDispatch?.classList.remove('text-gray-400');
+        navMaster?.classList.remove('text-blue-300'); navMaster?.classList.add('text-gray-400');
+        document.getElementById('nav-users')?.classList.remove('text-blue-300');
         await reloadDispatchData();
     });
-    navMaster.addEventListener('click', async () => {
-        viewMaster.classList.remove('hidden'); viewDispatch.classList.add('hidden');
-        navMaster.classList.add('text-blue-300'); navMaster.classList.remove('text-gray-400');
-        navDispatch.classList.remove('text-blue-300'); navDispatch.classList.add('text-gray-400');
-        viewMaster.classList.remove('hidden'); viewDispatch.classList.add('hidden'); document.getElementById('view-users').classList.add('hidden');
-        navMaster.classList.add('text-blue-300'); navMaster.classList.remove('text-gray-400'); navDispatch.classList.remove('text-blue-300'); document.getElementById('nav-users').classList.remove('text-blue-300');
+    navMaster?.addEventListener('click', async () => {
+        viewMaster?.classList.remove('hidden'); 
+        viewDispatch?.classList.add('hidden');
+        document.getElementById('view-users')?.classList.add('hidden');
+        
+        navMaster?.classList.add('text-blue-300'); navMaster?.classList.remove('text-gray-400');
+        navDispatch?.classList.remove('text-blue-300'); navDispatch?.classList.add('text-gray-400');
+        document.getElementById('nav-users')?.classList.remove('text-blue-300');
         await fetchAndRenderMasterData();
         loadLogs(); // マスター画面を開いた時にログも読み込む
     });
@@ -335,7 +339,7 @@ async function initApp() {
         await reloadDispatchData();
         setupDispatchEventListeners();
         setupMasterEventListeners();
-        document.getElementById('btn-load-logs').addEventListener('click', loadLogs);
+        document.getElementById('btn-load-logs')?.addEventListener('click', loadLogs);
     } catch (err) {
         console.error(err);
         showDispatchMessage('データの読み込みに失敗しました。', 'error');
@@ -701,20 +705,21 @@ async function fetchAndRenderMasterData() {
 
 async function loadLogs() {
     const btn = document.getElementById('btn-load-logs');
-    btn.textContent = "読込中...";
+    if (btn) btn.textContent = "読込中...";
     const { data, error } = await supabaseClient
         .from('action_logs')
         .select('*')
         .order('created_at', { ascending: false })
         .limit(50);
         
-    btn.textContent = "最新を読み込み";
+    if (btn) btn.textContent = "最新を読み込み";
     if (error) {
         console.error("Failed to load logs:", error);
         return;
     }
     
     const list = document.getElementById('log-list');
+    if (!list) return;
     if (!data || data.length === 0) {
         list.innerHTML = `<p class="text-gray-500 text-center py-4">ログはありません</p>`;
         return;
@@ -737,33 +742,33 @@ async function loadLogs() {
 // View: Dispatch ロジック
 // ==========================================
 function setupDispatchEventListeners() {
-    participantListEl.addEventListener('change', handleParticipantChange);
-    participantListEl.addEventListener('input', handleParticipantDataInput); 
-    participantListEl.addEventListener('click', handleFamilyCheck); 
-    carListEl.addEventListener('change', handleCarChange);
-    exclusionListEl.addEventListener('change', handleExclusionChange);
-    document.getElementById('assign-button').addEventListener('click', handleAssignment);
-    document.getElementById('dispatch-message-close').addEventListener('click', hideDispatchMessage);
-    resultsEl.addEventListener('change', handleSwapCheckboxChange);
+    participantListEl?.addEventListener('change', handleParticipantChange);
+    participantListEl?.addEventListener('input', handleParticipantDataInput); 
+    participantListEl?.addEventListener('click', handleFamilyCheck); 
+    carListEl?.addEventListener('change', handleCarChange);
+    exclusionListEl?.addEventListener('change', handleExclusionChange);
+    document.getElementById('assign-button')?.addEventListener('click', handleAssignment);
+    document.getElementById('dispatch-message-close')?.addEventListener('click', hideDispatchMessage);
+    resultsEl?.addEventListener('change', handleSwapCheckboxChange);
     
-    document.getElementById('export-state-button').addEventListener('click', handleExportState);
-    document.getElementById('import-state-input').addEventListener('change', handleImportState);
-    document.getElementById('show-text-output-button').addEventListener('click', () => {
-        document.getElementById('text-output-container').classList.toggle('hidden');
+    document.getElementById('export-state-button')?.addEventListener('click', handleExportState);
+    document.getElementById('import-state-input')?.addEventListener('change', handleImportState);
+    document.getElementById('show-text-output-button')?.addEventListener('click', () => {
+        document.getElementById('text-output-container')?.classList.toggle('hidden');
         updateTextOutput();
     });
-    document.getElementById('copy-text-output-button').addEventListener('click', handleCopyTextOutput);
-    document.getElementById('toggle-details-button').addEventListener('click', handleToggleDetails);
+    document.getElementById('copy-text-output-button')?.addEventListener('click', handleCopyTextOutput);
+    document.getElementById('toggle-details-button')?.addEventListener('click', handleToggleDetails);
 
-    document.getElementById('save-state-db-button').addEventListener('click', handleSaveStateToDB);
-    document.getElementById('load-state-db-button').addEventListener('click', handleLoadStateFromDB);
-    document.getElementById('delete-state-db-button').addEventListener('click', handleDeleteStateFromDB);
+    document.getElementById('save-state-db-button')?.addEventListener('click', handleSaveStateToDB);
+    document.getElementById('load-state-db-button')?.addEventListener('click', handleLoadStateFromDB);
+    document.getElementById('delete-state-db-button')?.addEventListener('click', handleDeleteStateFromDB);
 
-    document.getElementById('save-parking-db-button').addEventListener('click', handleSaveParkingToDB);
-    document.getElementById('load-parking-db-button').addEventListener('click', handleLoadParkingFromDB);
-    document.getElementById('delete-parking-db-button').addEventListener('click', handleDeleteParkingFromDB);
+    document.getElementById('save-parking-db-button')?.addEventListener('click', handleSaveParkingToDB);
+    document.getElementById('load-parking-db-button')?.addEventListener('click', handleLoadParkingFromDB);
+    document.getElementById('delete-parking-db-button')?.addEventListener('click', handleDeleteParkingFromDB);
 
-    document.getElementById('clear-db-button').addEventListener('click', handleClearDB);
+    document.getElementById('clear-db-button')?.addEventListener('click', handleClearDB);
 }
 
 function initializeParticipantData() {
@@ -778,6 +783,7 @@ function initializeParticipantData() {
 }
 
 function renderParticipantList() {
+    if (!participantListEl) return;
     participantListEl.innerHTML = '';
     if (FAMILIES.length === 0) return participantListEl.innerHTML = '<p class="text-gray-500">データなし</p>';
     FAMILIES.forEach(family => {
@@ -813,6 +819,7 @@ function handleFamilyCheck(e) {
 }
 
 function renderCarList() {
+    if (!carListEl) return;
     carListEl.innerHTML = '';
     if (AVAILABLE_CARS_INFO.length === 0) return carListEl.innerHTML = '<p class="text-gray-500">データなし</p>';
     AVAILABLE_CARS_INFO.forEach(car => {
@@ -839,6 +846,7 @@ function renderCarList() {
 }
 
 function renderExclusionList() {
+    if (!exclusionListEl) return;
     exclusionListEl.innerHTML = '';
     const parts = ALL_PARTICIPANTS_FLAT.filter(p => selectedParticipantIds.has(p.id));
     if(parts.length===0) return exclusionListEl.innerHTML='<p class="text-gray-500 text-sm">参加者を選択してください</p>';
@@ -1250,7 +1258,7 @@ async function handleDeleteStateFromDB() {
 }
 async function loadSavedStatesList() {
     const st = await db.getAllSavedStates(); const sel = document.getElementById('saved-state-select');
-    sel.innerHTML = '<option value="">作業一覧...</option>' + st.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
+    if (sel) sel.innerHTML = '<option value="">作業一覧...</option>' + st.map(s=>`<option value="${s.id}">${s.name}</option>`).join('');
 }
 
 async function handleSaveParkingToDB() {
@@ -1311,7 +1319,7 @@ async function handleDeleteParkingFromDB() {
 }
 async function loadSavedParkingList() {
     const pk = await db.getAllSavedParking(); const sel = document.getElementById('saved-parking-select');
-    sel.innerHTML = '<option value="">駐車場一覧...</option>' + pk.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    if (sel) sel.innerHTML = '<option value="">駐車場一覧...</option>' + pk.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
 }
 async function handleClearDB() {
     if(confirm('全データをリセットしますか？')) { await db.clearDatabase(); location.reload(); }
@@ -1328,22 +1336,22 @@ function hideDispatchMessage() { document.getElementById('dispatch-message').cla
 // View: Master ロジック
 // ==========================================
 function setupMasterEventListeners() {
-    document.getElementById('add-family-button').addEventListener('click', handleAddFamily_master);
-    familyListMasterEl.addEventListener('click', handleFamilyAction_master);
-    familyListMasterEl.addEventListener('input', handleMemberInput_master);
-    familyListMasterEl.addEventListener('change', handleFamilyChange_master);
-    document.getElementById('add-car-button').addEventListener('click', handleAddCar_master);
-    carListMasterEl.addEventListener('click', handleCarAction_master);
-    carListMasterEl.addEventListener('input', handleCarInput_master);
-    document.getElementById('add-parking-button-master').addEventListener('click', handleAddParking_master);
-    parkingListMasterEl.addEventListener('click', handleParkingAction_master);
-    parkingListMasterEl.addEventListener('input', handleParkingInput_master);
+    document.getElementById('add-family-button')?.addEventListener('click', handleAddFamily_master);
+    familyListMasterEl?.addEventListener('click', handleFamilyAction_master);
+    familyListMasterEl?.addEventListener('input', handleMemberInput_master);
+    familyListMasterEl?.addEventListener('change', handleFamilyChange_master);
+    document.getElementById('add-car-button')?.addEventListener('click', handleAddCar_master);
+    carListMasterEl?.addEventListener('click', handleCarAction_master);
+    carListMasterEl?.addEventListener('input', handleCarInput_master);
+    document.getElementById('add-parking-button-master')?.addEventListener('click', handleAddParking_master);
+    parkingListMasterEl?.addEventListener('click', handleParkingAction_master);
+    parkingListMasterEl?.addEventListener('input', handleParkingInput_master);
     
-    document.getElementById('export-master-button').addEventListener('click', handleExportMasterData);
-    document.getElementById('import-master-input').addEventListener('change', handleImportMasterData);
-    document.getElementById('master-message-close').addEventListener('click', hideMasterMessage);
+    document.getElementById('export-master-button')?.addEventListener('click', handleExportMasterData);
+    document.getElementById('import-master-input')?.addEventListener('change', handleImportMasterData);
+    document.getElementById('master-message-close')?.addEventListener('click', hideMasterMessage);
     
-    document.getElementById('save-master-db-button').addEventListener('click', handleSaveMasterDB);
+    document.getElementById('save-master-db-button')?.addEventListener('click', handleSaveMasterDB);
 }
 
 async function handleSaveMasterDB() {
@@ -1362,6 +1370,7 @@ async function handleSaveMasterDB() {
 }
 
 function renderFamilies_master() {
+    if (!familyListMasterEl) return;
     familyListMasterEl.innerHTML = '';
     localFamilies.sort((a,b)=>(a.order||99)-(b.order||99)).forEach((f,i)=>{
         const mHtml = f.members.map(m=>`<div class="p-2 border rounded bg-gray-50 member-grid"><input data-id="${m.id}" data-f="name" value="${m.name}" class="col-span-3 md:col-span-1 p-1 border"><select data-id="${m.id}" data-f="type" class="col-span-2 md:col-span-1 p-1 border"><option ${m.type==='選手'?'selected':''}>選手</option><option ${m.type==='保護者'?'selected':''}>保護者</option><option ${m.type==='兄弟'?'selected':''}>兄弟</option><option ${m.type==='その他'?'selected':''}>その他</option></select><input data-id="${m.id}" data-f="data.grade" value="${m.data.grade||''}" placeholder="学年" class="col-span-1 border"><input data-id="${m.id}" data-f="data.school" value="${m.data.school||''}" placeholder="学校" class="col-span-2 md:col-span-1 border"><input data-id="${m.id}" data-f="data.other" value="${m.data.other||''}" placeholder="他" class="col-span-2 md:col-span-1 border"><input data-id="${m.id}" data-f="data.memo" value="${m.data.memo||''}" placeholder="備考" class="col-span-2 md:col-span-1 border"><div class="col-span-3 md:col-span-1 flex items-center justify-between"><label class="text-xs"><input type="checkbox" data-id="${m.id}" data-f="isFlagTarget" ${m.isFlagTarget?'checked':''}>同乗優先</label><button data-action="del-m" data-id="${m.id}" class="bg-red-500 text-white px-2 py-1 rounded text-xs">削</button></div></div>`).join('');
@@ -1424,6 +1433,7 @@ async function handleMemberInput_master(e) {
 }
 
 function loadCars_master() {
+    if (!carListMasterEl) return;
     carListMasterEl.innerHTML = '';
     localCars.sort((a,b)=>(a.order||99)-(b.order||99)).forEach(c=>{
         carListMasterEl.innerHTML += `<div class="p-3 border rounded bg-gray-50 flex flex-wrap gap-2 items-center" data-cid="${c.id}"><button data-act="up" class="bg-gray-400 text-white px-2 py-1 text-xs">▲</button><button data-act="down" class="bg-gray-400 text-white px-2 py-1 text-xs">▼</button><input data-f="name" value="${c.name}" class="p-1 border text-sm w-32"><input data-f="familyName" value="${c.familyName}" class="p-1 border text-sm w-32"><input type="number" data-f="baseCapacity" value="${c.baseCapacity}" class="p-1 border text-sm w-16"><button data-act="del" class="bg-red-500 text-white px-2 py-1 rounded text-xs">削</button></div>`;
