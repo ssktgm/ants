@@ -140,12 +140,18 @@ async function handleSignupRequest() {
     const parentName = document.getElementById('signup-parent-name')?.value || '';
     const playerName = document.getElementById('signup-player-name')?.value || '';
     const email = document.getElementById('signup-email')?.value || '';
-    const password = document.getElementById('signup-password')?.value || '';
+    let password = document.getElementById('signup-password')?.value || '';
     const msg = document.getElementById('signup-message');
     if (msg) msg.classList.add('hidden');
 
-    if (!parentName || !playerName || !email || !password || password.length < 6) {
-        if (msg) msg.textContent = "すべての項目を正しく入力してください(パスワードは6文字以上)";
+    // HTMLにパスワード入力欄がない場合は一時的なダミーパスワードを自動生成
+    const hasPasswordInput = document.getElementById('signup-password') !== null;
+    if (!hasPasswordInput) {
+        password = Math.random().toString(36).slice(-10) + 'A1!'; // ランダムな安全な文字列
+    }
+
+    if (!parentName || !playerName || !email || (hasPasswordInput && password.length < 6)) {
+        if (msg) msg.textContent = hasPasswordInput ? "すべての項目を正しく入力してください(パスワードは6文字以上)" : "すべての項目を正しく入力してください";
         if (msg) msg.classList.remove('hidden', 'text-green-600');
         if (msg) msg.classList.add('text-red-500');
         return;
@@ -184,7 +190,11 @@ async function handleSignupRequest() {
         if (msg) msg.classList.remove('hidden', 'text-green-600');
         if (msg) msg.classList.add('text-red-500');
     } else {
-        if (msg) msg.textContent = "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。";
+        if (msg) {
+            msg.textContent = hasPasswordInput 
+                ? "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。"
+                : "利用申請が送信されました。管理者の承認後、「パスワードを忘れた場合」からパスワードを再設定してログインしてください。";
+        }
         if (msg) msg.classList.remove('text-red-500');
         if (msg) msg.classList.add('text-green-600');
         if (msg) msg.classList.remove('hidden');
