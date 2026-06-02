@@ -138,8 +138,6 @@ async function handleSignupRequest() {
     const msg = document.getElementById('signup-message');
     msg.classList.add('hidden');
 
-    if (!parentName || !playerName || !email) {
-        msg.textContent = "すべての項目を入力してください";
     if (!parentName || !playerName || !email || !password || password.length < 6) {
         msg.textContent = "すべての項目を正しく入力してください(パスワードは6文字以上)";
         msg.classList.remove('hidden', 'text-green-600');
@@ -180,7 +178,6 @@ async function handleSignupRequest() {
         msg.classList.remove('hidden', 'text-green-600');
         msg.classList.add('text-red-500');
     } else {
-        msg.textContent = "利用申請を送信しました。管理者の承認をお待ちください。";
         msg.textContent = "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。";
         msg.classList.remove('text-red-500');
         msg.classList.add('text-green-600');
