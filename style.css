@@ -1,0 +1,28 @@
+details[open] > summary {
+    border-bottom: 1px solid #e5e7eb;
+}
+.hidden-file-input { display: none; }
+.main-grid-layout, .results-grid-layout {
+    display: grid;
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+    gap: 1.5rem;
+}
+@media (min-width: 768px) {
+    .main-grid-layout, .results-grid-layout {
+        grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
+    }
+    #data-controls-section { position: sticky; top: 60px; z-index: 40; border-bottom: 1px solid #e5e7eb; }
+}
+.swap-selected { background-color: #DBEAFE; }
+.swap-selected > label, .swap-selected label, .car-header.swap-selected h4 { font-weight: 600; color: #1D4ED8; }
+.car-header.swap-selected { background-color: #DBEAFE; }
+.db-control { padding: 0.25rem 0.5rem; height: 1.75rem; font-size: 0.75rem; box-sizing: border-box; vertical-align: middle; }
+select.db-control { line-height: 1.25; }
+#data-controls-details > summary { list-style: none; }
+#data-controls-details > summary::-webkit-details-marker { display: none; }
+
+/* マスター管理用スタイル */
+.family-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; }
+.family-content { padding: 1rem; }
+.member-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+@media (min-width: 768px) { .member-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
