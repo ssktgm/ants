@@ -126,6 +126,7 @@
                 <span id="user-email-display" class="hidden md:inline text-xs text-gray-300"></span>
                 <button id="nav-dispatch" class="font-bold text-blue-300 px-2 py-1 transition">配車調整</button>
                 <button id="nav-master" class="text-gray-400 hover:text-white px-2 py-1 transition">マスター</button>
+                <button id="btn-change-password" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">アカウント設定</button>
                 <button id="btn-logout" class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded transition">ログアウト</button>
             </div>
         </div>
@@ -351,6 +352,18 @@
         </div>
     </div>
 
+    <!-- アカウント設定 (パスワード変更) モーダル -->
+    <div id="change-password-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg w-full max-w-sm">
+            <h3 class="text-lg font-bold mb-4 text-gray-800">アカウント設定</h3>
+            <p class="text-sm text-gray-600 mb-2">新しいパスワードを入力してください</p>
+            <input id="change-new-password" type="password" class="w-full border border-gray-300 p-2 rounded mb-4 focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="新しいパスワード (6文字以上)">
+            <div class="flex justify-end space-x-2">
+                <button id="btn-close-change-password" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded transition font-bold text-sm">キャンセル</button>
+                <button id="btn-submit-change-password" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition font-bold text-sm">パスワードを変更</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ========================================== -->
     <!-- スクリプト                                 -->
