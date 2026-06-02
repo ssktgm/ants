@@ -50,31 +50,31 @@ document.addEventListener('DOMContentLoaded', () => {
     updateLayouts();
 
     // ログインボタン等のイベント
-    document.getElementById('btn-login').addEventListener('click', handleLogin);
-    document.getElementById('btn-logout').addEventListener('click', handleLogout);
+    document.getElementById('btn-login')?.addEventListener('click', handleLogin);
+    document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
 
     // ビュー切り替えイベント
-    document.getElementById('link-to-signup').addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('signup-view'); });
-    document.getElementById('link-to-reset').addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('password-reset-view'); });
+    document.getElementById('link-to-signup')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('signup-view'); });
+    document.getElementById('link-to-reset')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('password-reset-view'); });
     document.querySelectorAll('.link-back-to-login').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('auth-view'); }));
 
-    document.getElementById('btn-submit-signup').addEventListener('click', handleSignupRequest);
-    document.getElementById('btn-send-reset').addEventListener('click', handlePasswordResetRequest);
-    document.getElementById('btn-update-password').addEventListener('click', handlePasswordUpdate);
+    document.getElementById('btn-submit-signup')?.addEventListener('click', handleSignupRequest);
+    document.getElementById('btn-send-reset')?.addEventListener('click', handlePasswordResetRequest);
+    document.getElementById('btn-update-password')?.addEventListener('click', handlePasswordUpdate);
 
     // パスワード変更モーダル
-    document.getElementById('btn-change-password').addEventListener('click', () => {
-        document.getElementById('change-password-modal').classList.remove('hidden');
+    document.getElementById('btn-change-password')?.addEventListener('click', () => {
+        document.getElementById('change-password-modal')?.classList.remove('hidden');
     });
-    document.getElementById('btn-close-change-password').addEventListener('click', () => {
-        document.getElementById('change-password-modal').classList.add('hidden');
+    document.getElementById('btn-close-change-password')?.addEventListener('click', () => {
+        document.getElementById('change-password-modal')?.classList.add('hidden');
     });
-    document.getElementById('btn-submit-change-password').addEventListener('click', handlePasswordChangeInApp);
+    document.getElementById('btn-submit-change-password')?.addEventListener('click', handlePasswordChangeInApp);
 
     // ユーザー管理イベント
-    document.getElementById('nav-users').addEventListener('click', handleNavUsers);
-    document.getElementById('btn-admin-add-user').addEventListener('click', adminAddUser);
-    document.getElementById('btn-reload-users').addEventListener('click', loadAdminUsersData);
+    document.getElementById('nav-users')?.addEventListener('click', handleNavUsers);
+    document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
+    document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
 });
 
 // 画面切り替えヘルパー関数
@@ -114,34 +114,40 @@ if (supabaseClient) {
 }
 
 async function handleLogin() {
-    const email = document.getElementById('email-address').value;
-    const password = document.getElementById('password').value;
+    const email = document.getElementById('email-address')?.value || '';
+    const password = document.getElementById('password')?.value || '';
     const msg = document.getElementById('auth-message');
-    msg.classList.add('hidden');
-    document.getElementById('loading-overlay').classList.remove('hidden');
+    if (msg) msg.classList.add('hidden');
+    
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    document.getElementById('loading-overlay').classList.add('hidden');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
     
     if (error) {
-        msg.textContent = "ログイン失敗: " + error.message;
-        msg.classList.remove('hidden');
-        msg.classList.add('text-red-500');
+        if (msg) {
+            msg.textContent = "ログイン失敗: " + error.message;
+            msg.classList.remove('hidden');
+            msg.classList.add('text-red-500');
+        } else {
+            alert("ログイン失敗: " + error.message);
+        }
     }
 }
 
 async function handleSignupRequest() {
-    const parentName = document.getElementById('signup-parent-name').value;
-    const playerName = document.getElementById('signup-player-name').value;
-    const email = document.getElementById('signup-email').value;
-    const password = document.getElementById('signup-password').value;
+    const parentName = document.getElementById('signup-parent-name')?.value || '';
+    const playerName = document.getElementById('signup-player-name')?.value || '';
+    const email = document.getElementById('signup-email')?.value || '';
+    const password = document.getElementById('signup-password')?.value || '';
     const msg = document.getElementById('signup-message');
-    msg.classList.add('hidden');
+    if (msg) msg.classList.add('hidden');
 
     if (!parentName || !playerName || !email || !password || password.length < 6) {
-        msg.textContent = "すべての項目を正しく入力してください(パスワードは6文字以上)";
-        msg.classList.remove('hidden', 'text-green-600');
-        msg.classList.add('text-red-500');
+        if (msg) msg.textContent = "すべての項目を正しく入力してください(パスワードは6文字以上)";
+        if (msg) msg.classList.remove('hidden', 'text-green-600');
+        if (msg) msg.classList.add('text-red-500');
         return;
     }
 
@@ -152,9 +158,9 @@ async function handleSignupRequest() {
     
     if (authError) {
         document.getElementById('loading-overlay').classList.add('hidden');
-        msg.textContent = "登録エラー: " + authError.message;
-        msg.classList.remove('hidden', 'text-green-600');
-        msg.classList.add('text-red-500');
+        if (msg) msg.textContent = "登録エラー: " + authError.message;
+        if (msg) msg.classList.remove('hidden', 'text-green-600');
+        if (msg) msg.classList.add('text-red-500');
         return;
     }
 
@@ -174,71 +180,90 @@ async function handleSignupRequest() {
     document.getElementById('loading-overlay').classList.add('hidden');
     
     if (error) {
-        msg.textContent = "申請失敗: " + error.message;
-        msg.classList.remove('hidden', 'text-green-600');
-        msg.classList.add('text-red-500');
+        if (msg) msg.textContent = "申請失敗: " + error.message;
+        if (msg) msg.classList.remove('hidden', 'text-green-600');
+        if (msg) msg.classList.add('text-red-500');
     } else {
-        msg.textContent = "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。";
-        msg.classList.remove('text-red-500');
-        msg.classList.add('text-green-600');
-        msg.classList.remove('hidden');
+        if (msg) msg.textContent = "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。";
+        if (msg) msg.classList.remove('text-red-500');
+        if (msg) msg.classList.add('text-green-600');
+        if (msg) msg.classList.remove('hidden');
         // 入力欄クリア
-        document.getElementById('signup-parent-name').value = '';
-        document.getElementById('signup-player-name').value = '';
-        document.getElementById('signup-email').value = '';
-        document.getElementById('signup-password').value = '';
+        if (document.getElementById('signup-parent-name')) document.getElementById('signup-parent-name').value = '';
+        if (document.getElementById('signup-player-name')) document.getElementById('signup-player-name').value = '';
+        if (document.getElementById('signup-email')) document.getElementById('signup-email').value = '';
+        if (document.getElementById('signup-password')) document.getElementById('signup-password').value = '';
     }
 }
 
 async function handlePasswordResetRequest() {
-    const email = document.getElementById('reset-email').value;
+    const email = document.getElementById('reset-email')?.value || '';
     const msg = document.getElementById('reset-message');
-    msg.classList.add('hidden');
+    if (msg) msg.classList.add('hidden');
 
     if (!email) return;
-    document.getElementById('loading-overlay').classList.remove('hidden');
+    
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     // ユーザーにパスワード再設定メールを送信
     const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin
     });
     
-    document.getElementById('loading-overlay').classList.add('hidden');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
     
     if (error) {
-        msg.textContent = "送信失敗: " + error.message;
-        msg.classList.remove('hidden', 'text-green-600');
-        msg.classList.add('text-red-500');
+        if (msg) {
+            msg.textContent = "送信失敗: " + error.message;
+            msg.classList.remove('hidden', 'text-green-600');
+            msg.classList.add('text-red-500');
+        } else {
+            alert("送信失敗: " + error.message);
+        }
     } else {
-        msg.textContent = "パスワード再設定メールを送信しました。";
-        msg.classList.remove('text-red-500');
-        msg.classList.add('text-green-600');
-        msg.classList.remove('hidden');
+        if (msg) {
+            msg.textContent = "パスワード再設定メールを送信しました。";
+            msg.classList.remove('text-red-500');
+            msg.classList.add('text-green-600');
+            msg.classList.remove('hidden');
+        } else {
+            alert("パスワード再設定メールを送信しました。");
+        }
     }
 }
 
 async function handlePasswordUpdate() {
-    const newPassword = document.getElementById('new-password').value;
+    const newPassword = document.getElementById('new-password')?.value || '';
     const msg = document.getElementById('update-password-message');
-    msg.classList.add('hidden');
+    if (msg) msg.classList.add('hidden');
 
     if (!newPassword || newPassword.length < 6) {
-        msg.textContent = "6文字以上のパスワードを入力してください";
-        msg.classList.remove('hidden', 'text-green-600');
-        msg.classList.add('text-red-500');
+        if (msg) {
+            msg.textContent = "6文字以上のパスワードを入力してください";
+            msg.classList.remove('hidden', 'text-green-600');
+            msg.classList.add('text-red-500');
+        } else {
+            alert("6文字以上のパスワードを入力してください");
+        }
         return;
     }
-    document.getElementById('loading-overlay').classList.remove('hidden');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
     // 新しいパスワードをSupabaseに反映
     const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
     
-    document.getElementById('loading-overlay').classList.add('hidden');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
     
     if (error) {
-        msg.textContent = "更新失敗: " + error.message;
-        msg.classList.remove('hidden', 'text-green-600');
-        msg.classList.add('text-red-500');
+        if (msg) {
+            msg.textContent = "更新失敗: " + error.message;
+            msg.classList.remove('hidden', 'text-green-600');
+            msg.classList.add('text-red-500');
+        } else {
+            alert("更新失敗: " + error.message);
+        }
     } else {
         alert("パスワードが更新されました。再度ログインしてください。");
         switchAuthScreen('auth-view');
@@ -246,19 +271,22 @@ async function handlePasswordUpdate() {
 }
 
 async function handlePasswordChangeInApp() {
-    const newPassword = document.getElementById('change-new-password').value;
+    const newPassword = document.getElementById('change-new-password')?.value || '';
     if (!newPassword || newPassword.length < 6) return alert("6文字以上のパスワードを入力してください");
     
-    document.getElementById('loading-overlay').classList.remove('hidden');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
-    document.getElementById('loading-overlay').classList.add('hidden');
+    if (loadingOverlay) loadingOverlay.classList.add('hidden');
     
     if (error) {
         alert("更新失敗: " + error.message);
     } else {
         alert("パスワードが変更されました。");
-        document.getElementById('change-password-modal').classList.add('hidden');
-        document.getElementById('change-new-password').value = '';
+        const modal = document.getElementById('change-password-modal');
+        if (modal) modal.classList.add('hidden');
+        const input = document.getElementById('change-new-password');
+        if (input) input.value = '';
     }
 }
 
