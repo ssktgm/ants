@@ -7,6 +7,7 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let isAppInitialized = false;
+let currentUserRole = 'user'; // 'admin' or 'user'
 
 // --- ローディングラッパー ---
 async function withLoading(asyncFunc) {
@@ -50,17 +51,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ログインボタン等のイベント
     document.getElementById('btn-login').addEventListener('click', handleLogin);
-    document.getElementById('btn-signup').addEventListener('click', handleSignup);
     document.getElementById('btn-logout').addEventListener('click', handleLogout);
+
+    // ビュー切り替えイベント
+    document.getElementById('link-to-signup').addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('signup-view'); });
+    document.getElementById('link-to-reset').addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('password-reset-view'); });
+    document.querySelectorAll('.link-back-to-login').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('auth-view'); }));
+
+    document.getElementById('btn-submit-signup').addEventListener('click', handleSignupRequest);
+    document.getElementById('btn-send-reset').addEventListener('click', handlePasswordResetRequest);
+    document.getElementById('btn-update-password').addEventListener('click', handlePasswordUpdate);
+
+    // パスワード変更モーダル
+    document.getElementById('btn-change-password').addEventListener('click', () => {
+        document.getElementById('change-password-modal').classList.remove('hidden');
+    });
+    document.getElementById('btn-close-change-password').addEventListener('click', () => {
+        document.getElementById('change-password-modal').classList.add('hidden');
+    });
+    document.getElementById('btn-submit-change-password').addEventListener('click', handlePasswordChangeInApp);
+
+    // ユーザー管理イベント
+    document.getElementById('nav-users').addEventListener('click', handleNavUsers);
+    document.getElementById('btn-admin-add-user').addEventListener('click', adminAddUser);
+    document.getElementById('btn-reload-users').addEventListener('click', loadAdminUsersData);
 });
+
+// 画面切り替えヘルパー関数
+function switchAuthScreen(screenId) {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-view'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+    document.getElementById(screenId).classList.remove('hidden');
+}
 
 // ログイン状態の監視
 if (supabaseClient) {
     supabaseClient.auth.onAuthStateChange((event, session) => {
+        // パスワードリセット用リンクを踏んで戻ってきた時
+        if (event === 'PASSWORD_RECOVERY') {
+            switchAuthScreen('password-update-view');
+            return;
+        }
+
         if (session) {
             currentUser = session.user;
-            document.getElementById('auth-view').classList.add('hidden');
-            document.getElementById('app-view').classList.remove('hidden');
+            switchAuthScreen('app-view');
             document.getElementById('user-email-display').textContent = currentUser.email;
             
             // 初回ログイン時にアプリのデータを読み込む
@@ -69,8 +106,9 @@ if (supabaseClient) {
             }
         } else {
             currentUser = null;
-            document.getElementById('auth-view').classList.remove('hidden');
-            document.getElementById('app-view').classList.add('hidden');
+            if (document.getElementById('password-update-view').classList.contains('hidden')) {
+                switchAuthScreen('auth-view');
+            }
         }
     });
 }
@@ -92,25 +130,138 @@ async function handleLogin() {
     }
 }
 
-async function handleSignup() {
-    const email = document.getElementById('email-address').value;
-    const password = document.getElementById('password').value;
-    const msg = document.getElementById('auth-message');
+async function handleSignupRequest() {
+    const parentName = document.getElementById('signup-parent-name').value;
+    const playerName = document.getElementById('signup-player-name').value;
+    const email = document.getElementById('signup-email').value;
+    const password = document.getElementById('signup-password').value;
+    const msg = document.getElementById('signup-message');
     msg.classList.add('hidden');
+
+    if (!parentName || !playerName || !email) {
+        msg.textContent = "すべての項目を入力してください";
+    if (!parentName || !playerName || !email || !password || password.length < 6) {
+        msg.textContent = "すべての項目を正しく入力してください(パスワードは6文字以上)";
+        msg.classList.remove('hidden', 'text-green-600');
+        msg.classList.add('text-red-500');
+        return;
+    }
+
     document.getElementById('loading-overlay').classList.remove('hidden');
     
-    const { error } = await supabaseClient.auth.signUp({ email, password });
+    // 1. Supabase Auth にアカウントを作成（サインアップ）
+    const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
+    
+    if (authError) {
+        document.getElementById('loading-overlay').classList.add('hidden');
+        msg.textContent = "登録エラー: " + authError.message;
+        msg.classList.remove('hidden', 'text-green-600');
+        msg.classList.add('text-red-500');
+        return;
+    }
+
+    // Supabaseの「signup_requests」テーブルに申請データを保存する
+    const { error } = await supabaseClient.from('signup_requests').insert([{
+        parent_name: parentName,
+        player_name: playerName,
+        email: email,
+        status: 'pending'
+    }]);
+
+    // もしすでに管理者が allowed_users に追加済みのメアドだった場合、
+    // そのままログインできてしまうのを防ぐため、明示的にサインアウトしておく
+    // （本当に事前追加されていれば、次回ログインですぐ入れる）
+    await supabaseClient.auth.signOut();
+    
     document.getElementById('loading-overlay').classList.add('hidden');
     
     if (error) {
-        msg.textContent = "登録失敗: " + error.message;
-        msg.classList.remove('hidden');
+        msg.textContent = "申請失敗: " + error.message;
+        msg.classList.remove('hidden', 'text-green-600');
         msg.classList.add('text-red-500');
     } else {
-        msg.textContent = "登録完了しました。そのままログインできます。";
+        msg.textContent = "利用申請を送信しました。管理者の承認をお待ちください。";
+        msg.textContent = "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。";
         msg.classList.remove('text-red-500');
         msg.classList.add('text-green-600');
         msg.classList.remove('hidden');
+        // 入力欄クリア
+        document.getElementById('signup-parent-name').value = '';
+        document.getElementById('signup-player-name').value = '';
+        document.getElementById('signup-email').value = '';
+        document.getElementById('signup-password').value = '';
+    }
+}
+
+async function handlePasswordResetRequest() {
+    const email = document.getElementById('reset-email').value;
+    const msg = document.getElementById('reset-message');
+    msg.classList.add('hidden');
+
+    if (!email) return;
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    
+    // ユーザーにパスワード再設定メールを送信
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin
+    });
+    
+    document.getElementById('loading-overlay').classList.add('hidden');
+    
+    if (error) {
+        msg.textContent = "送信失敗: " + error.message;
+        msg.classList.remove('hidden', 'text-green-600');
+        msg.classList.add('text-red-500');
+    } else {
+        msg.textContent = "パスワード再設定メールを送信しました。";
+        msg.classList.remove('text-red-500');
+        msg.classList.add('text-green-600');
+        msg.classList.remove('hidden');
+    }
+}
+
+async function handlePasswordUpdate() {
+    const newPassword = document.getElementById('new-password').value;
+    const msg = document.getElementById('update-password-message');
+    msg.classList.add('hidden');
+
+    if (!newPassword || newPassword.length < 6) {
+        msg.textContent = "6文字以上のパスワードを入力してください";
+        msg.classList.remove('hidden', 'text-green-600');
+        msg.classList.add('text-red-500');
+        return;
+    }
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    
+    // 新しいパスワードをSupabaseに反映
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    
+    document.getElementById('loading-overlay').classList.add('hidden');
+    
+    if (error) {
+        msg.textContent = "更新失敗: " + error.message;
+        msg.classList.remove('hidden', 'text-green-600');
+        msg.classList.add('text-red-500');
+    } else {
+        alert("パスワードが更新されました。再度ログインしてください。");
+        switchAuthScreen('auth-view');
+    }
+}
+
+async function handlePasswordChangeInApp() {
+    const newPassword = document.getElementById('change-new-password').value;
+    if (!newPassword || newPassword.length < 6) return alert("6文字以上のパスワードを入力してください");
+    
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    document.getElementById('loading-overlay').classList.add('hidden');
+    
+    if (error) {
+        alert("更新失敗: " + error.message);
+    } else {
+        alert("パスワードが変更されました。");
+        document.getElementById('change-password-modal').classList.add('hidden');
+        document.getElementById('change-new-password').value = '';
     }
 }
 
@@ -134,12 +285,16 @@ async function initApp() {
         viewDispatch.classList.remove('hidden'); viewMaster.classList.add('hidden');
         navDispatch.classList.add('text-blue-300'); navDispatch.classList.remove('text-gray-400');
         navMaster.classList.remove('text-blue-300'); navMaster.classList.add('text-gray-400');
+        viewDispatch.classList.remove('hidden'); viewMaster.classList.add('hidden'); document.getElementById('view-users').classList.add('hidden');
+        navDispatch.classList.add('text-blue-300'); navDispatch.classList.remove('text-gray-400'); navMaster.classList.remove('text-blue-300'); document.getElementById('nav-users').classList.remove('text-blue-300');
         await reloadDispatchData();
     });
     navMaster.addEventListener('click', async () => {
         viewMaster.classList.remove('hidden'); viewDispatch.classList.add('hidden');
         navMaster.classList.add('text-blue-300'); navMaster.classList.remove('text-gray-400');
         navDispatch.classList.remove('text-blue-300'); navDispatch.classList.add('text-gray-400');
+        viewMaster.classList.remove('hidden'); viewDispatch.classList.add('hidden'); document.getElementById('view-users').classList.add('hidden');
+        navMaster.classList.add('text-blue-300'); navMaster.classList.remove('text-gray-400'); navDispatch.classList.remove('text-blue-300'); document.getElementById('nav-users').classList.remove('text-blue-300');
         await fetchAndRenderMasterData();
         loadLogs(); // マスター画面を開いた時にログも読み込む
     });
@@ -161,6 +316,91 @@ async function initApp() {
         showDispatchMessage('データの読み込みに失敗しました。', 'error');
     }
 }
+
+// ==========================================
+// ユーザー管理 (Admin) ロジック
+// ==========================================
+async function handleNavUsers() {
+    if (currentUserRole !== 'admin') return;
+    document.getElementById('view-users').classList.remove('hidden');
+    document.getElementById('view-master').classList.add('hidden');
+    document.getElementById('view-dispatch').classList.add('hidden');
+    document.getElementById('nav-users').classList.add('text-blue-300');
+    document.getElementById('nav-users').classList.remove('text-gray-400');
+    document.getElementById('nav-dispatch').classList.remove('text-blue-300');
+    document.getElementById('nav-master').classList.remove('text-blue-300');
+    
+    await loadAdminUsersData();
+}
+
+async function loadAdminUsersData() {
+    // 1. 許可済みユーザー一覧の取得
+    const { data: usersData } = await supabaseClient.from('app_users').select('*').order('created_at', { ascending: false });
+    const allowedListEl = document.getElementById('allowed-users-list');
+    allowedListEl.innerHTML = (usersData || []).map(u => `
+        <div class="flex justify-between items-center p-2 bg-white border rounded shadow-sm">
+            <div><span class="font-bold">${u.email}</span> <span class="text-xs text-gray-500 ml-2">(${u.role})</span></div>
+            ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">削除</button>` : '<span class="text-xs text-gray-400">自身</span>'}
+        </div>
+    `).join('');
+
+    // 2. 申請待ち一覧の取得
+    const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+    const requestsListEl = document.getElementById('signup-requests-list');
+    if (!requestsData || requestsData.length === 0) {
+        requestsListEl.innerHTML = '<p class="text-gray-500 text-sm">現在、承認待ちの申請はありません。</p>';
+    } else {
+        requestsListEl.innerHTML = requestsData.map(r => `
+            <div class="p-3 bg-white border rounded shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2">
+                <div>
+                    <div class="font-bold">${r.parent_name} <span class="text-sm font-normal text-gray-600">様 (選手: ${r.player_name})</span></div>
+                    <div class="text-sm text-gray-500">${r.email}</div>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="approveRequest('${r.id}', '${r.email}')" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-bold shadow">承認</button>
+                    <button onclick="rejectRequest('${r.id}')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm shadow">拒否</button>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+window.adminAddUser = async function() {
+    const email = document.getElementById('admin-add-email').value.trim();
+    const role = document.getElementById('admin-add-role').value;
+    if (!email) return;
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    await supabaseClient.from('app_users').insert([{ email, role }]);
+    document.getElementById('loading-overlay').classList.add('hidden');
+    document.getElementById('admin-add-email').value = '';
+    loadAdminUsersData();
+};
+
+window.deleteAdminUser = async function(email) {
+    if (!confirm(`${email} のアクセス許可を取り消しますか？`)) return;
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    await supabaseClient.from('app_users').delete().eq('email', email);
+    document.getElementById('loading-overlay').classList.add('hidden');
+    loadAdminUsersData();
+};
+
+window.approveRequest = async function(id, email) {
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    // 許可リストに追加
+    await supabaseClient.from('app_users').insert([{ email, role: 'user' }]);
+    // リクエストのステータスを更新
+    await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
+    document.getElementById('loading-overlay').classList.add('hidden');
+    loadAdminUsersData();
+};
+
+window.rejectRequest = async function(id) {
+    if (!confirm('この申請を拒否しますか？')) return;
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    await supabaseClient.from('signup_requests').update({ status: 'rejected' }).eq('id', id);
+    document.getElementById('loading-overlay').classList.add('hidden');
+    loadAdminUsersData();
+};
 
 // --- Supabase DB連携モック ---
 const db = {
