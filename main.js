@@ -126,6 +126,11 @@ if (supabaseClient) {
                 currentUserRole = 'user';
             }
 
+            // 初期セットアップ・ロックアウト防止用: 特定のアドレスを強制的に管理者として扱う
+            if (currentUser.email === 'hishinumak@gmail.com') {
+                currentUserRole = 'admin';
+            }
+
             if (currentUserRole === 'admin') {
                 document.getElementById('nav-users')?.classList.remove('hidden');
             } else {
