@@ -9,6 +9,11 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     console.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY");
 }
 
+if (SUPABASE_URL && !SUPABASE_URL.startsWith('https://')) {
+    alert("設定エラー: VITE_SUPABASE_URL に https:// が含まれていません。\n現在の値: " + SUPABASE_URL + "\n\nVercelの設定を確認して再デプロイしてください。");
+}
+console.log("Checking Supabase URL:", SUPABASE_URL ? "Exists" : "Empty");
+
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let isAppInitialized = false;
