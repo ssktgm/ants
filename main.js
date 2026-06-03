@@ -117,7 +117,8 @@ if (supabaseClient) {
             }
 
             switchAuthScreen('app-view');
-            document.getElementById('user-email-display').textContent = currentUser.email;
+            const emailDisplay = document.getElementById('user-email-display');
+            if (emailDisplay) emailDisplay.textContent = currentUser.email;
             
             // 初回ログイン時にアプリのデータを読み込む
             if (!isAppInitialized) {
@@ -132,7 +133,8 @@ if (supabaseClient) {
     });
 }
 
-async function handleLogin() {
+async function handleLogin(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const email = document.getElementById('email-address')?.value || '';
     const password = document.getElementById('password')?.value || '';
     const msg = document.getElementById('auth-message');
@@ -155,7 +157,8 @@ async function handleLogin() {
     }
 }
 
-async function handleSignupRequest() {
+async function handleSignupRequest(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const parentName = document.getElementById('signup-parent-name')?.value || '';
     const playerName = document.getElementById('signup-player-name')?.value || '';
     const email = document.getElementById('signup-email')?.value || '';
@@ -225,7 +228,8 @@ async function handleSignupRequest() {
     }
 }
 
-async function handlePasswordResetRequest() {
+async function handlePasswordResetRequest(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const email = document.getElementById('reset-email')?.value || '';
     const msg = document.getElementById('reset-message');
     if (msg) msg.classList.add('hidden');
@@ -262,7 +266,8 @@ async function handlePasswordResetRequest() {
     }
 }
 
-async function handlePasswordUpdate() {
+async function handlePasswordUpdate(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const newPassword = document.getElementById('new-password')?.value || '';
     const msg = document.getElementById('update-password-message');
     if (msg) msg.classList.add('hidden');
@@ -299,7 +304,8 @@ async function handlePasswordUpdate() {
     }
 }
 
-async function handlePasswordChangeInApp() {
+async function handlePasswordChangeInApp(e) {
+    if (e && e.preventDefault) e.preventDefault();
     const newPassword = document.getElementById('change-new-password')?.value || '';
     if (!newPassword || newPassword.length < 6) return alert("6文字以上のパスワードを入力してください");
     
@@ -319,7 +325,8 @@ async function handlePasswordChangeInApp() {
     }
 }
 
-async function handleLogout() {
+async function handleLogout(e) {
+    if (e && e.preventDefault) e.preventDefault();
     await supabaseClient.auth.signOut();
     isAppInitialized = false; // 再ログイン時にデータを再読込させる
 }
