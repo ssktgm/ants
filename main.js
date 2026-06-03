@@ -9,13 +9,29 @@ let currentUser = null;
 let isAppInitialized = false;
 let currentUserRole = 'user'; // 'admin' or 'user'
 
+// --- ローディング表示のカウント管理 ---
+let loadingCount = 0;
+function showLoading() {
+    loadingCount++;
+    if (loadingCount === 1) {
+        document.getElementById('loading-overlay')?.classList.remove('hidden');
+    }
+}
+function hideLoading() {
+    loadingCount--;
+    if (loadingCount <= 0) {
+        loadingCount = 0;
+        document.getElementById('loading-overlay')?.classList.add('hidden');
+    }
+}
+
 // --- ローディングラッパー ---
 async function withLoading(asyncFunc) {
     if (!SUPABASE_URL) {
         alert("環境変数 (VITE_SUPABASE_URL) が設定されていません。Vercelの設定を確認してください。");
         return;
     }
-    document.getElementById('loading-overlay').classList.remove('hidden');
+    showLoading();
     try {
         const result = await asyncFunc();
         return result;
@@ -24,7 +40,7 @@ async function withLoading(asyncFunc) {
         alert('サーバー通信エラー:\n' + e.message);
         throw e;
     } finally {
-        document.getElementById('loading-overlay').classList.add('hidden');
+        hideLoading();
     }
 }
 
@@ -140,20 +156,30 @@ async function handleLogin(e) {
     const msg = document.getElementById('auth-message');
     if (msg) msg.classList.add('hidden');
     
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
-    const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    
-    if (error) {
+    showLoading();
+    try {
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        
+        if (error) {
+            if (msg) {
+                msg.textContent = "ログイン失敗: " + error.message;
+                msg.classList.remove('hidden');
+                msg.classList.add('text-red-500');
+            } else {
+                alert("ログイン失敗: " + error.message);
+            }
+        }
+    } catch (err) {
+        console.error("Login Error:", err);
         if (msg) {
-            msg.textContent = "ログイン失敗: " + error.message;
+            msg.textContent = "ログイン処理中にエラーが発生しました。";
             msg.classList.remove('hidden');
             msg.classList.add('text-red-500');
         } else {
-            alert("ログイン失敗: " + error.message);
+            alert("ログイン処理中にエラーが発生しました。");
         }
+    } finally {
+        hideLoading();
     }
 }
 
@@ -179,52 +205,59 @@ async function handleSignupRequest(e) {
         return;
     }
 
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    
-    // 1. Supabase Auth にアカウントを作成（サインアップ）
-    const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
-    
-    if (authError) {
-        document.getElementById('loading-overlay').classList.add('hidden');
-        if (msg) msg.textContent = "登録エラー: " + authError.message;
-        if (msg) msg.classList.remove('hidden', 'text-green-600');
-        if (msg) msg.classList.add('text-red-500');
-        return;
-    }
-
-    // Supabaseの「signup_requests」テーブルに申請データを保存する
-    const { error } = await supabaseClient.from('signup_requests').insert([{
-        parent_name: parentName,
-        player_name: playerName,
-        email: email,
-        status: 'pending'
-    }]);
-
-    // もしすでに管理者が allowed_users に追加済みのメアドだった場合、
-    // そのままログインできてしまうのを防ぐため、明示的にサインアウトしておく
-    // （本当に事前追加されていれば、次回ログインですぐ入れる）
-    await supabaseClient.auth.signOut();
-    
-    document.getElementById('loading-overlay').classList.add('hidden');
-    
-    if (error) {
-        if (msg) msg.textContent = "申請失敗: " + error.message;
-        if (msg) msg.classList.remove('hidden', 'text-green-600');
-        if (msg) msg.classList.add('text-red-500');
-    } else {
-        if (msg) {
-            msg.textContent = hasPasswordInput 
-                ? "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。"
-                : "利用申請が送信されました。管理者の承認後、「パスワードを忘れた場合」からパスワードを再設定してログインしてください。";
+    showLoading();
+    try {
+        // 1. Supabase Auth にアカウントを作成（サインアップ）
+        const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
+        
+        if (authError) {
+            if (msg) msg.textContent = "登録エラー: " + authError.message;
+            if (msg) msg.classList.remove('hidden', 'text-green-600');
+            if (msg) msg.classList.add('text-red-500');
+            return;
         }
-        if (msg) msg.classList.remove('text-red-500');
-        if (msg) msg.classList.add('text-green-600');
-        if (msg) msg.classList.remove('hidden');
-        // 入力欄クリア
-        if (document.getElementById('signup-parent-name')) document.getElementById('signup-parent-name').value = '';
-        if (document.getElementById('signup-player-name')) document.getElementById('signup-player-name').value = '';
-        if (document.getElementById('signup-email')) document.getElementById('signup-email').value = '';
-        if (document.getElementById('signup-password')) document.getElementById('signup-password').value = '';
+
+        // Supabaseの「signup_requests」テーブルに申請データを保存する
+        const { error } = await supabaseClient.from('signup_requests').insert([{
+            parent_name: parentName,
+            player_name: playerName,
+            email: email,
+            status: 'pending'
+        }]);
+
+        // もしすでに管理者が allowed_users に追加済みのメアドだった場合、
+        // そのままログインできてしまうのを防ぐため、明示的にサインアウトしておく
+        // （本当に事前追加されていれば、次回ログインですぐ入れる）
+        await supabaseClient.auth.signOut();
+        
+        if (error) {
+            if (msg) msg.textContent = "申請失敗: " + error.message;
+            if (msg) msg.classList.remove('hidden', 'text-green-600');
+            if (msg) msg.classList.add('text-red-500');
+        } else {
+            if (msg) {
+                msg.textContent = hasPasswordInput 
+                    ? "アカウントが作成され、利用申請が送信されました。管理者の承認をお待ちください。"
+                    : "利用申請が送信されました。管理者の承認後、「パスワードを忘れた場合」からパスワードを再設定してログインしてください。";
+            }
+            if (msg) msg.classList.remove('text-red-500');
+            if (msg) msg.classList.add('text-green-600');
+            if (msg) msg.classList.remove('hidden');
+            // 入力欄クリア
+            if (document.getElementById('signup-parent-name')) document.getElementById('signup-parent-name').value = '';
+            if (document.getElementById('signup-player-name')) document.getElementById('signup-player-name').value = '';
+            if (document.getElementById('signup-email')) document.getElementById('signup-email').value = '';
+            if (document.getElementById('signup-password')) document.getElementById('signup-password').value = '';
+        }
+    } catch (err) {
+        console.error("Signup Error:", err);
+        if (msg) {
+            msg.textContent = "登録処理中にエラーが発生しました。";
+            msg.classList.remove('hidden', 'text-green-600');
+            msg.classList.add('text-red-500');
+        }
+    } finally {
+        hideLoading();
     }
 }
 
@@ -236,33 +269,35 @@ async function handlePasswordResetRequest(e) {
 
     if (!email) return;
     
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    
-    // ユーザーにパスワード再設定メールを送信
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin
-    });
-    
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    
-    if (error) {
-        if (msg) {
-            msg.textContent = "送信失敗: " + error.message;
-            msg.classList.remove('hidden', 'text-green-600');
-            msg.classList.add('text-red-500');
+    showLoading();
+    try {
+        // ユーザーにパスワード再設定メールを送信
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin
+        });
+        
+        if (error) {
+            if (msg) {
+                msg.textContent = "送信失敗: " + error.message;
+                msg.classList.remove('hidden', 'text-green-600');
+                msg.classList.add('text-red-500');
+            } else {
+                alert("送信失敗: " + error.message);
+            }
         } else {
-            alert("送信失敗: " + error.message);
+            if (msg) {
+                msg.textContent = "パスワード再設定メールを送信しました。";
+                msg.classList.remove('text-red-500');
+                msg.classList.add('text-green-600');
+                msg.classList.remove('hidden');
+            } else {
+                alert("パスワード再設定メールを送信しました。");
+            }
         }
-    } else {
-        if (msg) {
-            msg.textContent = "パスワード再設定メールを送信しました。";
-            msg.classList.remove('text-red-500');
-            msg.classList.add('text-green-600');
-            msg.classList.remove('hidden');
-        } else {
-            alert("パスワード再設定メールを送信しました。");
-        }
+    } catch (err) {
+        console.error("Password reset error:", err);
+    } finally {
+        hideLoading();
     }
 }
 
@@ -282,25 +317,28 @@ async function handlePasswordUpdate(e) {
         }
         return;
     }
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
     
-    // 新しいパスワードをSupabaseに反映
-    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
-    
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    
-    if (error) {
-        if (msg) {
-            msg.textContent = "更新失敗: " + error.message;
-            msg.classList.remove('hidden', 'text-green-600');
-            msg.classList.add('text-red-500');
+    showLoading();
+    try {
+        // 新しいパスワードをSupabaseに反映
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        
+        if (error) {
+            if (msg) {
+                msg.textContent = "更新失敗: " + error.message;
+                msg.classList.remove('hidden', 'text-green-600');
+                msg.classList.add('text-red-500');
+            } else {
+                alert("更新失敗: " + error.message);
+            }
         } else {
-            alert("更新失敗: " + error.message);
+            alert("パスワードが更新されました。再度ログインしてください。");
+            switchAuthScreen('auth-view');
         }
-    } else {
-        alert("パスワードが更新されました。再度ログインしてください。");
-        switchAuthScreen('auth-view');
+    } catch (err) {
+        console.error("Password update error:", err);
+    } finally {
+        hideLoading();
     }
 }
 
@@ -309,19 +347,23 @@ async function handlePasswordChangeInApp(e) {
     const newPassword = document.getElementById('change-new-password')?.value || '';
     if (!newPassword || newPassword.length < 6) return alert("6文字以上のパスワードを入力してください");
     
-    const loadingOverlay = document.getElementById('loading-overlay');
-    if (loadingOverlay) loadingOverlay.classList.remove('hidden');
-    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
-    if (loadingOverlay) loadingOverlay.classList.add('hidden');
-    
-    if (error) {
-        alert("更新失敗: " + error.message);
-    } else {
-        alert("パスワードが変更されました。");
-        const modal = document.getElementById('change-password-modal');
-        if (modal) modal.classList.add('hidden');
-        const input = document.getElementById('change-new-password');
-        if (input) input.value = '';
+    showLoading();
+    try {
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        
+        if (error) {
+            alert("更新失敗: " + error.message);
+        } else {
+            alert("パスワードが変更されました。");
+            const modal = document.getElementById('change-password-modal');
+            if (modal) modal.classList.add('hidden');
+            const input = document.getElementById('change-new-password');
+            if (input) input.value = '';
+        }
+    } catch (err) {
+        console.error("Password change error:", err);
+    } finally {
+        hideLoading();
     }
 }
 
@@ -447,64 +489,92 @@ window.updateAdminUser = async function(oldEmail, index) {
     if (!newEmail) return alert('メールアドレスを入力してください');
     if (!confirm(`${oldEmail} の情報を更新しますか？\n（※アプリのアクセス許可情報の更新であり、SupabaseのログインID自体は変更されません）`)) return;
 
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    const { error } = await supabaseClient.from('app_users').update({ email: newEmail, role: newRole }).eq('email', oldEmail);
-    document.getElementById('loading-overlay').classList.add('hidden');
-    
-    if (error) {
-        alert('更新失敗: ' + error.message);
-    } else {
-        alert('更新しました');
-        loadAdminUsersData();
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('app_users').update({ email: newEmail, role: newRole }).eq('email', oldEmail);
+        if (error) {
+            alert('更新失敗: ' + error.message);
+        } else {
+            alert('更新しました');
+            loadAdminUsersData();
+        }
+    } catch (err) {
+        alert('更新処理中にエラーが発生しました。');
+    } finally {
+        hideLoading();
     }
 };
 
 window.forceResetPassword = async function(email) {
     if (!confirm(`${email} 宛にパスワード再設定メールを送信し、強制的にパスワードをリセットさせますか？`)) return;
     
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
-    document.getElementById('loading-overlay').classList.add('hidden');
-    
-    if (error) { alert("送信失敗: " + error.message); } 
-    else { alert("パスワード再設定メールを送信しました。"); }
+    showLoading();
+    try {
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        if (error) { alert("送信失敗: " + error.message); } 
+        else { alert("パスワード再設定メールを送信しました。"); }
+    } catch (err) {
+        console.error(err);
+    } finally {
+        hideLoading();
+    }
 };
 
 window.adminAddUser = async function() {
     const email = document.getElementById('admin-add-email').value.trim();
     const role = document.getElementById('admin-add-role').value;
     if (!email) return;
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    await supabaseClient.from('app_users').insert([{ email, role }]);
-    document.getElementById('loading-overlay').classList.add('hidden');
-    document.getElementById('admin-add-email').value = '';
-    loadAdminUsersData();
+    showLoading();
+    try {
+        await supabaseClient.from('app_users').insert([{ email, role }]);
+        document.getElementById('admin-add-email').value = '';
+        loadAdminUsersData();
+    } catch (err) {
+        console.error(err);
+    } finally {
+        hideLoading();
+    }
 };
 
 window.deleteAdminUser = async function(email) {
     if (!confirm(`${email} のアクセス許可を取り消しますか？`)) return;
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    await supabaseClient.from('app_users').delete().eq('email', email);
-    document.getElementById('loading-overlay').classList.add('hidden');
-    loadAdminUsersData();
+    showLoading();
+    try {
+        await supabaseClient.from('app_users').delete().eq('email', email);
+        loadAdminUsersData();
+    } catch (err) {
+        console.error(err);
+    } finally {
+        hideLoading();
+    }
 };
 
 window.approveRequest = async function(id, email) {
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    // 許可リストに追加
-    await supabaseClient.from('app_users').insert([{ email, role: 'user' }]);
-    // リクエストのステータスを更新
-    await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
-    document.getElementById('loading-overlay').classList.add('hidden');
-    loadAdminUsersData();
+    showLoading();
+    try {
+        // 許可リストに追加
+        await supabaseClient.from('app_users').insert([{ email, role: 'user' }]);
+        // リクエストのステータスを更新
+        await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
+        loadAdminUsersData();
+    } catch (err) {
+        console.error(err);
+    } finally {
+        hideLoading();
+    }
 };
 
 window.rejectRequest = async function(id) {
     if (!confirm('この申請を拒否しますか？')) return;
-    document.getElementById('loading-overlay').classList.remove('hidden');
-    await supabaseClient.from('signup_requests').update({ status: 'rejected' }).eq('id', id);
-    document.getElementById('loading-overlay').classList.add('hidden');
-    loadAdminUsersData();
+    showLoading();
+    try {
+        await supabaseClient.from('signup_requests').update({ status: 'rejected' }).eq('id', id);
+        loadAdminUsersData();
+    } catch (err) {
+        console.error(err);
+    } finally {
+        hideLoading();
+    }
 };
 
 // --- Supabase DB連携モック ---
