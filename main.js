@@ -88,7 +88,7 @@ function switchAuthScreen(screenId) {
 
 // ログイン状態の監視
 if (supabaseClient) {
-    supabaseClient.auth.onAuthStateChange((event, session) => {
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
         // パスワードリセット用リンクを踏んで戻ってきた時
         if (event === 'PASSWORD_RECOVERY') {
             switchAuthScreen('password-update-view');
@@ -97,6 +97,25 @@ if (supabaseClient) {
 
         if (session) {
             currentUser = session.user;
+            
+            // 管理者権限のチェック
+            try {
+                const { data: userData } = await supabaseClient.from('app_users').select('role').eq('email', currentUser.email).single();
+                if (userData) {
+                    currentUserRole = userData.role;
+                } else {
+                    currentUserRole = 'user';
+                }
+            } catch (e) {
+                currentUserRole = 'user';
+            }
+
+            if (currentUserRole === 'admin') {
+                document.getElementById('nav-users')?.classList.remove('hidden');
+            } else {
+                document.getElementById('nav-users')?.classList.add('hidden');
+            }
+
             switchAuthScreen('app-view');
             document.getElementById('user-email-display').textContent = currentUser.email;
             
@@ -376,10 +395,20 @@ async function loadAdminUsersData() {
     // 1. 許可済みユーザー一覧の取得
     const { data: usersData } = await supabaseClient.from('app_users').select('*').order('created_at', { ascending: false });
     const allowedListEl = document.getElementById('allowed-users-list');
-    allowedListEl.innerHTML = (usersData || []).map(u => `
-        <div class="flex justify-between items-center p-2 bg-white border rounded shadow-sm">
-            <div><span class="font-bold">${u.email}</span> <span class="text-xs text-gray-500 ml-2">(${u.role})</span></div>
-            ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded">削除</button>` : '<span class="text-xs text-gray-400">自身</span>'}
+    allowedListEl.innerHTML = (usersData || []).map((u, i) => `
+        <div class="flex flex-col md:flex-row md:items-center justify-between p-3 bg-white border rounded shadow-sm gap-2">
+            <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
+                <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
+                <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
+                    <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
+                    <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
+                </select>
+                ${u.email !== currentUser.email ? `<button onclick="updateAdminUser('${u.email}', ${i})" class="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded shadow">更新</button>` : '<span class="text-xs text-gray-500 ml-2">※自身は変更不可</span>'}
+            </div>
+            <div class="flex items-center space-x-2 shrink-0">
+                <button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>
+                ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
+            </div>
         </div>
     `).join('');
 
@@ -403,6 +432,36 @@ async function loadAdminUsersData() {
         `).join('');
     }
 }
+
+window.updateAdminUser = async function(oldEmail, index) {
+    const newEmail = document.getElementById(`edit-email-${index}`).value.trim();
+    const newRole = document.getElementById(`edit-role-${index}`).value;
+    
+    if (!newEmail) return alert('メールアドレスを入力してください');
+    if (!confirm(`${oldEmail} の情報を更新しますか？\n（※アプリのアクセス許可情報の更新であり、SupabaseのログインID自体は変更されません）`)) return;
+
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    const { error } = await supabaseClient.from('app_users').update({ email: newEmail, role: newRole }).eq('email', oldEmail);
+    document.getElementById('loading-overlay').classList.add('hidden');
+    
+    if (error) {
+        alert('更新失敗: ' + error.message);
+    } else {
+        alert('更新しました');
+        loadAdminUsersData();
+    }
+};
+
+window.forceResetPassword = async function(email) {
+    if (!confirm(`${email} 宛にパスワード再設定メールを送信し、強制的にパスワードをリセットさせますか？`)) return;
+    
+    document.getElementById('loading-overlay').classList.remove('hidden');
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    document.getElementById('loading-overlay').classList.add('hidden');
+    
+    if (error) { alert("送信失敗: " + error.message); } 
+    else { alert("パスワード再設定メールを送信しました。"); }
+};
 
 window.adminAddUser = async function() {
     const email = document.getElementById('admin-add-email').value.trim();
