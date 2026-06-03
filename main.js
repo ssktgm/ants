@@ -35,6 +35,12 @@ function hideLoading() {
     }
 }
 
+// --- 強制的にローディングを解除する安全装置 ---
+function forceHideLoading() {
+    loadingCount = 0;
+    document.getElementById('loading-overlay')?.classList.add('hidden');
+}
+
 // --- ローディングラッパー ---
 async function withLoading(asyncFunc) {
     if (!SUPABASE_URL) {
@@ -47,6 +53,7 @@ async function withLoading(asyncFunc) {
         return result;
     } catch (e) {
         console.error('Supabase DB Error:', e);
+        forceHideLoading();
         alert('サーバー通信エラー:\n' + e.message);
         throw e;
     } finally {
@@ -164,13 +171,18 @@ if (supabaseClient) {
     });
 }
 
+let isAuthenticating = false; // 二重クリック防止フラグ
+
 async function handleLogin(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (isAuthenticating) return;
+    
     const email = document.getElementById('email-address')?.value || '';
     const password = document.getElementById('password')?.value || '';
     const msg = document.getElementById('auth-message');
     if (msg) msg.classList.add('hidden');
     
+    isAuthenticating = true;
     showLoading();
     try {
         const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
@@ -185,6 +197,7 @@ async function handleLogin(e) {
             }
         }
     } catch (err) {
+        forceHideLoading();
         console.error("Login Error:", err);
         const errDetail = err.message + "\n" + JSON.stringify(err, Object.getOwnPropertyNames(err));
         if (msg) {
@@ -196,11 +209,15 @@ async function handleLogin(e) {
         }
     } finally {
         hideLoading();
+        isAuthenticating = false;
     }
 }
 
+let isSigningUp = false; // 新規登録用の二重クリック防止フラグ
+
 async function handleSignupRequest(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (isSigningUp) return;
     const parentName = document.getElementById('signup-parent-name')?.value || '';
     const playerName = document.getElementById('signup-player-name')?.value || '';
     const email = document.getElementById('signup-email')?.value || '';
@@ -221,6 +238,7 @@ async function handleSignupRequest(e) {
         return;
     }
 
+    isSigningUp = true;
     showLoading();
     try {
         // 1. Supabase Auth にアカウントを作成（サインアップ）
@@ -266,6 +284,7 @@ async function handleSignupRequest(e) {
             if (document.getElementById('signup-password')) document.getElementById('signup-password').value = '';
         }
     } catch (err) {
+        forceHideLoading();
         console.error("Signup Error:", err);
         if (msg) {
             msg.textContent = "登録処理中にエラーが発生しました。";
@@ -274,6 +293,7 @@ async function handleSignupRequest(e) {
         }
     } finally {
         hideLoading();
+        isSigningUp = false;
     }
 }
 
