@@ -185,7 +185,14 @@ async function handleLogin(e) {
     isAuthenticating = true;
     showLoading();
     try {
-        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        // 15秒でタイムアウトするPromiseを作成
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("通信がタイムアウトしました。ネットワーク環境を確認するか、時間をおいて再度お試しください。")), 15000)
+        );
+        
+        // Supabaseのログイン処理とタイムアウトを競争させる
+        const authPromise = supabaseClient.auth.signInWithPassword({ email, password });
+        const { error } = await Promise.race([authPromise, timeoutPromise]);
         
         if (error) {
             if (msg) {
@@ -206,6 +213,18 @@ async function handleLogin(e) {
             msg.classList.add('text-red-500');
         } else {
             alert("通信エラー詳細:\n" + errDetail);
+        }
+        
+        // 古いセッションの不整合によるフリーズ（タイムアウト）の場合、強制的にセッションをクリアする
+        if (err.message && err.message.includes("タイムアウト")) {
+            supabaseClient.auth.signOut().catch(() => {});
+            // LocalStorage内のSupabase関連キーを強制削除
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('sb-')) {
+                    localStorage.removeItem(key);
+                }
+            }
         }
     } finally {
         hideLoading();
