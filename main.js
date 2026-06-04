@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ログインボタン等のイベント
     document.getElementById('btn-login')?.addEventListener('click', handleLogin);
     document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
+    document.getElementById('btn-clear-cache')?.addEventListener('click', handleClearCache);
 
     // ビュー切り替えイベント
     document.getElementById('link-to-signup')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('signup-view'); });
@@ -171,6 +172,34 @@ if (supabaseClient) {
     });
 }
 
+async function handleClearCache(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    
+    if (!confirm("ブラウザに保存されているログイン情報（キャッシュ）をクリアして、ページを再読み込みしますか？\n（動作がおかしい・ログインできない場合にお試しください）")) {
+        return;
+    }
+    
+    showLoading();
+    try {
+        await supabaseClient.auth.signOut().catch(() => {});
+        
+        // LocalStorage内のSupabase関連キーを強制削除
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('sb-')) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+        
+        alert("キャッシュをクリアしました。ページを再読み込みします。");
+        location.reload();
+    } catch (err) {
+        forceHideLoading();
+    }
+}
+
 let isAuthenticating = false; // 二重クリック防止フラグ
 
 async function handleLogin(e) {
@@ -223,7 +252,6 @@ async function handleLogin(e) {
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('sb-')) {
-                    localStorage.removeItem(key);
                     keysToRemove.push(key);
                 }
             }
