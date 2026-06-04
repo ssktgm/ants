@@ -219,12 +219,15 @@ async function handleLogin(e) {
         if (err.message && err.message.includes("タイムアウト")) {
             supabaseClient.auth.signOut().catch(() => {});
             // LocalStorage内のSupabase関連キーを強制削除
+            const keysToRemove = [];
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('sb-')) {
                     localStorage.removeItem(key);
+                    keysToRemove.push(key);
                 }
             }
+            keysToRemove.forEach(k => localStorage.removeItem(k));
         }
     } finally {
         hideLoading();
