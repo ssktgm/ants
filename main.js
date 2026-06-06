@@ -111,6 +111,12 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('change-password-modal')?.classList.add('hidden');
     });
     document.getElementById('btn-submit-change-password')?.addEventListener('click', handlePasswordChangeInApp);
+    
+    // 「アカウント管理」の文言を「パスワード変更」に変更
+    const btnChangePw = document.getElementById('btn-change-password');
+    if (btnChangePw && btnChangePw.textContent.includes('アカウント管理')) {
+        btnChangePw.textContent = 'パスワード変更';
+    }
 
     // ユーザー管理イベント
     document.getElementById('nav-users')?.addEventListener('click', handleNavUsers);
@@ -333,6 +339,15 @@ async function handleLogin(e) {
         hideLoading();
         isAuthenticating = false;
     }
+}
+
+// 出欠アプリ等から管理画面へ飛ぶためのグローバル関数
+export async function goToUsersAdmin() {
+    switchAuthScreen('app-view');
+    await handleNavUsers();
+}
+export function openChangePasswordModal() {
+    document.getElementById('change-password-modal')?.classList.remove('hidden');
 }
 
 let isSigningUp = false; // 新規登録用の二重クリック防止フラグ
@@ -610,24 +625,72 @@ async function handleNavUsers() {
 async function loadAdminUsersData() {
     // 1. 許可済みユーザー一覧の取得
     const { data: usersData } = await supabaseClient.from('app_users').select('*').order('created_at', { ascending: false });
+    
+    // 出欠グループ関連データの取得
+    let groupsData = [];
+    let userGroupsData = [];
+    try {
+        const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
+        if (gData) groupsData = gData;
+        const { data: ugData } = await supabaseClient.from('user_groups').select('*');
+        if (ugData) userGroupsData = ugData;
+    } catch (e) { console.error("Groups DB Error:", e); }
+
     const allowedListEl = document.getElementById('allowed-users-list');
-    allowedListEl.innerHTML = (usersData || []).map((u, i) => `
-        <div class="flex flex-col md:flex-row md:items-center justify-between p-3 bg-white border rounded shadow-sm gap-2">
-            <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
+    
+    // --- グループマスター管理ブロック ---
+    let groupMasterHtml = `
+    <div class="mb-6 p-4 bg-purple-50 border border-purple-200 rounded shadow-sm">
+        <h3 class="font-bold text-purple-800 mb-2">出欠グループの管理</h3>
+        <div class="flex flex-wrap gap-2 mb-3">
+            ${groupsData.length === 0 ? '<span class="text-sm text-gray-500">グループなし</span>' : ''}
+            ${groupsData.map(g => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm"><span class="mr-2 font-bold">${g.name}</span><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold">×</button></div>`).join('')}
+        </div>
+        <div class="flex space-x-2">
+            <input type="text" id="admin-new-group-name" placeholder="新しいグループ名" class="border p-1 rounded text-sm w-48">
+            <button onclick="saveNewGroupAdmin()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
+        </div>
+    </div>
+    <h3 class="font-bold text-gray-800 mb-2 border-b pb-1">ユーザー・メンバー管理</h3>
+    `;
+
+    // --- ユーザー一覧ブロック ---
+    const usersHtml = (usersData || []).map((u, i) => {
+        const groupCheckboxes = groupsData.map(g => {
+            const isMember = userGroupsData.some(ug => ug.user_email === u.email && ug.group_id === g.id);
+            return `<label class="inline-flex items-center mr-3 mb-1 cursor-pointer"><input type="checkbox" id="edit-group-${i}-${g.id}" value="${g.id}" class="mr-1" ${isMember ? 'checked' : ''}> <span class="text-sm font-medium">${g.name}</span></label>`;
+        }).join('');
+
+        return `
+        <div class="flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
+                <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
                 <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
                 <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
                     <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
                     <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
                     <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
                 </select>
-                ${u.email !== currentUser.email ? `<button onclick="updateAdminUser('${u.email}', ${i})" class="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded shadow">更新</button>` : '<span class="text-xs text-gray-500 ml-2">※自身は変更不可</span>'}
             </div>
             <div class="flex items-center space-x-2 shrink-0">
                 <button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>
                 ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
             </div>
         </div>
-    `).join('');
+            <div class="flex flex-col md:flex-row md:items-start justify-between gap-2">
+                <div class="flex-grow">
+                    <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
+                    <div class="flex flex-wrap" id="group-container-${i}">${groupCheckboxes || '<span class="text-xs text-gray-400">グループがありません</span>'}</div>
+                </div>
+                <div class="shrink-0 mt-2 md:mt-0 flex items-end">
+                    <button onclick="updateAdminUser('${u.email}', ${i}, '${u.role}')" class="text-sm bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded shadow font-bold">設定を保存</button>
+                </div>
+            </div>
+        </div>
+        `;
+    }).join('');
+
+    allowedListEl.innerHTML = groupMasterHtml + usersHtml;
 
     // 2. 申請待ち一覧の取得
     const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
@@ -650,24 +713,43 @@ async function loadAdminUsersData() {
     }
 }
 
-window.updateAdminUser = async function(oldEmail, index) {
-    const newEmail = document.getElementById(`edit-email-${index}`).value.trim();
-    const newRole = document.getElementById(`edit-role-${index}`).value;
-    
+window.updateAdminUser = async function(oldEmail, index, oldRole) {
+    const emailEl = document.getElementById(`edit-email-${index}`);
+    const roleEl = document.getElementById(`edit-role-${index}`);
+    const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
+    const newRole = roleEl.disabled ? oldRole : roleEl.value;
+
     if (!newEmail) return alert('メールアドレスを入力してください');
-    if (!confirm(`${oldEmail} の情報を更新しますか？\n（※アプリのアクセス許可情報の更新であり、SupabaseのログインID自体は変更されません）`)) return;
+    if (!confirm(`${oldEmail} のユーザー情報と所属グループ設定を保存しますか？`)) return;
 
     showLoading();
     try {
-        const { error } = await supabaseClient.from('app_users').update({ email: newEmail, role: newRole }).eq('email', oldEmail);
-        if (error) {
-            alert('更新失敗: ' + error.message);
-        } else {
-            alert('更新しました');
-            loadAdminUsersData();
+        // 1. ユーザー情報の更新
+        if (!emailEl.disabled || !roleEl.disabled) {
+            const { error } = await supabaseClient.from('app_users').update({ email: newEmail, role: newRole }).eq('email', oldEmail);
+            if (error) throw error;
         }
+        
+        // 2. 所属グループの更新
+        // 現在のユーザーのグループ情報を一旦全削除
+        const { error: delErr } = await supabaseClient.from('user_groups').delete().eq('user_email', oldEmail);
+        if (delErr) throw delErr;
+        
+        // チェックされているグループを登録
+        const container = document.getElementById(`group-container-${index}`);
+        const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+        const selectedGroupIds = Array.from(checkboxes).map(cb => cb.value);
+        
+        if (selectedGroupIds.length > 0) {
+            const inserts = selectedGroupIds.map(gId => ({ user_email: newEmail, group_id: gId }));
+            const { error: insErr } = await supabaseClient.from('user_groups').insert(inserts);
+            if (insErr) throw insErr;
+        }
+        
+        alert('設定を保存しました');
+        loadAdminUsersData();
     } catch (err) {
-        alert('更新処理中にエラーが発生しました。');
+        alert('更新処理中にエラーが発生しました: ' + err.message);
     } finally {
         hideLoading();
     }
@@ -715,6 +797,27 @@ window.deleteAdminUser = async function(email) {
     } finally {
         hideLoading();
     }
+};
+
+window.saveNewGroupAdmin = async function() {
+    const name = document.getElementById('admin-new-group-name').value.trim();
+    if (!name) return alert('グループ名を入力してください');
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('groups').insert([{ name }]);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
+};
+
+window.deleteGroupAdmin = async function(id) {
+    if (!confirm('このグループを削除しますか？\n※関連する出欠データやメンバー設定にも影響が出る可能性があります。')) return;
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('groups').delete().eq('id', id);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
 };
 
 window.approveRequest = async function(id, email) {
@@ -1841,4 +1944,4 @@ function showMasterMessage(msg, type='info') {
 }
 function hideMasterMessage() { document.getElementById('master-message').classList.add('hidden'); }
 
-export { supabaseClient, currentUser, currentUserRole, showLoading, hideLoading, logAction, withLoading };
+export { supabaseClient, currentUser, currentUserRole, showLoading, hideLoading, logAction, withLoading, goToUsersAdmin, openChangePasswordModal };

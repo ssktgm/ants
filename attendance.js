@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole, goToUsersAdmin, openChangePasswordModal } from './main.js';
 
 let currentDate = new Date();
 let events = [];
@@ -14,7 +14,7 @@ export async function initAttendanceApp() {
     await loadData();
     renderCalendar();
     updateGroupFilter();
-    addAdminGroupButton();
+    setupAttendanceHeaderMenus();
 }
 
 function setupEventListeners() {
@@ -37,7 +37,10 @@ function setupEventListeners() {
 
     // モーダルオープン系
     document.getElementById('btn-add-event')?.addEventListener('click', () => openAddEventModal());
-    document.getElementById('btn-group-manage')?.addEventListener('click', () => openGroupManageModal());
+    
+    // 古いグループ管理ボタンは非表示化
+    const manageBtn = document.getElementById('btn-group-manage');
+    if(manageBtn) manageBtn.style.display = 'none';
 
     // リストフィルター
     document.getElementById('filter-category')?.addEventListener('change', renderList);
@@ -50,12 +53,6 @@ function setupEventListeners() {
     window.att_openEventDetail = openEventDetailModal;
     window.att_openAttendanceForm = openAttendanceFormModal;
     window.att_saveAttendance = saveAttendance;
-    window.att_joinGroup = joinGroup;
-    window.att_leaveGroup = leaveGroup;
-    
-    window.att_openGroupMasterModal = openGroupMasterModal;
-    window.att_saveNewGroup = saveNewGroup;
-    window.att_deleteGroup = deleteGroup;
 }
 
 function switchTab(tab) {
@@ -113,31 +110,31 @@ function updateGroupFilter() {
     sel.innerHTML = '<option value="">すべてのグループ</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
 }
 
-// 管理者用：グループフィルタの横に「グループ作成」ボタンを動的に追加
-function addAdminGroupButton() {
-    if (currentUserRole !== 'admin') return;
+// ヘッダー部分（フィルター横）に各種管理メニューを動的追加
+function setupAttendanceHeaderMenus() {
+    const filterGroupEl = document.getElementById('filter-group');
+    if (!filterGroupEl) return;
     
-    // 配置先1: 「グループ管理」ボタンの隣（ヘッダー領域で隠れにくい）
-    const manageBtn = document.getElementById('btn-group-manage');
-    if (manageBtn && !document.getElementById('btn-admin-group')) {
-        const btn = document.createElement('button');
-        btn.id = 'btn-admin-group';
-        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2';
-        btn.textContent = 'グループ作成(管理者)';
-        btn.onclick = () => window.att_openGroupMasterModal();
-        manageBtn.parentNode.insertBefore(btn, manageBtn.nextSibling);
-        return;
+    const container = filterGroupEl.parentNode;
+    
+    // パスワード変更ボタン (全員表示)
+    if (!document.getElementById('btn-att-change-pw')) {
+        const btnPw = document.createElement('button');
+        btnPw.id = 'btn-att-change-pw';
+        btnPw.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 md:mt-0';
+        btnPw.textContent = 'パスワード変更';
+        btnPw.onclick = () => openChangePasswordModal();
+        container.appendChild(btnPw);
     }
 
-    // 配置先2: フィルターの隣（念のためのバックアップ）
-    const filterGroupEl = document.getElementById('filter-group');
-    if (filterGroupEl && !document.getElementById('btn-admin-group-alt')) {
-        const btn = document.createElement('button');
-        btn.id = 'btn-admin-group-alt';
-        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 md:mt-0';
-        btn.textContent = 'グループ作成(管理者)';
-        btn.onclick = () => window.att_openGroupMasterModal();
-        filterGroupEl.parentNode.appendChild(btn);
+    // ユーザー・グループ管理ボタン (管理者のみ表示)
+    if (currentUserRole === 'admin' && !document.getElementById('btn-att-users-admin')) {
+        const btnAdmin = document.createElement('button');
+        btnAdmin.id = 'btn-att-users-admin';
+        btnAdmin.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 md:mt-0';
+        btnAdmin.textContent = 'ユーザー・グループ管理(管理者)';
+        btnAdmin.onclick = () => goToUsersAdmin();
+        container.appendChild(btnAdmin);
     }
 }
 
@@ -445,108 +442,4 @@ async function saveAttendance(eventId) {
             alert('出欠登録エラー: ' + e.message);
         }
     } finally { hideLoading(); }
-}
-
-// =====================================
-// グループ管理 (簡易版)
-// =====================================
-function openGroupManageModal() {
-    const isAdmin = currentUserRole === 'admin';
-    const modalHtml = `
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold">所属グループの管理</h3>
-                ${isAdmin ? `<button onclick="window.att_closeModal(); window.att_openGroupMasterModal();" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs font-bold shadow">＋ 新規作成(管理者)</button>` : ''}
-            </div>
-            <p class="text-xs text-gray-500 mb-4">自分を所属させたいグループを選んでください。</p>
-            <div class="space-y-2">
-                ${groups.length === 0 ? '<p class="text-sm">グループがまだありません。</p>' : ''}
-                ${groups.map(g => {
-                    const isMember = userGroups.some(ug => ug.group_id === g.id);
-                    return `
-                    <div class="flex justify-between items-center p-3 border rounded ${isMember ? 'bg-blue-50 border-blue-200' : 'bg-white'}">
-                        <span class="font-bold text-gray-800">${g.name}</span>
-                        ${isMember ? 
-                            `<button onclick="window.att_leaveGroup('${g.id}')" class="bg-red-100 text-red-600 px-3 py-1 rounded text-xs font-bold hover:bg-red-200">外れる</button>` :
-                            `<button onclick="window.att_joinGroup('${g.id}')" class="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700">参加する</button>`
-                        }
-                    </div>`;
-                }).join('')}
-            </div>
-            <div class="mt-6 text-center border-t pt-4">
-                <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded font-bold">閉じる</button>
-            </div>
-        </div>
-    </div>`;
-    document.getElementById('attendance-modals').innerHTML = modalHtml;
-}
-
-async function joinGroup(groupId) {
-    showLoading();
-    try {
-        await supabaseClient.from('user_groups').insert({ user_email: currentUser.email, group_id: groupId });
-        await loadData();
-        openGroupManageModal(); // 再描画
-    } catch(e) {} finally { hideLoading(); }
-}
-
-// =====================================
-// グループマスター管理 (管理者用)
-// =====================================
-function openGroupMasterModal() {
-    if (currentUserRole !== 'admin') return;
-    
-    const modalHtml = `
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
-            <h3 class="text-xl font-bold mb-4 text-purple-700">グループマスター管理</h3>
-            <div class="mb-4 flex space-x-2">
-                <input type="text" id="new-group-name" placeholder="新しいグループ名" class="flex-grow border p-2 rounded text-sm">
-                <button onclick="window.att_saveNewGroup()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm font-bold shadow">追加</button>
-            </div>
-            <div class="space-y-2">
-                ${groups.length === 0 ? '<p class="text-sm text-gray-500">グループがまだありません。</p>' : ''}
-                ${groups.map(g => `
-                    <div class="flex justify-between items-center p-3 border rounded bg-gray-50">
-                        <span class="font-bold text-gray-800">${g.name}</span>
-                        <button onclick="window.att_deleteGroup('${g.id}')" class="bg-red-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-red-600 shadow">削除</button>
-                    </div>`).join('')}
-            </div>
-            <div class="mt-6 text-center border-t pt-4">
-                <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded font-bold">閉じる</button>
-            </div>
-        </div>
-    </div>`;
-    document.getElementById('attendance-modals').innerHTML = modalHtml;
-}
-
-async function saveNewGroup() {
-    const name = document.getElementById('new-group-name').value.trim();
-    if (!name) return alert('グループ名を入力してください');
-    showLoading();
-    try {
-        const { error } = await supabaseClient.from('groups').insert([{ name }]);
-        if (error) throw error;
-        await loadData(); updateGroupFilter(); openGroupMasterModal();
-    } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
-}
-
-async function deleteGroup(id) {
-    if (!confirm('このグループを削除しますか？\\n※すでにこのグループに紐づいているイベントやメンバー設定がある場合、影響が出る可能性があります。')) return;
-    showLoading();
-    try {
-        const { error } = await supabaseClient.from('groups').delete().eq('id', id);
-        if (error) throw error;
-        await loadData(); updateGroupFilter(); openGroupMasterModal();
-    } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
-}
-
-async function leaveGroup(groupId) {
-    showLoading();
-    try {
-        await supabaseClient.from('user_groups').delete().match({ user_email: currentUser.email, group_id: groupId });
-        await loadData();
-        openGroupManageModal(); // 再描画
-    } catch(e) {} finally { hideLoading(); }
 }
