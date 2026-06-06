@@ -56,7 +56,11 @@ async function withLoading(asyncFunc) {
     } catch (e) {
         console.error('Supabase DB Error:', e);
         forceHideLoading();
-        alert('サーバー通信エラー:\n' + e.message);
+        if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
+            alert('サーバー通信エラー: 通信に失敗しました。\nネットワーク接続、または環境変数(Supabase URL)の設定が正しいか確認してください。');
+        } else {
+            alert('サーバー通信エラー:\n' + e.message);
+        }
         throw e;
     } finally {
         hideLoading();

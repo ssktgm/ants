@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole } from './main.js';
 
 let currentDate = new Date();
 let events = [];
@@ -14,6 +14,7 @@ export async function initAttendanceApp() {
     await loadData();
     renderCalendar();
     updateGroupFilter();
+    addAdminGroupButton();
 }
 
 function setupEventListeners() {
@@ -51,6 +52,10 @@ function setupEventListeners() {
     window.att_saveAttendance = saveAttendance;
     window.att_joinGroup = joinGroup;
     window.att_leaveGroup = leaveGroup;
+    
+    window.att_openGroupMasterModal = openGroupMasterModal;
+    window.att_saveNewGroup = saveNewGroup;
+    window.att_deleteGroup = deleteGroup;
 }
 
 function switchTab(tab) {
@@ -106,6 +111,20 @@ function updateGroupFilter() {
     const sel = document.getElementById('filter-group');
     if (!sel) return;
     sel.innerHTML = '<option value="">すべてのグループ</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+}
+
+// 管理者用：グループフィルタの横に「グループ作成」ボタンを動的に追加
+function addAdminGroupButton() {
+    if (currentUserRole !== 'admin') return;
+    const filterGroupEl = document.getElementById('filter-group');
+    if (filterGroupEl && !document.getElementById('btn-admin-group')) {
+        const btn = document.createElement('button');
+        btn.id = 'btn-admin-group';
+        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-3';
+        btn.textContent = 'グループ作成(管理者)';
+        btn.onclick = () => window.att_openGroupMasterModal();
+        filterGroupEl.parentNode.appendChild(btn);
+    }
 }
 
 // =====================================
@@ -452,6 +471,57 @@ async function joinGroup(groupId) {
         await loadData();
         openGroupManageModal(); // 再描画
     } catch(e) {} finally { hideLoading(); }
+}
+
+// =====================================
+// グループマスター管理 (管理者用)
+// =====================================
+function openGroupMasterModal() {
+    if (currentUserRole !== 'admin') return;
+    
+    const modalHtml = `
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120]">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4 text-purple-700">グループマスター管理</h3>
+            <div class="mb-4 flex space-x-2">
+                <input type="text" id="new-group-name" placeholder="新しいグループ名" class="flex-grow border p-2 rounded text-sm">
+                <button onclick="window.att_saveNewGroup()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm font-bold shadow">追加</button>
+            </div>
+            <div class="space-y-2">
+                ${groups.length === 0 ? '<p class="text-sm text-gray-500">グループがまだありません。</p>' : ''}
+                ${groups.map(g => `
+                    <div class="flex justify-between items-center p-3 border rounded bg-gray-50">
+                        <span class="font-bold text-gray-800">${g.name}</span>
+                        <button onclick="window.att_deleteGroup('${g.id}')" class="bg-red-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-red-600 shadow">削除</button>
+                    </div>`).join('')}
+            </div>
+            <div class="mt-6 text-center border-t pt-4">
+                <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded font-bold">閉じる</button>
+            </div>
+        </div>
+    </div>`;
+    document.getElementById('attendance-modals').innerHTML = modalHtml;
+}
+
+async function saveNewGroup() {
+    const name = document.getElementById('new-group-name').value.trim();
+    if (!name) return alert('グループ名を入力してください');
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('groups').insert([{ name }]);
+        if (error) throw error;
+        await loadData(); updateGroupFilter(); openGroupMasterModal();
+    } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
+}
+
+async function deleteGroup(id) {
+    if (!confirm('このグループを削除しますか？\\n※すでにこのグループに紐づいているイベントやメンバー設定がある場合、影響が出る可能性があります。')) return;
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('groups').delete().eq('id', id);
+        if (error) throw error;
+        await loadData(); updateGroupFilter(); openGroupMasterModal();
+    } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
 }
 
 async function leaveGroup(groupId) {
