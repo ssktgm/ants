@@ -347,7 +347,13 @@ export async function goToUsersAdmin() {
     await handleNavUsers();
 }
 export function openChangePasswordModal() {
-    document.getElementById('change-password-modal')?.classList.remove('hidden');
+    const modal = document.getElementById('change-password-modal');
+    if (modal) {
+        // 親画面が非表示（hidden）でも確実に最前面に見えるように、bodyの直下に配置を移動
+        document.body.appendChild(modal);
+        modal.classList.remove('hidden');
+        modal.style.zIndex = '9999'; // 最前面を強制
+    }
 }
 
 let isSigningUp = false; // 新規登録用の二重クリック防止フラグ
