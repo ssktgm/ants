@@ -114,32 +114,32 @@ function updateGroupFilter() {
     sel.innerHTML = '<option value="">すべてのグループ</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
 }
 
-// ヘッダー部分（常に表示されるツールバー右側）に各種管理メニューを動的追加
+// ヘッダー部分（フィルター横）に各種管理メニューを動的追加
 function setupAttendanceHeaderMenus() {
-    // 「新規イベント」ボタンの親要素（常に画面上部に表示されているコンテナ）を取得
-    const container = document.getElementById('btn-add-event')?.parentNode;
-    if (!container) return;
+    // グループ絞り込みドロップダウンを取得
+    const filterGroupEl = document.getElementById('filter-group');
+    if (!filterGroupEl) return;
+    
+    const container = filterGroupEl.parentNode;
     
     // パスワード変更ボタン (全員表示)
     if (!document.getElementById('btn-att-change-pw')) {
         const btnPw = document.createElement('button');
         btnPw.id = 'btn-att-change-pw';
-        btnPw.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded text-sm font-bold shadow';
+        btnPw.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 sm:mt-0';
         btnPw.textContent = 'パスワード変更';
         btnPw.onclick = () => openChangePasswordModal();
-        // 新規イベントボタンの前に挿入
-        container.insertBefore(btnPw, document.getElementById('btn-add-event'));
+        container.appendChild(btnPw);
     }
 
     // ユーザー・グループ管理ボタン (管理者のみ表示)
     if (currentUserRole === 'admin' && !document.getElementById('btn-att-users-admin')) {
         const btnAdmin = document.createElement('button');
         btnAdmin.id = 'btn-att-users-admin';
-        btnAdmin.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded text-sm font-bold shadow';
+        btnAdmin.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 sm:mt-0';
         btnAdmin.textContent = 'ユーザー管理(管理者)';
         btnAdmin.onclick = () => goToUsersAdmin();
-        // 新規イベントボタンの前に挿入
-        container.insertBefore(btnAdmin, document.getElementById('btn-add-event'));
+        container.appendChild(btnAdmin);
     }
 }
 
