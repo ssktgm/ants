@@ -699,24 +699,43 @@ async function loadAdminUsersData() {
     // 出欠グループ関連データの取得
     let groupsData = [];
     let userGroupsData = [];
+    let categoriesData = [];
     try {
         const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
         if (gData) groupsData = gData;
         const { data: ugData } = await supabaseClient.from('user_groups').select('*');
         if (ugData) userGroupsData = ugData;
+        const { data: catData } = await supabaseClient.from('event_categories').select('*').order('created_at');
+        if (catData) categoriesData = catData;
     } catch (e) { console.error("Groups DB Error:", e); }
 
     const allowedListEl = document.getElementById('allowed-users-list');
     
+    // --- カテゴリマスター管理ブロック ---
+    let categoryMasterHtml = `
+    <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded shadow-sm">
+        <h3 class="font-bold text-blue-800 mb-2">イベントカテゴリの管理</h3>
+        <div class="flex flex-wrap gap-2 mb-3">
+            ${categoriesData.length === 0 ? '<span class="text-sm text-gray-500">カテゴリなし</span>' : ''}
+            ${categoriesData.map(c => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+        </div>
+        <div class="flex space-x-2 items-center">
+            <input type="text" id="admin-new-category-name" placeholder="新しいカテゴリ名" class="border p-1 rounded text-sm w-48">
+            <button onclick="saveNewCategoryAdmin()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
+        </div>
+    </div>
+    `;
+
     // --- グループマスター管理ブロック ---
     let groupMasterHtml = `
     <div class="mb-6 p-4 bg-purple-50 border border-purple-200 rounded shadow-sm">
         <h3 class="font-bold text-purple-800 mb-2">出欠グループの管理</h3>
-        <div class="flex flex-wrap gap-2 mb-3">
+        <div class="flex flex-col gap-2 mb-3">
             ${groupsData.length === 0 ? '<span class="text-sm text-gray-500">グループなし</span>' : ''}
-            ${groupsData.map(g => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm"><span class="mr-2 font-bold">${g.name}</span><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold">×</button></div>`).join('')}
+            ${groupsData.map(g => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${g.color || '#d1fae5'}" onchange="updateGroupColorAdmin('${g.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${g.name}</span><button onclick="renameGroupAdmin('${g.id}', '${g.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
         </div>
-        <div class="flex space-x-2">
+        <div class="flex space-x-2 items-center">
+            <input type="color" id="admin-new-group-color" value="#d1fae5" class="w-8 h-8 border p-0 rounded cursor-pointer" title="グループの色">
             <input type="text" id="admin-new-group-name" placeholder="新しいグループ名" class="border p-1 rounded text-sm w-48">
             <button onclick="saveNewGroupAdmin()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
         </div>
@@ -760,7 +779,7 @@ async function loadAdminUsersData() {
         `;
     }).join('');
 
-    allowedListEl.innerHTML = groupMasterHtml + usersHtml;
+    allowedListEl.innerHTML = categoryMasterHtml + groupMasterHtml + usersHtml;
 
     // 2. 申請待ち一覧の取得
     const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
@@ -869,12 +888,53 @@ window.deleteAdminUser = async function(email) {
     }
 };
 
+window.saveNewCategoryAdmin = async function() {
+    const name = document.getElementById('admin-new-category-name').value.trim();
+    if (!name) return alert('カテゴリ名を入力してください');
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('event_categories').insert([{ name }]);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
+};
+
+window.deleteCategoryAdmin = async function(id) {
+    if (!confirm('このカテゴリを削除しますか？\n※既存のイベントに設定されているカテゴリ名には影響しませんが、新規作成・編集時に選択できなくなります。')) return;
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('event_categories').delete().eq('id', id);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
+};
+
+window.renameCategoryAdmin = async function(id, currentName) {
+    const newName = prompt('新しいカテゴリ名を入力してください:', currentName);
+    if (!newName || newName.trim() === '' || newName === currentName) return;
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('event_categories').update({ name: newName.trim() }).eq('id', id);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
+};
+
+window.updateGroupColorAdmin = async function(id, color) {
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('groups').update({ color }).eq('id', id);
+        if (error) throw error;
+    } catch (e) { alert('色変更エラー: ' + e.message); } finally { hideLoading(); }
+};
+
 window.saveNewGroupAdmin = async function() {
     const name = document.getElementById('admin-new-group-name').value.trim();
+    const color = document.getElementById('admin-new-group-color')?.value || '#d1fae5';
     if (!name) return alert('グループ名を入力してください');
     showLoading();
     try {
-        const { error } = await supabaseClient.from('groups').insert([{ name }]);
+        const { error } = await supabaseClient.from('groups').insert([{ name, color }]);
         if (error) throw error;
         loadAdminUsersData();
     } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
@@ -888,6 +948,17 @@ window.deleteGroupAdmin = async function(id) {
         if (error) throw error;
         loadAdminUsersData();
     } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
+};
+
+window.renameGroupAdmin = async function(id, currentName) {
+    const newName = prompt('新しいグループ名を入力してください:', currentName);
+    if (!newName || newName.trim() === '' || newName === currentName) return;
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('groups').update({ name: newName.trim() }).eq('id', id);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
 };
 
 window.approveRequest = async function(id, email) {

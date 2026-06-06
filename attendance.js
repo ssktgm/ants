@@ -3,6 +3,7 @@ import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole,
 let currentDate = new Date();
 let events = [];
 let groups = [];
+let categories = [];
 let userGroups = [];
 let attendances = [];
 let isAttendanceInitialized = false;
@@ -18,6 +19,7 @@ export async function initAttendanceApp() {
     await loadData();
     renderCalendar();
     updateGroupFilter();
+    updateCategoryFilter();
 }
 
 function setupEventListeners() {
@@ -57,8 +59,14 @@ function setupEventListeners() {
     if(manageBtn) manageBtn.style.display = 'none';
 
     // リストフィルター
-    document.getElementById('filter-category')?.addEventListener('change', renderList);
-    document.getElementById('filter-group')?.addEventListener('change', renderList);
+    document.getElementById('filter-category')?.addEventListener('change', () => {
+        renderList();
+        renderCalendar();
+    });
+    document.getElementById('filter-group')?.addEventListener('change', () => {
+        renderList();
+        renderCalendar();
+    });
     
     // グローバルにアクセスさせる関数 (HTMLのonclickから呼ぶ用)
     window.att_closeModal = () => document.getElementById('attendance-modals').innerHTML = '';
@@ -97,6 +105,14 @@ async function loadData() {
         const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
         if (gData) groups = gData;
 
+        // カテゴリ読み込み
+        const { data: cData } = await supabaseClient.from('event_categories').select('*').order('created_at');
+        if (cData && cData.length > 0) {
+            categories = cData;
+        } else {
+            categories = [{id:'1', name:'練習'}, {id:'2', name:'試合'}, {id:'3', name:'イベント'}];
+        }
+
         // イベント読み込み
         const { data: eData } = await supabaseClient.from('events').select('*').order('start_time');
         if (eData) events = eData;
@@ -124,9 +140,28 @@ function updateGroupFilter() {
     sel.innerHTML = '<option value="">すべてのグループ</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
 }
 
+function updateCategoryFilter() {
+    const sel = document.getElementById('filter-category');
+    if (!sel) return;
+    const currentVal = sel.value;
+    sel.innerHTML = '<option value="">すべてのカテゴリ</option>' + categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    if(categories.some(c => c.name === currentVal)) sel.value = currentVal;
+}
+
 // =====================================
 // カレンダー・リスト 描画
 // =====================================
+function getFilteredEvents() {
+    const catFilter = document.getElementById('filter-category')?.value;
+    const groupFilter = document.getElementById('filter-group')?.value;
+    
+    return events.filter(e => {
+        if (catFilter && e.category !== catFilter) return false;
+        if (groupFilter && e.target_group_id !== groupFilter) return false;
+        return true;
+    });
+}
+
 function renderCalendar() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
@@ -155,12 +190,25 @@ function renderCalendar() {
         
         const targetDateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
         
-        const dayEvents = events.filter(e => e.start_time && e.start_time.startsWith(targetDateStr));
+        const filteredEvents = getFilteredEvents();
+        const dayEvents = filteredEvents.filter(e => e.start_time && e.start_time.startsWith(targetDateStr));
         
         dayEvents.forEach(e => {
             const evEl = document.createElement('div');
-            evEl.className = 'text-[10px] bg-green-100 hover:bg-green-200 text-green-800 rounded px-1 mt-1 truncate w-full text-left border border-green-200 shadow-sm';
-            evEl.textContent = e.title;
+            
+            const myAtt = attendances.find(a => a.event_id === e.id);
+            let iconHtml = '';
+            if (e.requires_attendance) {
+                const status = myAtt ? myAtt.status : '未入力';
+                if (status === '出席') iconHtml = '<span class="text-green-600 mr-1 font-bold">●</span>';
+                else if (status === '欠席') iconHtml = '<span class="text-black mr-1 font-bold">✖</span>';
+                else iconHtml = '<span class="text-orange-500 mr-1 font-bold">➖</span>';
+            }
+            
+            const groupColor = groups.find(g => g.id === e.target_group_id)?.color || '#d1fae5';
+            evEl.className = 'text-[10px] text-gray-800 rounded px-1 mt-1 truncate w-full text-left border border-gray-200 shadow-sm transition hover:opacity-80';
+            evEl.style.backgroundColor = groupColor;
+            evEl.innerHTML = `${iconHtml}${e.title}`;
             evEl.onclick = (ev) => {
                 ev.stopPropagation();
                 window.att_openEventDetail(e.id);
@@ -174,14 +222,7 @@ function renderCalendar() {
 }
 
 function renderList() {
-    const catFilter = document.getElementById('filter-category').value;
-    const groupFilter = document.getElementById('filter-group').value;
-    
-    let filtered = events.filter(e => {
-        if (catFilter && e.category !== catFilter) return false;
-        if (groupFilter && e.target_group_id !== groupFilter) return false;
-        return true;
-    });
+    const filtered = getFilteredEvents();
 
     const container = document.getElementById('event-list-content');
     if (filtered.length === 0) {
@@ -191,19 +232,31 @@ function renderList() {
 
     container.innerHTML = filtered.map(e => {
         const dt = e.start_time ? e.start_time.substring(0, 16).replace('T', ' ') : '日時未定';
-        const groupName = groups.find(g => g.id === e.target_group_id)?.name || '全体';
+        const group = groups.find(g => g.id === e.target_group_id);
+        const groupName = group?.name || '全体';
+        const groupColor = group?.color || '#e5e7eb';
         const myAtt = attendances.find(a => a.event_id === e.id);
         const statusStr = myAtt ? myAtt.status : '未入力';
         
+        let iconHtml = '';
+        if (e.requires_attendance) {
+            if (statusStr === '出席') iconHtml = '<span class="text-green-600 text-xl mr-3 leading-none" title="出席">●</span>';
+            else if (statusStr === '欠席') iconHtml = '<span class="text-black text-xl mr-3 leading-none" title="欠席">✖</span>';
+            else iconHtml = '<span class="text-orange-500 text-xl mr-3 leading-none" title="保留/未定">➖</span>';
+        }
+        
         return `
-        <div class="p-4 border rounded-lg hover:shadow-md transition bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer" onclick="window.att_openEventDetail('${e.id}')">
-            <div>
-                <div class="flex items-center space-x-2 mb-1">
-                    <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">${e.category || 'イベント'}</span>
-                    <span class="text-xs bg-gray-100 text-gray-800 px-2 py-0.5 rounded">${groupName}</span>
+        <div class="p-4 border-l-4 rounded-lg hover:shadow-md transition bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer border-gray-200" style="border-left-color: ${groupColor}" onclick="window.att_openEventDetail('${e.id}')">
+            <div class="flex items-center">
+                ${iconHtml}
+                <div>
+                    <div class="flex items-center space-x-2 mb-1">
+                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">${e.category || 'イベント'}</span>
+                        <span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded" style="background-color: ${groupColor}">${groupName}</span>
+                    </div>
+                    <h3 class="font-bold text-lg text-gray-800">${e.title}</h3>
+                    <p class="text-sm text-gray-600">${dt} @ ${e.location || '未定'}</p>
                 </div>
-                <h3 class="font-bold text-lg text-gray-800">${e.title}</h3>
-                <p class="text-sm text-gray-600">${dt} @ ${e.location || '未定'}</p>
             </div>
             <div class="flex items-center space-x-3 shrink-0">
                 ${e.requires_attendance ? 
@@ -233,7 +286,9 @@ function openAddEventModal(dateStr = '') {
                 <div class="flex space-x-2">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">カテゴリ</label>
-                        <select id="ev-category" class="w-full border p-2 rounded"><option value="練習">練習</option><option value="試合">試合</option><option value="イベント">イベント</option></select>
+                        <select id="ev-category" class="w-full border p-2 rounded">
+                            ${categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                        </select>
                     </div>
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">対象グループ</label>
