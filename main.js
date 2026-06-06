@@ -112,9 +112,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('btn-submit-change-password')?.addEventListener('click', handlePasswordChangeInApp);
     
-    // 「アカウント管理」の文言を「パスワード変更」に変更
+    // アカウント設定等の文言を「パスワード変更」に統一
     const btnChangePw = document.getElementById('btn-change-password');
-    if (btnChangePw && btnChangePw.textContent.includes('アカウント管理')) {
+    if (btnChangePw) {
         btnChangePw.textContent = 'パスワード変更';
     }
 
@@ -249,7 +249,7 @@ if (supabaseClient) {
                 let adminMenuBtn = document.getElementById('btn-app-users-admin');
 
                 if (currentUserRole === 'admin') {
-                    navUsers?.classList.remove('hidden');
+                    navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除
                     navMaster?.classList.remove('hidden');
                     navDispatch?.classList.remove('hidden');
                     btnAppDispatch?.classList.remove('hidden');

@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole, openChangePasswordModal } from './main.js';
 
 let currentDate = new Date();
 let events = [];
@@ -21,6 +21,17 @@ export async function initAttendanceApp() {
 }
 
 function setupEventListeners() {
+    // パスワード変更ボタンの追加
+    const logoutBtn = document.getElementById('btn-logout-att');
+    if (logoutBtn && !document.getElementById('btn-change-password-att')) {
+        const changePwBtn = document.createElement('button');
+        changePwBtn.id = 'btn-change-password-att';
+        changePwBtn.className = 'text-xs md:text-sm bg-gray-500 hover:bg-gray-600 text-white px-2 py-1 md:px-3 md:py-1 rounded shadow mr-2 font-bold';
+        changePwBtn.textContent = 'パスワード変更';
+        changePwBtn.onclick = () => openChangePasswordModal();
+        logoutBtn.parentNode.insertBefore(changePwBtn, logoutBtn);
+    }
+
     // タブ切り替え
     document.getElementById('tab-calendar')?.addEventListener('click', () => switchTab('calendar'));
     document.getElementById('tab-list')?.addEventListener('click', () => {
