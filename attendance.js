@@ -116,11 +116,25 @@ function updateGroupFilter() {
 // 管理者用：グループフィルタの横に「グループ作成」ボタンを動的に追加
 function addAdminGroupButton() {
     if (currentUserRole !== 'admin') return;
-    const filterGroupEl = document.getElementById('filter-group');
-    if (filterGroupEl && !document.getElementById('btn-admin-group')) {
+    
+    // 配置先1: 「グループ管理」ボタンの隣（ヘッダー領域で隠れにくい）
+    const manageBtn = document.getElementById('btn-group-manage');
+    if (manageBtn && !document.getElementById('btn-admin-group')) {
         const btn = document.createElement('button');
         btn.id = 'btn-admin-group';
-        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-3';
+        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2';
+        btn.textContent = 'グループ作成(管理者)';
+        btn.onclick = () => window.att_openGroupMasterModal();
+        manageBtn.parentNode.insertBefore(btn, manageBtn.nextSibling);
+        return;
+    }
+
+    // 配置先2: フィルターの隣（念のためのバックアップ）
+    const filterGroupEl = document.getElementById('filter-group');
+    if (filterGroupEl && !document.getElementById('btn-admin-group-alt')) {
+        const btn = document.createElement('button');
+        btn.id = 'btn-admin-group-alt';
+        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 md:mt-0';
         btn.textContent = 'グループ作成(管理者)';
         btn.onclick = () => window.att_openGroupMasterModal();
         filterGroupEl.parentNode.appendChild(btn);
@@ -437,10 +451,14 @@ async function saveAttendance(eventId) {
 // グループ管理 (簡易版)
 // =====================================
 function openGroupManageModal() {
+    const isAdmin = currentUserRole === 'admin';
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
         <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[80vh] overflow-y-auto">
-            <h3 class="text-xl font-bold mb-4">所属グループの管理</h3>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold">所属グループの管理</h3>
+                ${isAdmin ? `<button onclick="window.att_closeModal(); window.att_openGroupMasterModal();" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs font-bold shadow">＋ 新規作成(管理者)</button>` : ''}
+            </div>
             <p class="text-xs text-gray-500 mb-4">自分を所属させたいグループを選んでください。</p>
             <div class="space-y-2">
                 ${groups.length === 0 ? '<p class="text-sm">グループがまだありません。</p>' : ''}
