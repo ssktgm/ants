@@ -700,6 +700,7 @@ async function loadAdminUsersData() {
     let groupsData = [];
     let userGroupsData = [];
     let categoriesData = [];
+    let userAttributesData = [];
     try {
         const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
         if (gData) groupsData = gData;
@@ -707,10 +708,27 @@ async function loadAdminUsersData() {
         if (ugData) userGroupsData = ugData;
         const { data: catData } = await supabaseClient.from('event_categories').select('*').order('created_at');
         if (catData) categoriesData = catData;
+        const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
+        if (attrData) userAttributesData = attrData;
     } catch (e) { console.error("Groups DB Error:", e); }
 
     const allowedListEl = document.getElementById('allowed-users-list');
     
+    // --- ユーザー属性マスター管理ブロック ---
+    let attributeMasterHtml = `
+    <div class="mb-6 p-4 bg-orange-50 border border-orange-200 rounded shadow-sm">
+        <h3 class="font-bold text-orange-800 mb-2">ユーザー属性の管理</h3>
+        <div class="flex flex-wrap gap-2 mb-3">
+            ${userAttributesData.length === 0 ? '<span class="text-sm text-gray-500">属性なし</span>' : ''}
+            ${userAttributesData.map(a => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><span class="mr-2 font-bold">${a.name}</span><button onclick="renameUserAttributeAdmin('${a.id}', '${a.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteUserAttributeAdmin('${a.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+        </div>
+        <div class="flex space-x-2 items-center">
+            <input type="text" id="admin-new-attribute-name" placeholder="新しい属性名" class="border p-1 rounded text-sm w-48">
+            <button onclick="saveNewUserAttributeAdmin()" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
+        </div>
+    </div>
+    `;
+
     // --- カテゴリマスター管理ブロック ---
     let categoryMasterHtml = `
     <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded shadow-sm">
@@ -756,6 +774,10 @@ async function loadAdminUsersData() {
                 <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
                 <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
                 <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
+                <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
+                    <option value="">属性なし</option>
+                    ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                </select>
                 <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
                     <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
                     <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
@@ -780,7 +802,7 @@ async function loadAdminUsersData() {
         `;
     }).join('');
 
-    allowedListEl.innerHTML = categoryMasterHtml + groupMasterHtml + usersHtml;
+    allowedListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml + usersHtml;
 
     // 2. 申請待ち一覧の取得
     const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
@@ -806,9 +828,11 @@ async function loadAdminUsersData() {
 window.updateAdminUser = async function(oldEmail, index, oldRole) {
     const emailEl = document.getElementById(`edit-email-${index}`);
     const nameEl = document.getElementById(`edit-name-${index}`);
+    const attrEl = document.getElementById(`edit-attribute-${index}`);
     const roleEl = document.getElementById(`edit-role-${index}`);
     const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
     const newName = nameEl.value.trim();
+    const newAttributeId = attrEl ? (attrEl.value || null) : null;
     const newRole = roleEl.disabled ? oldRole : roleEl.value;
 
     if (!newEmail) return alert('メールアドレスを入力してください');
@@ -821,6 +845,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
         if (!emailEl.disabled) updatePayload.email = newEmail;
         if (!roleEl.disabled) updatePayload.role = newRole;
         updatePayload.name = newName;
+        updatePayload.attribute_id = newAttributeId;
         
         if (Object.keys(updatePayload).length > 0) {
             const { error } = await supabaseClient.from('app_users').update(updatePayload).eq('email', oldEmail);
