@@ -109,15 +109,30 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('nav-users')?.addEventListener('click', handleNavUsers);
     document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
     document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
+
+    // アプリメニューイベント
+    document.getElementById('btn-app-dispatch')?.addEventListener('click', () => {
+        switchAuthScreen('app-view');
+        if (!isAppInitialized) {
+            initApp();
+        }
+    });
+    document.getElementById('btn-app-attendance')?.addEventListener('click', () => {
+        alert('イベント出欠アプリは現在準備中です。');
+    });
+    document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
+        switchAuthScreen('app-menu-view');
+    });
 });
 
 // 画面切り替えヘルパー関数
 function switchAuthScreen(screenId) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-view'].forEach(id => {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
-    document.getElementById(screenId).classList.remove('hidden');
+    const target = document.getElementById(screenId);
+    if (target) target.classList.remove('hidden');
 }
 
 // ログイン状態の監視
@@ -155,14 +170,9 @@ if (supabaseClient) {
                 document.getElementById('nav-users')?.classList.add('hidden');
             }
 
-            switchAuthScreen('app-view');
+            switchAuthScreen('app-menu-view');
             const emailDisplay = document.getElementById('user-email-display');
             if (emailDisplay) emailDisplay.textContent = currentUser.email;
-            
-            // 初回ログイン時にアプリのデータを読み込む
-            if (!isAppInitialized) {
-                initApp();
-            }
         } else {
             currentUser = null;
             if (document.getElementById('password-update-view').classList.contains('hidden')) {
