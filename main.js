@@ -402,11 +402,11 @@ async function handleLogin(e) {
 }
 
 // 出欠アプリ等から管理画面へ飛ぶためのグローバル関数
-export async function goToUsersAdmin() {
+async function goToUsersAdmin() {
     switchAuthScreen('app-view', 'users');
     await handleNavUsers();
 }
-export function openChangePasswordModal() {
+function openChangePasswordModal() {
     const modal = document.getElementById('change-password-modal');
     if (modal) {
         // 親画面が非表示（hidden）でも確実に最前面に見えるように、bodyの直下に配置を移動
