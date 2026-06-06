@@ -194,7 +194,7 @@
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">④ アプリ管理</label>
                                 <div class="grid grid-cols-2 gap-2">
-                                    <button onclick="document.getElementById('nav-master').click()" class="db-control bg-gray-600 hover:bg-gray-700 text-white font-bold px-3 rounded-lg shadow">マスターへ</button>
+                                    <button id="btn-goto-master" onclick="document.getElementById('nav-master').click()" class="db-control bg-gray-600 hover:bg-gray-700 text-white font-bold px-3 rounded-lg shadow">マスターへ</button>
                                     <button id="clear-db-button" class="db-control bg-red-800 hover:bg-red-900 text-white font-bold px-3 rounded-lg shadow">全リセット</button>
                                 </div>
                             </div>
@@ -385,6 +385,7 @@
                 <input id="admin-add-email" type="email" placeholder="メールアドレス" class="border p-2 rounded w-64 shadow-sm focus:ring-blue-500">
                 <select id="admin-add-role" class="border p-2 rounded shadow-sm focus:ring-blue-500">
                     <option value="user">一般ユーザー</option>
+                    <option value="leader">リーダー</option>
                     <option value="admin">管理者</option>
                 </select>
                 <button id="btn-admin-add-user" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">追加</button>

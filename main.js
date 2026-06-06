@@ -181,10 +181,36 @@ if (supabaseClient) {
                     currentUserRole = 'admin';
                 }
 
+                // ロールに基づくUI制御
+                const navUsers = document.getElementById('nav-users');
+                const navMaster = document.getElementById('nav-master');
+                const navDispatch = document.getElementById('nav-dispatch');
+                const btnAppDispatch = document.getElementById('btn-app-dispatch');
+                const btnGotoMaster = document.getElementById('btn-goto-master');
+                const clearDbBtn = document.getElementById('clear-db-button');
+
                 if (currentUserRole === 'admin') {
-                    document.getElementById('nav-users')?.classList.remove('hidden');
+                    navUsers?.classList.remove('hidden');
+                    navMaster?.classList.remove('hidden');
+                    navDispatch?.classList.remove('hidden');
+                    btnAppDispatch?.classList.remove('hidden');
+                    btnGotoMaster?.classList.remove('hidden');
+                    clearDbBtn?.classList.remove('hidden');
+                } else if (currentUserRole === 'leader') {
+                    navUsers?.classList.add('hidden');
+                    navMaster?.classList.add('hidden');
+                    navDispatch?.classList.remove('hidden');
+                    btnAppDispatch?.classList.remove('hidden');
+                    btnGotoMaster?.classList.add('hidden');
+                    clearDbBtn?.classList.add('hidden');
                 } else {
-                    document.getElementById('nav-users')?.classList.add('hidden');
+                    // 一般ユーザー
+                    navUsers?.classList.add('hidden');
+                    navMaster?.classList.add('hidden');
+                    navDispatch?.classList.add('hidden');
+                    btnAppDispatch?.classList.add('hidden');
+                    btnGotoMaster?.classList.add('hidden');
+                    clearDbBtn?.classList.add('hidden');
                 }
 
                 switchAuthScreen('app-menu-view');
@@ -581,6 +607,7 @@ async function loadAdminUsersData() {
                 <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
                 <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
                     <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
+                    <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
                     <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
                 </select>
                 ${u.email !== currentUser.email ? `<button onclick="updateAdminUser('${u.email}', ${i})" class="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded shadow">更新</button>` : '<span class="text-xs text-gray-500 ml-2">※自身は変更不可</span>'}
