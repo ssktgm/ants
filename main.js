@@ -1,3 +1,5 @@
+import { initAttendanceApp } from './attendance.js';
+
 // ==========================================
 // ★Vercel環境変数からSupabase情報を読み込む
 // ==========================================
@@ -118,8 +120,9 @@ document.addEventListener('DOMContentLoaded', () => {
             initApp();
         }
     });
-    document.getElementById('btn-app-attendance')?.addEventListener('click', () => {
-        alert('イベント出欠アプリは現在準備中です。');
+    document.getElementById('btn-app-attendance')?.addEventListener('click', async () => {
+        switchAuthScreen('attendance-view');
+        await initAttendanceApp();
     });
     document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
         switchAuthScreen('app-menu-view');
@@ -136,11 +139,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 1000);
         }
     });
+
+    document.getElementById('btn-back-to-menu-att')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
+    document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
 });
 
 // 画面切り替えヘルパー関数
-function switchAuthScreen(screenId) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view'].forEach(id => {
+export function switchAuthScreen(screenId) {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -1830,3 +1836,5 @@ function showMasterMessage(msg, type='info') {
     if(masterMessageTimer) clearTimeout(masterMessageTimer); masterMessageTimer = setTimeout(hideMasterMessage, 5000);
 }
 function hideMasterMessage() { document.getElementById('master-message').classList.add('hidden'); }
+
+export { supabaseClient, currentUser, currentUserRole, showLoading, hideLoading, logAction, withLoading };
