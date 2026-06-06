@@ -322,6 +322,7 @@ async function saveEvent() {
     
     if (!title || !date) return alert('イベント名と日付は必須です');
 
+    window.att_closeModal();
     showLoading();
     try {
         const startTime = `${date}T${time || '00:00'}:00`;
@@ -336,7 +337,6 @@ async function saveEvent() {
         });
         if (error) throw error;
         
-        window.att_closeModal();
         await loadData();
         renderCalendar();
         if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
@@ -354,10 +354,10 @@ async function saveEvent() {
 
 async function deleteEvent(id) {
     if(!confirm("このイベントを削除しますか？")) return;
+    window.att_closeModal();
     showLoading();
     try {
         await supabaseClient.from('events').delete().eq('id', id);
-        window.att_closeModal();
         await loadData();
         renderCalendar();
         renderList();
@@ -456,6 +456,7 @@ function openAttendanceFormModal(eventId) {
 }
 
 async function saveAttendance(eventId) {
+    window.att_closeModal();
     showLoading();
     try {
         const payload = {

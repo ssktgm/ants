@@ -754,6 +754,7 @@ async function loadAdminUsersData() {
         <div class="flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
                 <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
+                <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
                 <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
                 <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
                     <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
@@ -804,8 +805,10 @@ async function loadAdminUsersData() {
 
 window.updateAdminUser = async function(oldEmail, index, oldRole) {
     const emailEl = document.getElementById(`edit-email-${index}`);
+    const nameEl = document.getElementById(`edit-name-${index}`);
     const roleEl = document.getElementById(`edit-role-${index}`);
     const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
+    const newName = nameEl.value.trim();
     const newRole = roleEl.disabled ? oldRole : roleEl.value;
 
     if (!newEmail) return alert('メールアドレスを入力してください');
@@ -814,8 +817,13 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
     showLoading();
     try {
         // 1. ユーザー情報の更新
-        if (!emailEl.disabled || !roleEl.disabled) {
-            const { error } = await supabaseClient.from('app_users').update({ email: newEmail, role: newRole }).eq('email', oldEmail);
+        const updatePayload = {};
+        if (!emailEl.disabled) updatePayload.email = newEmail;
+        if (!roleEl.disabled) updatePayload.role = newRole;
+        updatePayload.name = newName;
+        
+        if (Object.keys(updatePayload).length > 0) {
+            const { error } = await supabaseClient.from('app_users').update(updatePayload).eq('email', oldEmail);
             if (error) throw error;
         }
         
@@ -964,8 +972,11 @@ window.renameGroupAdmin = async function(id, currentName) {
 window.approveRequest = async function(id, email) {
     showLoading();
     try {
+        // 申請データを取得して名前を生成
+        const { data: reqData } = await supabaseClient.from('signup_requests').select('parent_name, player_name').eq('id', id).single();
+        const nameToSave = reqData ? `${reqData.parent_name} (${reqData.player_name})` : '';
         // 許可リストに追加
-        await supabaseClient.from('app_users').insert([{ email, role: 'user' }]);
+        await supabaseClient.from('app_users').insert([{ email, role: 'user', name: nameToSave }]);
         // リクエストのステータスを更新
         await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
         loadAdminUsersData();
