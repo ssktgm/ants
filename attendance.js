@@ -270,7 +270,12 @@ async function saveEvent() {
         renderCalendar();
         if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
     } catch (e) {
-        alert('保存エラー: ' + e.message);
+        console.error('Save Event Error:', e);
+        if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
+            alert('保存エラー: 通信に失敗しました。ネットワーク接続を確認するか、データベース(Supabase)が一時停止されていないか確認してください。');
+        } else {
+            alert('保存エラー: ' + e.message);
+        }
     } finally {
         hideLoading();
     }
@@ -400,7 +405,12 @@ async function saveAttendance(eventId) {
         window.att_openEventDetail(eventId); // 詳細画面に戻る
         if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
     } catch (e) {
-        alert('出欠登録エラー: ' + e.message);
+        console.error('Save Attendance Error:', e);
+        if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
+            alert('出欠登録エラー: 通信に失敗しました。ネットワーク接続やデータベースの状態を確認してください。');
+        } else {
+            alert('出欠登録エラー: ' + e.message);
+        }
     } finally { hideLoading(); }
 }
 
