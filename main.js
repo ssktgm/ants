@@ -267,8 +267,9 @@ async function handleLogin(e) {
             alert("通信エラー詳細:\n" + errDetail);
         }
         
-        // 古いセッションの不整合によるフリーズ（タイムアウト）の場合、強制的にセッションをクリアする
-        if (err.message && err.message.includes("タイムアウト")) {
+        // パスワード間違い等の通常の認証エラー以外の場合（タイムアウトや古いセッションの不整合など）、
+        // フリーズの原因となるゴミデータを強制的にクリアする
+        if (!err.message || !err.message.toLowerCase().includes("invalid login credentials")) {
             supabaseClient.auth.signOut().catch(() => {});
             // LocalStorage内のSupabase関連キーを強制削除
             const keysToRemove = [];
@@ -478,8 +479,17 @@ async function handlePasswordChangeInApp(e) {
 
 async function handleLogout(e) {
     if (e && e.preventDefault) e.preventDefault();
-    await supabaseClient.auth.signOut();
-    isAppInitialized = false; // 再ログイン時にデータを再読込させる
+    showLoading();
+    try {
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+        await Promise.race([
+            supabaseClient.auth.signOut().catch(() => {}),
+            timeoutPromise
+        ]);
+    } finally {
+        hideLoading();
+        isAppInitialized = false; // 再ログイン時にデータを再読込させる
+    }
 }
 
 
