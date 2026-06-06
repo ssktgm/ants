@@ -124,6 +124,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
         switchAuthScreen('app-menu-view');
     });
+
+    // ページ（タブ）が再びアクティブになった際に、まれにローディングが残る問題を解消するための安全装置
+    window.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && loadingCount > 0) {
+            // 一定時間経過後に強制解除
+            setTimeout(() => {
+                if (loadingCount > 0) {
+                    forceHideLoading();
+                }
+            }, 1000);
+        }
+    });
 });
 
 // 画面切り替えヘルパー関数
