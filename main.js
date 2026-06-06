@@ -181,7 +181,12 @@ async function handleClearCache(e) {
     
     showLoading();
     try {
-        await supabaseClient.auth.signOut().catch(() => {});
+        // 通信環境が悪くサインアウト処理がフリーズするのを防ぐため、3秒でタイムアウトさせる
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+        await Promise.race([
+            supabaseClient.auth.signOut().catch(() => {}),
+            timeoutPromise
+        ]);
         
         // LocalStorage内のSupabase関連キーを強制削除
         const keysToRemove = [];
