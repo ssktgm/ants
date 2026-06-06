@@ -85,6 +85,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ログインボタン等のイベント
     document.getElementById('btn-login')?.addEventListener('click', handleLogin);
     document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
+    document.getElementById('btn-logout-menu')?.addEventListener('click', handleLogout);
     document.getElementById('btn-clear-cache')?.addEventListener('click', handleClearCache);
 
     // ビュー切り替えイベント
@@ -131,8 +132,7 @@ function switchAuthScreen(screenId) {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
-    const target = document.getElementById(screenId);
-    if (target) target.classList.remove('hidden');
+    document.getElementById(screenId).classList.remove('hidden');
 }
 
 // ログイン状態の監視

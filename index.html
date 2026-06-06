@@ -116,6 +116,24 @@
         </div>
     </div>
 
+    <!-- アプリ選択メニュー画面 -->
+    <div id="app-menu-view" class="hidden min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div class="bg-white p-8 rounded shadow-md max-w-md w-full text-center">
+            <h1 class="text-2xl font-bold mb-6">メニュー</h1>
+            <div class="space-y-4">
+                <button id="btn-app-attendance" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded shadow">
+                    イベント出欠
+                </button>
+                <button id="btn-app-dispatch" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded shadow">
+                    配車調整
+                </button>
+            </div>
+            <div class="mt-8 pt-4 border-t">
+                <button id="btn-logout-menu" class="text-sm text-gray-500 underline">ログアウト</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ========================================== -->
     <!-- メインアプリ (App View)                      -->
     <!-- ========================================== -->
@@ -125,6 +143,7 @@
             <h1 class="text-xl md:text-2xl font-bold">配車調整アプリ</h1>
             <div class="flex items-center space-x-2 md:space-x-4">
                 <span id="user-email-display" class="hidden md:inline text-xs text-gray-300"></span>
+                <button id="btn-back-to-menu" class="text-xs font-bold bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded transition">&lt; メニュー</button>
                 <button id="nav-dispatch" class="font-bold text-blue-300 px-2 py-1 transition">配車調整</button>
                 <button id="nav-master" class="text-gray-400 hover:text-white px-2 py-1 transition">マスター</button>
                 <button id="nav-users" class="hidden text-gray-400 hover:text-white px-2 py-1 transition font-bold">ユーザー管理</button>
