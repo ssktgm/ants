@@ -145,34 +145,42 @@ if (supabaseClient) {
         }
 
         if (session) {
-            currentUser = session.user;
-            
-            // 管理者権限のチェック
+            showLoading();
             try {
-                const { data: userData } = await supabaseClient.from('app_users').select('role').eq('email', currentUser.email).single();
-                if (userData) {
-                    currentUserRole = userData.role;
-                } else {
+                currentUser = session.user;
+                
+                // 管理者権限のチェック
+                try {
+                    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 8000));
+                    const queryPromise = supabaseClient.from('app_users').select('role').eq('email', currentUser.email).single();
+                    const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
+                    
+                    if (userData) {
+                        currentUserRole = userData.role;
+                    } else {
+                        currentUserRole = 'user';
+                    }
+                } catch (e) {
                     currentUserRole = 'user';
                 }
-            } catch (e) {
-                currentUserRole = 'user';
-            }
 
-            // 初期セットアップ・ロックアウト防止用: 特定のアドレスを強制的に管理者として扱う
-            if (currentUser.email === 'hishinumak@gmail.com') {
-                currentUserRole = 'admin';
-            }
+                // 初期セットアップ・ロックアウト防止用: 特定のアドレスを強制的に管理者として扱う
+                if (currentUser.email === 'hishinumak@gmail.com') {
+                    currentUserRole = 'admin';
+                }
 
-            if (currentUserRole === 'admin') {
-                document.getElementById('nav-users')?.classList.remove('hidden');
-            } else {
-                document.getElementById('nav-users')?.classList.add('hidden');
-            }
+                if (currentUserRole === 'admin') {
+                    document.getElementById('nav-users')?.classList.remove('hidden');
+                } else {
+                    document.getElementById('nav-users')?.classList.add('hidden');
+                }
 
-            switchAuthScreen('app-menu-view');
-            const emailDisplay = document.getElementById('user-email-display');
-            if (emailDisplay) emailDisplay.textContent = currentUser.email;
+                switchAuthScreen('app-menu-view');
+                const emailDisplay = document.getElementById('user-email-display');
+                if (emailDisplay) emailDisplay.textContent = currentUser.email;
+            } finally {
+                hideLoading();
+            }
         } else {
             currentUser = null;
             if (document.getElementById('password-update-view').classList.contains('hidden')) {
