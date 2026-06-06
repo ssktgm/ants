@@ -245,6 +245,8 @@ if (supabaseClient) {
                 const btnAppDispatch = document.getElementById('btn-app-dispatch');
                 const btnGotoMaster = document.getElementById('btn-goto-master');
                 const clearDbBtn = document.getElementById('clear-db-button');
+                
+                let adminMenuBtn = document.getElementById('btn-app-users-admin');
 
                 if (currentUserRole === 'admin') {
                     navUsers?.classList.remove('hidden');
@@ -253,6 +255,21 @@ if (supabaseClient) {
                     btnAppDispatch?.classList.remove('hidden');
                     btnGotoMaster?.classList.remove('hidden');
                     clearDbBtn?.classList.remove('hidden');
+                    
+                    // メインメニューに「ユーザー・グループ管理」ボタンを追加
+                    if (!adminMenuBtn) {
+                        const attBtn = document.getElementById('btn-app-attendance');
+                        if (attBtn && attBtn.parentNode) {
+                            adminMenuBtn = document.createElement('button');
+                            adminMenuBtn.id = 'btn-app-users-admin';
+                            adminMenuBtn.className = 'w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200 mt-4';
+                            adminMenuBtn.textContent = 'ユーザー・グループ管理 (管理者)';
+                            adminMenuBtn.onclick = () => goToUsersAdmin();
+                            attBtn.parentNode.insertBefore(adminMenuBtn, attBtn.nextSibling);
+                        }
+                    } else {
+                        adminMenuBtn.classList.remove('hidden');
+                    }
                 } else if (currentUserRole === 'leader') {
                     navUsers?.classList.add('hidden');
                     navMaster?.classList.add('hidden');
@@ -260,6 +277,7 @@ if (supabaseClient) {
                     btnAppDispatch?.classList.remove('hidden');
                     btnGotoMaster?.classList.add('hidden');
                     clearDbBtn?.classList.add('hidden');
+                    if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
                 } else {
                     // 一般ユーザー
                     navUsers?.classList.add('hidden');
@@ -268,6 +286,7 @@ if (supabaseClient) {
                     btnAppDispatch?.classList.add('hidden');
                     btnGotoMaster?.classList.add('hidden');
                     clearDbBtn?.classList.add('hidden');
+                    if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
                 }
 
                 switchAuthScreen('app-menu-view');

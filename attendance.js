@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole, goToUsersAdmin, openChangePasswordModal } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole } from './main.js';
 
 let currentDate = new Date();
 let events = [];
@@ -18,7 +18,6 @@ export async function initAttendanceApp() {
     await loadData();
     renderCalendar();
     updateGroupFilter();
-    setupAttendanceHeaderMenus();
 }
 
 function setupEventListeners() {
@@ -112,35 +111,6 @@ function updateGroupFilter() {
     const sel = document.getElementById('filter-group');
     if (!sel) return;
     sel.innerHTML = '<option value="">すべてのグループ</option>' + groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
-}
-
-// ヘッダー部分（フィルター横）に各種管理メニューを動的追加
-function setupAttendanceHeaderMenus() {
-    // グループ絞り込みドロップダウンを取得
-    const filterGroupEl = document.getElementById('filter-group');
-    if (!filterGroupEl) return;
-    
-    const container = filterGroupEl.parentNode;
-    
-    // パスワード変更ボタン (全員表示)
-    if (!document.getElementById('btn-att-change-pw')) {
-        const btnPw = document.createElement('button');
-        btnPw.id = 'btn-att-change-pw';
-        btnPw.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 sm:mt-0';
-        btnPw.textContent = 'パスワード変更';
-        btnPw.onclick = () => openChangePasswordModal();
-        container.appendChild(btnPw);
-    }
-
-    // ユーザー・グループ管理ボタン (管理者のみ表示)
-    if (currentUserRole === 'admin' && !document.getElementById('btn-att-users-admin')) {
-        const btnAdmin = document.createElement('button');
-        btnAdmin.id = 'btn-att-users-admin';
-        btnAdmin.className = 'bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm font-bold shadow ml-2 mt-2 sm:mt-0';
-        btnAdmin.textContent = 'ユーザー管理(管理者)';
-        btnAdmin.onclick = () => goToUsersAdmin();
-        container.appendChild(btnAdmin);
-    }
 }
 
 // =====================================
