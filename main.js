@@ -125,9 +125,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // アプリメニューイベント
     document.getElementById('btn-app-dispatch')?.addEventListener('click', () => {
-        switchAuthScreen('app-view');
+        switchAuthScreen('app-view', 'dispatch');
         if (!isAppInitialized) {
             initApp();
+        } else {
+            document.getElementById('nav-dispatch')?.click();
         }
     });
     document.getElementById('btn-app-attendance')?.addEventListener('click', async () => {
@@ -154,14 +156,53 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
 });
 
+let isPopStateNavigating = false;
+
+function pushHistoryState(screenId, subView = null) {
+    if (isPopStateNavigating) return;
+    const hash = '#' + screenId + (subView ? '-' + subView : '');
+    if (window.location.hash !== hash) {
+        history.pushState({ screenId, subView }, '', hash);
+    }
+}
+
 // 画面切り替えヘルパー関数
-export function switchAuthScreen(screenId) {
+export function switchAuthScreen(screenId, subView = null) {
     ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
-    document.getElementById(screenId).classList.remove('hidden');
+    const targetEl = document.getElementById(screenId);
+    if (targetEl) targetEl.classList.remove('hidden');
+    
+    pushHistoryState(screenId, subView);
 }
+
+// ブラウザの戻る/進む（popstate）対応
+window.addEventListener('popstate', async (e) => {
+    isPopStateNavigating = true;
+    try {
+        if (e.state && e.state.screenId) {
+            switchAuthScreen(e.state.screenId, e.state.subView);
+            
+            // app-view の内部タブ復元
+            if (e.state.screenId === 'app-view') {
+                if (e.state.subView === 'users') {
+                    await handleNavUsers();
+                } else if (e.state.subView === 'master') {
+                    document.getElementById('nav-master')?.click();
+                } else {
+                    document.getElementById('nav-dispatch')?.click();
+                }
+            }
+        } else {
+            if (currentUser) { switchAuthScreen('app-menu-view'); } 
+            else { switchAuthScreen('auth-view'); }
+        }
+    } finally {
+        isPopStateNavigating = false;
+    }
+});
 
 // ログイン状態の監視
 if (supabaseClient) {
@@ -343,7 +384,7 @@ async function handleLogin(e) {
 
 // 出欠アプリ等から管理画面へ飛ぶためのグローバル関数
 export async function goToUsersAdmin() {
-    switchAuthScreen('app-view');
+    switchAuthScreen('app-view', 'users');
     await handleNavUsers();
 }
 export function openChangePasswordModal() {
@@ -558,6 +599,7 @@ async function handleLogout(e) {
     } finally {
         hideLoading();
         isAppInitialized = false; // 再ログイン時にデータを再読込させる
+        history.pushState(null, '', window.location.pathname); // URL履歴をクリア
     }
 }
 
@@ -580,6 +622,7 @@ async function initApp() {
         navDispatch?.classList.add('text-blue-300'); navDispatch?.classList.remove('text-gray-400');
         navMaster?.classList.remove('text-blue-300'); navMaster?.classList.add('text-gray-400');
         document.getElementById('nav-users')?.classList.remove('text-blue-300');
+        pushHistoryState('app-view', 'dispatch');
         await reloadDispatchData();
     });
     navMaster?.addEventListener('click', async () => {
@@ -590,6 +633,7 @@ async function initApp() {
         navMaster?.classList.add('text-blue-300'); navMaster?.classList.remove('text-gray-400');
         navDispatch?.classList.remove('text-blue-300'); navDispatch?.classList.add('text-gray-400');
         document.getElementById('nav-users')?.classList.remove('text-blue-300');
+        pushHistoryState('app-view', 'master');
         await fetchAndRenderMasterData();
         loadLogs(); // マスター画面を開いた時にログも読み込む
     });
@@ -625,6 +669,7 @@ async function handleNavUsers() {
     document.getElementById('nav-dispatch').classList.remove('text-blue-300');
     document.getElementById('nav-master').classList.remove('text-blue-300');
     
+    pushHistoryState('app-view', 'users');
     await loadAdminUsersData();
 }
 
