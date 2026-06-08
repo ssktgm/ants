@@ -206,7 +206,7 @@ function renderCalendar() {
         
         // 日付は右上に配置
         const dateHeader = document.createElement('div');
-        dateHeader.className = 'text-right text-[10px] text-gray-500 font-medium mb-[1px] pr-1 pt-1 leading-none';
+        dateHeader.className = 'text-right text-xs text-gray-700 font-bold mb-[1px] pr-1 pt-1 leading-none';
         dateHeader.textContent = cellDate;
         cell.appendChild(dateHeader);
         
@@ -272,7 +272,14 @@ function renderList() {
     }
 
     container.innerHTML = filtered.map(e => {
-        const dt = e.start_time ? e.start_time.substring(0, 16).replace('T', ' ') : '日時未定';
+        let dt = '日時未定';
+        if (e.is_all_day && e.start_time) {
+            dt = e.start_time.substring(0, 10) + ' (終日)';
+        } else if (e.start_time) {
+            dt = e.start_time.substring(0, 16).replace('T', ' ');
+            if (e.end_time) dt += ' 〜 ' + e.end_time.substring(11, 16);
+        }
+        
         const group = groups.find(g => g.id === e.target_group_id);
         const groupName = group?.name || '全体';
         const groupColor = group?.color || '#e5e7eb';
@@ -321,8 +328,13 @@ function openAddEventModal(dateStr = '') {
                 <div><label class="text-xs font-bold text-gray-600">イベント名*</label>
                 <input type="text" id="ev-title" placeholder="イベント名" class="w-full border p-2 rounded"></div>
                 <div class="flex space-x-2">
-                    <div class="w-1/2"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateStr}" class="w-full border p-2 rounded"></div>
-                    <div class="w-1/2"><label class="text-xs font-bold text-gray-600">開始時間</label><input type="time" id="ev-time" class="w-full border p-2 rounded"></div>
+                    <div class="w-1/2"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateStr}" class="w-full border p-2 rounded" onchange="this.blur()"></div>
+                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">開始</label><input type="time" id="ev-time" class="w-full border p-2 rounded"></div>
+                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">終了</label><input type="time" id="ev-end-time" class="w-full border p-2 rounded"></div>
+                </div>
+                <div class="flex items-center space-x-2 mt-1 mb-2">
+                    <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" onchange="const t=document.getElementById('ev-time'); const et=document.getElementById('ev-end-time'); t.disabled=this.checked; et.disabled=this.checked; if(this.checked){t.value=''; et.value='';} t.parentElement.classList.toggle('opacity-50', this.checked); et.parentElement.classList.toggle('opacity-50', this.checked);">
+                    <label for="ev-all-day" class="font-bold text-gray-700 text-sm cursor-pointer">終日イベントにする</label>
                 </div>
                 <div class="flex space-x-2">
                     <div class="w-1/2">
@@ -360,20 +372,34 @@ async function saveEvent() {
     const title = document.getElementById('ev-title').value;
     const date = document.getElementById('ev-date').value;
     const time = document.getElementById('ev-time').value;
+    const endTimeStr = document.getElementById('ev-end-time').value;
+    const isAllDay = document.getElementById('ev-all-day').checked;
     
     if (!title || !date) return alert('イベント名と日付は必須です');
+
+    // モーダルを閉じてDOMが削除される前に、すべての入力値を取得する
+    const category = document.getElementById('ev-category').value;
+    const description = document.getElementById('ev-description').value;
+    const location = document.getElementById('ev-location').value;
+    const requires_attendance = document.getElementById('ev-requires-attendance').checked;
+    const target_group_id = document.getElementById('ev-target-group').value || null;
 
     window.att_closeModal();
     showLoading();
     try {
         const startTime = `${date}T${time || '00:00'}:00`;
+        let endTime = null;
+        if (endTimeStr) endTime = `${date}T${endTimeStr}:00`;
+
         const { error } = await supabaseClient.from('events').insert({
-            title, category: document.getElementById('ev-category').value,
-            description: document.getElementById('ev-description').value,
-            location: document.getElementById('ev-location').value,
+            title, category: category,
+            description: description,
+            location: location,
             start_time: startTime,
-            requires_attendance: document.getElementById('ev-requires-attendance').checked,
-            target_group_id: document.getElementById('ev-target-group').value || null,
+            end_time: endTime,
+            is_all_day: isAllDay,
+            requires_attendance: requires_attendance,
+            target_group_id: target_group_id,
             created_by: currentUser?.email
         });
         if (error) throw error;
@@ -412,7 +438,14 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     if(!ev) return;
 
     const groupName = groups.find(g => g.id === ev.target_group_id)?.name || '全体';
-    const dt = ev.start_time ? ev.start_time.substring(0, 16).replace('T', ' ') : '';
+    let dt = '日時未定';
+    if (ev.is_all_day && ev.start_time) {
+        dt = ev.start_time.substring(0, 10) + ' (終日)';
+    } else if (ev.start_time) {
+        dt = ev.start_time.substring(0, 16).replace('T', ' ');
+        if (ev.end_time) dt += ' 〜 ' + ev.end_time.substring(11, 16);
+    }
+    
     const myAtt = attendances.find(a => a.event_id === ev.id);
     const statusStr = myAtt ? myAtt.status : '未入力';
 
