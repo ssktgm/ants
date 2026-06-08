@@ -42,11 +42,13 @@ function withLoading(asyncOperation, processTitle = "データを同期中...") 
   const actionContainer = document.getElementById('loading-actions');
 
   // 表示リセット
-  overlay.classList.remove('pointer-events-none');
-  overlay.style.opacity = '1';
-  titleEl.innerText = processTitle;
-  descEl.innerText = "リクエストの安全なルートを構築しています...";
-  actionContainer.classList.add('hidden');
+  if (overlay) {
+    overlay.classList.remove('pointer-events-none');
+    overlay.style.opacity = '1';
+  }
+  if (titleEl) titleEl.innerText = processTitle;
+  if (descEl) descEl.innerText = "リクエストの安全なルートを構築しています...";
+  if (actionContainer) actionContainer.classList.add('hidden');
 
   let duration = 0;
   clearInterval(loadingInterval);
@@ -54,6 +56,7 @@ function withLoading(asyncOperation, processTitle = "データを同期中...") 
   // 通信遅延やスリープを段階的に感知するタイマー
   loadingInterval = setInterval(() => {
     duration++;
+    if (!descEl) return;
     if (duration === 3) {
       descEl.innerText = "データを安全にトランザクションしています...";
     } else if (duration === 6) {
@@ -62,7 +65,7 @@ function withLoading(asyncOperation, processTitle = "データを同期中...") 
       descEl.innerHTML = `<span class="text-amber-500 font-bold">【データベース起動チェック中】</span><br>BaaSが一時スリープしている可能性があります。起動完了まで約15〜30秒ほど掛かります。`;
     } else if (duration >= 14) {
       descEl.innerHTML = `<span class="text-rose-500 font-bold">通信が規定の制限時間を超えました。</span><br>セッション状態か接続設定に障害が発生している恐れがあります。`;
-      actionContainer.classList.remove('hidden'); // セーフボタンの露出
+      if (actionContainer) actionContainer.classList.remove('hidden'); // セーフボタンの露出
       clearInterval(loadingInterval);
     }
   }, 1000);
@@ -84,10 +87,12 @@ function withLoading(asyncOperation, processTitle = "データを同期中...") 
 function hideLoading() {
   const overlay = document.getElementById('loading-overlay');
   clearInterval(loadingInterval);
-  overlay.style.opacity = '0';
-  setTimeout(() => {
-    overlay.classList.add('pointer-events-none');
-  }, 300);
+  if (overlay) {
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      overlay.classList.add('pointer-events-none');
+    }, 300);
+  }
 }
 
 function retryConnection() {
@@ -372,7 +377,13 @@ const viewTemplates = {
 
 // トースト通知処理
 function showToast(message, type = 'success') {
-  const container = document.getElementById('toast-container');
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none';
+    document.body.appendChild(container);
+  }
   const toast = document.createElement('div');
   
   let icon = 'check-circle';
@@ -393,7 +404,9 @@ function showToast(message, type = 'success') {
   `;
 
   container.appendChild(toast);
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
 
   // フェードイン
   setTimeout(() => {
@@ -439,8 +452,8 @@ function renderNavigation() {
   const mobileNav = document.getElementById('mobile-nav');
   
   if (!state.user) {
-    mainNav.classList.add('hidden');
-    mobileNav.classList.add('hidden');
+    if (mainNav) mainNav.classList.add('hidden');
+    if (mobileNav) mobileNav.classList.add('hidden');
     return;
   }
 
@@ -472,12 +485,18 @@ function renderNavigation() {
     `;
   }).join('');
 
-  mainNav.innerHTML = mainTabsHtml;
-  mobileNav.innerHTML = mobileTabsHtml;
-  mainNav.classList.remove('hidden');
-  mobileNav.classList.remove('hidden');
+  if (mainNav) {
+    mainNav.innerHTML = mainTabsHtml;
+    mainNav.classList.remove('hidden');
+  }
+  if (mobileNav) {
+    mobileNav.innerHTML = mobileTabsHtml;
+    mobileNav.classList.remove('hidden');
+  }
 
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
 }
 
 function switchTab(tabId) {
@@ -488,6 +507,8 @@ function switchTab(tabId) {
 
 function renderContent() {
   const appContainer = document.getElementById('app');
+  if (!appContainer) return;
+  
   if (!state.user) {
     appContainer.innerHTML = viewTemplates.login();
   } else if (state.currentTab === 'attendance') {
@@ -496,7 +517,9 @@ function renderContent() {
   } else {
     appContainer.innerHTML = viewTemplates[state.currentTab]();
   }
-  lucide.createIcons();
+  if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+  }
 }
 
 // ログインアクション
@@ -512,9 +535,12 @@ function handleLoginSubmit(event) {
     // 擬似セッションキャッシュ
     state.user = { email: email };
     
-    document.getElementById('user-display-name').innerText = email.split('@')[0];
-    document.getElementById('user-display-role').innerText = state.role.toUpperCase();
-    document.getElementById('user-menu').classList.remove('hidden');
+    const nameEl = document.getElementById('user-display-name');
+    if (nameEl) nameEl.innerText = email.split('@')[0];
+    const roleEl = document.getElementById('user-display-role');
+    if (roleEl) roleEl.innerText = state.role.toUpperCase();
+    const menuEl = document.getElementById('user-menu');
+    if (menuEl) menuEl.classList.remove('hidden');
 
     showToast('アカウントログインに成功しました。');
     renderNavigation();
@@ -524,7 +550,9 @@ function handleLoginSubmit(event) {
     showToast('ログインに失敗しました。認証プロバイダーの設定を確認してください。', 'error');
     btn.disabled = false;
     btn.innerHTML = `<span>ログインする</span><i data-lucide="arrow-right" class="w-4 h-4"></i>`;
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
   });
 }
 
@@ -532,7 +560,8 @@ function handleLoginSubmit(event) {
 function handleLogout() {
   withLoading(async () => {
     state.user = null;
-    document.getElementById('user-menu').classList.add('hidden');
+    const menuEl = document.getElementById('user-menu');
+    if (menuEl) menuEl.classList.add('hidden');
     renderNavigation();
     renderContent();
     showToast('ログアウトしました。');
