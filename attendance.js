@@ -185,49 +185,79 @@ function renderCalendar() {
         if (index >= 7) grid.removeChild(child);
     });
     
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    // 月の初日と、その週の日曜日を計算
+    const firstDayOfMonth = new Date(year, month, 1);
+    const startOffset = firstDayOfMonth.getDay(); 
+    const startDate = new Date(year, month, 1 - startOffset);
     
-    for (let i = 0; i < firstDay; i++) {
-        const emptyCell = document.createElement('div');
-        emptyCell.className = 'border min-h-[80px] bg-gray-50';
-        grid.appendChild(emptyCell);
-    }
-    
-    for (let i = 1; i <= daysInMonth; i++) {
-        const cell = document.createElement('div');
-        cell.className = 'border min-h-[80px] bg-white p-1 flex flex-col items-start relative cursor-pointer hover:bg-green-50 transition';
-        cell.innerHTML = `<span class="text-xs font-bold text-gray-700">${i}</span>`;
+    // 6週間 (42日) 分を描画
+    for (let i = 0; i < 42; i++) {
+        const targetDate = new Date(startDate);
+        targetDate.setDate(startDate.getDate() + i);
         
-        const targetDateStr = `${year}-${String(month+1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+        const cellYear = targetDate.getFullYear();
+        const cellMonth = targetDate.getMonth();
+        const cellDate = targetDate.getDate();
+        const isCurrentMonth = (cellMonth === month);
+        
+        const cell = document.createElement('div');
+        // 余白を最小化（1px程度）
+        cell.className = `border min-h-[100px] flex flex-col p-[1px] bg-white ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
+        
+        // 日付は右上に配置
+        const dateHeader = document.createElement('div');
+        dateHeader.className = 'text-right text-[10px] text-gray-500 font-medium mb-[1px] pr-1 pt-1 leading-none';
+        dateHeader.textContent = cellDate;
+        cell.appendChild(dateHeader);
+        
+        // 予定格納コンテナ
+        const eventsContainer = document.createElement('div');
+        eventsContainer.className = 'flex-1 overflow-hidden flex flex-col gap-[1px]';
+        
+        const targetDateStr = `${cellYear}-${String(cellMonth+1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
         
         const filteredEvents = getFilteredEvents();
         const dayEvents = filteredEvents.filter(e => e.start_time && e.start_time.startsWith(targetDateStr));
         
-        dayEvents.forEach(e => {
+        const displayEvents = dayEvents.slice(0, 5); // 1日5件まで表示
+        const hasMore = dayEvents.length > 5;
+        
+        displayEvents.forEach(e => {
             const evEl = document.createElement('div');
             
             const myAtt = attendances.find(a => a.event_id === e.id);
             let iconHtml = '';
             if (e.requires_attendance) {
                 const status = myAtt ? myAtt.status : '未入力';
-                if (status === '出席') iconHtml = '<span class="inline-block bg-green-100 text-green-700 rounded px-1 mr-1 text-[10px] font-bold leading-none py-0.5">●</span>';
-                else if (status === '欠席') iconHtml = '<span class="inline-block bg-gray-200 text-gray-700 rounded px-1 mr-1 text-[10px] font-bold leading-none py-0.5">✖</span>';
-                else iconHtml = '<span class="inline-block bg-orange-100 text-orange-700 rounded px-1 mr-1 text-[10px] font-bold leading-none py-0.5">➖</span>';
+                if (status === '出席') iconHtml = '<span class="text-green-700 mr-0.5 font-bold leading-none">●</span>';
+                else if (status === '欠席') iconHtml = '<span class="text-gray-500 mr-0.5 font-bold leading-none">✖</span>';
+                else iconHtml = '<span class="text-orange-500 mr-0.5 font-bold leading-none">➖</span>';
             }
             
             const groupColor = groups.find(g => g.id === e.target_group_id)?.color || '#d1fae5';
-            evEl.className = 'text-[10px] text-gray-800 rounded px-1 mt-1 truncate w-full text-left border border-gray-200 shadow-sm transition hover:opacity-80';
+            evEl.className = 'text-[10px] text-gray-800 rounded px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight';
             evEl.style.backgroundColor = groupColor;
             evEl.innerHTML = `${iconHtml}${e.title}`;
+            evEl.title = e.title;
             evEl.onclick = (ev) => {
                 ev.stopPropagation();
                 window.att_openEventDetail(e.id);
             };
-            cell.appendChild(evEl);
+            eventsContainer.appendChild(evEl);
         });
         
-        // カレンダーの空きセルクリック時の新規作成モーダル表示は、誤操作防止のため無効化
+        if (hasMore) {
+            const moreEl = document.createElement('div');
+            moreEl.className = 'text-[10px] text-gray-500 text-center mt-[1px] cursor-pointer hover:underline';
+            moreEl.textContent = `他 ${dayEvents.length - 5} 件`;
+            moreEl.onclick = (ev) => {
+                ev.stopPropagation();
+                alert(`${targetDateStr} の予定が多すぎます。リストビューで確認してください。`);
+            };
+            eventsContainer.appendChild(moreEl);
+        }
+        
+        cell.appendChild(eventsContainer);
         grid.appendChild(cell);
     }
 }
@@ -377,7 +407,7 @@ async function deleteEvent(id) {
     } finally { hideLoading(); }
 }
 
-window.openEventDetailModal = function(eventId) {
+window.att_openEventDetail = window.openEventDetailModal = function(eventId, activeTab = 'basic') {
     const ev = events.find(e => e.id === eventId);
     if(!ev) return;
 
@@ -440,33 +470,71 @@ window.openEventDetailModal = function(eventId) {
         `;
     }
 
+    const basicTabClass = activeTab === 'basic' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700';
+    const attTabClass = activeTab === 'attendance' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700';
+
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div class="flex justify-between items-start mb-4">
-                <h3 class="text-xl font-bold text-gray-800">${ev.title}</h3>
-                <button onclick="window.att_deleteEvent('${ev.id}')" class="text-red-500 text-xs border border-red-500 px-2 py-1 rounded hover:bg-red-50 shrink-0 ml-2">削除</button>
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center p-4 border-b shrink-0">
+                <h3 class="text-lg font-bold text-gray-800 truncate pr-2">${ev.title}</h3>
+                <div class="flex items-center shrink-0">
+                    <button onclick="window.att_deleteEvent('${ev.id}')" class="text-red-500 text-xs border border-red-500 px-2 py-1 rounded hover:bg-red-50 mr-2">削除</button>
+                    <button onclick="window.att_closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+                </div>
             </div>
-            <div class="text-sm text-gray-600 mb-4 space-y-1">
-                <p><strong>日時:</strong> ${dt}</p>
-                <p><strong>場所:</strong> ${ev.location || '未定'}</p>
-                <p><strong>対象:</strong> ${groupName}</p>
-                <p class="mt-2 whitespace-pre-wrap border p-2 bg-gray-50 rounded">${ev.description || '説明なし'}</p>
+
+            <div class="flex border-b shrink-0">
+                <button onclick="window.att_openEventDetail('${ev.id}', 'basic')" class="flex-1 py-2 text-sm font-medium ${basicTabClass}">基本情報</button>
+                ${ev.requires_attendance ? `<button onclick="window.att_openEventDetail('${ev.id}', 'attendance')" class="flex-1 py-2 text-sm font-medium ${attTabClass}">出欠</button>` : ''}
             </div>
-            
-            ${ev.requires_attendance ? `
-            <div class="border-t pt-4 mt-4">
-                <h4 class="font-bold text-gray-700 mb-2">あなたの出欠情報: <span class="${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-gray-600':''}">${statusStr}</span></h4>
-                ${canAttend ? 
-                    `<button onclick="window.att_openAttendanceForm('${ev.id}')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded shadow">出欠を登録・変更する</button>` 
-                    : `<p class="text-xs text-red-500">※対象グループに所属していないため入力できません</p>`
-                }
-            </div>
-            ${attendanceSummaryHtml}
-            ` : ''}
-            
-            <div class="mt-6 text-center">
-                <button onclick="window.att_closeModal()" class="text-gray-500 underline font-bold">閉じる</button>
+
+            <div class="p-4 overflow-y-auto">
+                ${activeTab === 'basic' ? `
+                    <div class="text-sm text-gray-600 mb-4 space-y-1">
+                        <p><strong>日時:</strong> ${dt}</p>
+                        <p><strong>場所:</strong> ${ev.location || '未定'}</p>
+                        <p><strong>対象:</strong> ${groupName}</p>
+                        <p class="mt-2 whitespace-pre-wrap border p-2 bg-gray-50 rounded min-h-[60px] text-gray-800">${ev.description || '説明なし'}</p>
+                    </div>
+                    ${ev.requires_attendance ? attendanceSummaryHtml : ''}
+                ` : `
+                    <div class="space-y-4">
+                        <div class="text-sm border-b pb-2 mb-2">
+                            現在のステータス: <span class="font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':'text-gray-800'}">${statusStr}</span>
+                            ${!canAttend ? '<p class="text-xs text-red-500 mt-1">※対象グループに所属していないため入力できません</p>' : ''}
+                        </div>
+                        ${canAttend ? `
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">ステータス*</label>
+                                <select id="att-status" class="w-full border p-2 rounded font-bold text-sm">
+                                    <option value="出席" ${myAtt.status==='出席'?'selected':''}>出席</option>
+                                    <option value="欠席" ${myAtt.status==='欠席'?'selected':''}>欠席</option>
+                                    <option value="未定" ${myAtt.status==='未定'?'selected':''}>未定</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
+                                <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否 (乗車可能人数)</label>
+                                <input type="number" id="att-car" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" placeholder="0で不可">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">別行動 (例: 現地集合、早退)</label>
+                                <input type="text" id="att-sep" value="${myAtt.separate_action||''}" class="w-full border p-2 rounded text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-bold text-gray-700 mb-1">コメント</label>
+                                <textarea id="att-comment" class="w-full border p-2 rounded text-sm" rows="2">${myAtt.comment||''}</textarea>
+                            </div>
+                            <div class="mt-4 text-right">
+                                <button onclick="window.att_saveAttendance('${ev.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow">出欠を保存</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `}
             </div>
         </div>
     </div>`;
