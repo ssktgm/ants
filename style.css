@@ -1,28 +1,72 @@
-details[open] > summary {
-    border-bottom: 1px solid #e5e7eb;
-}
-.hidden-file-input { display: none; }
-.main-grid-layout, .results-grid-layout {
-    display: grid;
-    grid-template-columns: repeat(1, minmax(0, 1fr));
-    gap: 1.5rem;
-}
-@media (min-width: 768px) {
-    .main-grid-layout, .results-grid-layout {
-        grid-template-columns: repeat(var(--layout-columns, 3), minmax(0, 1fr));
-    }
-    #data-controls-section { position: sticky; top: 60px; z-index: 40; border-bottom: 1px solid #e5e7eb; }
-}
-.swap-selected { background-color: #DBEAFE; }
-.swap-selected > label, .swap-selected label, .car-header.swap-selected h4 { font-weight: 600; color: #1D4ED8; }
-.car-header.swap-selected { background-color: #DBEAFE; }
-.db-control { padding: 0.25rem 0.5rem; height: 1.75rem; font-size: 0.75rem; box-sizing: border-box; vertical-align: middle; }
-select.db-control { line-height: 1.25; }
-#data-controls-details > summary { list-style: none; }
-#data-controls-details > summary::-webkit-details-marker { display: none; }
+/* ==========================================
+   ANTS アプリケーション用カスタムスタイル
+   ========================================== */
 
-/* マスター管理用スタイル */
-.family-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; }
-.family-content { padding: 1rem; }
-.member-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
-@media (min-width: 768px) { .member-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+/* 全体のトランジションルール */
+.transition-all-custom {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* スワップ（手動入れ替え）の対象として選ばれたエレメントのネオンパルスアニメーション */
+@keyframes pulse-border-glow {
+  0%, 100% { 
+    border-color: rgba(99, 102, 241, 1); 
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2), inset 0 0 8px rgba(99, 102, 241, 0.05);
+    transform: scale(1.01);
+  }
+  50% { 
+    border-color: rgba(99, 102, 241, 0.4); 
+    box-shadow: 0 0 0 6px rgba(99, 102, 241, 0.4), inset 0 0 4px rgba(99, 102, 241, 0.01);
+    transform: scale(1);
+  }
+}
+
+.swap-selected {
+  animation: pulse-border-glow 1.4s infinite ease-in-out;
+  background-color: rgba(99, 102, 241, 0.04) !important;
+  border-style: solid !important;
+}
+
+/* レスポンシブなカスタムスクロールバー */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* Glassmorphism的なカード効果 */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* フェードインアニメーション */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
