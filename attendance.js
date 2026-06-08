@@ -24,8 +24,17 @@ function getEventTargetGroupsInfo(ev) {
     return {
         ids: gIds,
         name: matchedGroups.map(g => g.name).join(', '),
-        color: matchedGroups[0].color || '#e5e7eb'
+        color: matchedGroups[0].color || '#e5e7eb',
+        groups: matchedGroups
     };
+}
+
+// ヘルパー関数: グループのタグHTMLを生成
+function generateGroupTagsHtml(groupInfo) {
+    if (groupInfo.ids.length === 0) {
+        return `<span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded shadow-sm" style="background-color: #e5e7eb">全体</span>`;
+    }
+    return groupInfo.groups.map(g => `<span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded shadow-sm" style="background-color: ${g.color || '#e5e7eb'}">${g.name}</span>`).join(' ');
 }
 
 // =====================================
@@ -71,6 +80,20 @@ function setupEventListeners() {
         renderCalendar();
     });
 
+    // 「今日」ボタンを動的に追加
+    const nextMonthBtn = document.getElementById('cal-next-month');
+    if (nextMonthBtn && !document.getElementById('cal-today')) {
+        const todayBtn = document.createElement('button');
+        todayBtn.id = 'cal-today';
+        todayBtn.className = 'text-xs md:text-sm bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded shadow-sm ml-2 font-bold transition';
+        todayBtn.textContent = '今日';
+        todayBtn.onclick = () => {
+            currentDate = new Date();
+            renderCalendar();
+        };
+        nextMonthBtn.parentNode.insertBefore(todayBtn, nextMonthBtn.nextSibling);
+    }
+
     // モーダルオープン系
     document.getElementById('btn-add-event')?.addEventListener('click', () => openAddEventModal());
     
@@ -99,7 +122,12 @@ function setupEventListeners() {
     window.att_copyEvent = function(eventId) {
         const ev = events.find(e => e.id === eventId);
         if (!ev) return;
-        openAddEventModal('', ev);
+        openAddEventModal('', ev, false);
+    };
+    window.att_editEvent = function(eventId) {
+        const ev = events.find(e => e.id === eventId);
+        if (!ev) return;
+        openAddEventModal('', ev, true);
     };
 }
 
@@ -352,21 +380,33 @@ function renderList() {
 // =====================================
 // モーダルとDB操作（イベント）
 // =====================================
-function openAddEventModal(dateStr = '', copyEvent = null) {
-    const titleVal = copyEvent ? (copyEvent.title + ' (コピー)').replace(/"/g, '&quot;') : '';
-    const dateVal = copyEvent && copyEvent.start_time ? copyEvent.start_time.split('T')[0] : dateStr;
-    const timeVal = copyEvent && copyEvent.start_time && !copyEvent.is_all_day ? copyEvent.start_time.split('T')[1].substring(0,5) : '';
-    const endTimeVal = copyEvent && copyEvent.end_time && !copyEvent.is_all_day ? copyEvent.end_time.split('T')[1].substring(0,5) : '';
-    const isAllDay = copyEvent ? copyEvent.is_all_day : false;
-    const categoryVal = copyEvent ? copyEvent.category : '';
-    const locationVal = copyEvent ? (copyEvent.location || '').replace(/"/g, '&quot;') : '';
-    const descVal = copyEvent ? (copyEvent.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
-    const reqAtt = copyEvent ? copyEvent.requires_attendance : true;
-    const reqDetAtt = copyEvent ? copyEvent.require_detailed_attendance : false;
+function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
+    let titleVal = '';
+    if (sourceEvent) {
+        titleVal = sourceEvent.title.replace(/"/g, '&quot;');
+        if (!isEdit) titleVal += ' (コピー)';
+    }
+    const dateVal = sourceEvent && sourceEvent.start_time ? sourceEvent.start_time.split('T')[0] : dateStr;
+    const timeVal = sourceEvent && sourceEvent.start_time && !sourceEvent.is_all_day ? sourceEvent.start_time.split('T')[1].substring(0,5) : '';
+    const endTimeVal = sourceEvent && sourceEvent.end_time && !sourceEvent.is_all_day ? sourceEvent.end_time.split('T')[1].substring(0,5) : '';
+    const isAllDay = sourceEvent ? sourceEvent.is_all_day : false;
+    const categoryVal = sourceEvent ? sourceEvent.category : '';
+    const locationVal = sourceEvent ? (sourceEvent.location || '').replace(/"/g, '&quot;') : '';
+    const descVal = sourceEvent ? (sourceEvent.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+    const reqAtt = sourceEvent ? sourceEvent.requires_attendance : true;
+    const reqDetAtt = sourceEvent ? sourceEvent.require_detailed_attendance : false;
 
-    const copyGroupIds = copyEvent ? (copyEvent.target_group_ids && copyEvent.target_group_ids.length > 0 ? copyEvent.target_group_ids : (copyEvent.target_group_id ? [copyEvent.target_group_id] : [])) : [];
+    const timeH = timeVal ? timeVal.split(':')[0] : '';
+    const timeM = timeVal ? timeVal.split(':')[1] : '';
+    const endTimeH = endTimeVal ? endTimeVal.split(':')[0] : '';
+    const endTimeM = endTimeVal ? endTimeVal.split(':')[1] : '';
 
-    const modalTitle = copyEvent ? 'イベントを複製' : '新規イベント登録';
+    const hoursOptions = (selectedVal) => '<option value="">--</option>' + Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === selectedVal ? 'selected' : ''}>${h}</option>`).join('');
+    const minutesOptions = (selectedVal) => '<option value="">--</option>' + Array.from({length: 60}, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${m === selectedVal ? 'selected' : ''}>${m}</option>`).join('');
+
+    const copyGroupIds = sourceEvent ? (sourceEvent.target_group_ids && sourceEvent.target_group_ids.length > 0 ? sourceEvent.target_group_ids : (sourceEvent.target_group_id ? [sourceEvent.target_group_id] : [])) : [];
+
+    const modalTitle = isEdit ? 'イベントを編集' : (sourceEvent ? 'イベントを複製' : '新規イベント登録');
 
     const groupCheckboxes = `
         <div class="border p-2 rounded max-h-32 overflow-y-auto space-y-1 bg-white">
@@ -391,12 +431,26 @@ function openAddEventModal(dateStr = '', copyEvent = null) {
                 <div><label class="text-xs font-bold text-gray-600">イベント名*</label>
                 <input type="text" id="ev-title" value="${titleVal}" placeholder="イベント名" class="w-full border p-2 rounded"></div>
                 <div class="flex space-x-2">
-                    <div class="w-1/2"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateVal}" class="w-full border p-2 rounded" onchange="this.blur()"></div>
-                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">開始</label><input type="time" id="ev-time" value="${timeVal}" class="w-full border p-2 rounded" ${isAllDay ? 'disabled' : ''}></div>
-                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">終了</label><input type="time" id="ev-end-time" value="${endTimeVal}" class="w-full border p-2 rounded" ${isAllDay ? 'disabled' : ''}></div>
+                    <div class="w-[34%]"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateVal}" class="w-full border p-2 rounded text-sm px-1" onchange="this.blur()"></div>
+                    <div id="ev-time-container" class="w-[33%] ${isAllDay ? 'opacity-50' : ''}">
+                        <label class="text-xs font-bold text-gray-600">開始</label>
+                        <div class="flex items-center space-x-0.5">
+                            <select id="ev-time-h" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${hoursOptions(timeH)}</select>
+                            <span class="font-bold text-gray-500">:</span>
+                            <select id="ev-time-m" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${minutesOptions(timeM)}</select>
+                        </div>
+                    </div>
+                    <div id="ev-end-time-container" class="w-[33%] ${isAllDay ? 'opacity-50' : ''}">
+                        <label class="text-xs font-bold text-gray-600">終了</label>
+                        <div class="flex items-center space-x-0.5">
+                            <select id="ev-end-time-h" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${hoursOptions(endTimeH)}</select>
+                            <span class="font-bold text-gray-500">:</span>
+                            <select id="ev-end-time-m" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${minutesOptions(endTimeM)}</select>
+                        </div>
+                    </div>
                 </div>
                 <div class="flex items-center space-x-2 mt-1 mb-2">
-                    <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" ${isAllDay ? 'checked' : ''} onchange="const t=document.getElementById('ev-time'); const et=document.getElementById('ev-end-time'); t.disabled=this.checked; et.disabled=this.checked; if(this.checked){t.value=''; et.value='';} t.parentElement.classList.toggle('opacity-50', this.checked); et.parentElement.classList.toggle('opacity-50', this.checked);">
+                    <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" ${isAllDay ? 'checked' : ''} onchange="['ev-time-h','ev-time-m','ev-end-time-h','ev-end-time-m'].forEach(id=>{const el=document.getElementById(id); el.disabled=this.checked; if(this.checked)el.value='';}); document.getElementById('ev-time-container').classList.toggle('opacity-50', this.checked); document.getElementById('ev-end-time-container').classList.toggle('opacity-50', this.checked);">
                     <label for="ev-all-day" class="font-bold text-gray-700 text-sm cursor-pointer">終日イベントにする</label>
                 </div>
                 <div class="flex space-x-2">
@@ -425,7 +479,7 @@ function openAddEventModal(dateStr = '', copyEvent = null) {
             </div>
             <div class="flex justify-end space-x-3 mt-4 pt-4 border-t shrink-0">
                 <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded font-bold">キャンセル</button>
-                <button onclick="window.att_saveEvent()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">保存</button>
+                <button onclick="window.att_saveEvent(${isEdit ? `'${sourceEvent.id}'` : 'null'})" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">${isEdit ? '更新' : '保存'}</button>
             </div>
         </div>
     </div>`;
@@ -449,11 +503,24 @@ function openAddEventModal(dateStr = '', copyEvent = null) {
     });
 }
 
-async function saveEvent() {
+async function saveEvent(editEventId = null) {
     const title = document.getElementById('ev-title').value;
     const date = document.getElementById('ev-date').value;
-    const time = document.getElementById('ev-time').value;
-    const endTimeStr = document.getElementById('ev-end-time').value;
+    
+    const th = document.getElementById('ev-time-h').value;
+    const tm = document.getElementById('ev-time-m').value;
+    let time = '';
+    if (th || tm) {
+        time = `${th || '00'}:${tm || '00'}`;
+    }
+    
+    const eth = document.getElementById('ev-end-time-h').value;
+    const etm = document.getElementById('ev-end-time-m').value;
+    let endTimeStr = '';
+    if (eth || etm) {
+        endTimeStr = `${eth || '00'}:${etm || '00'}`;
+    }
+    
     const isAllDay = document.getElementById('ev-all-day').checked;
     
     if (!title || !date) return alert('イベント名と日付は必須です');
@@ -480,7 +547,7 @@ async function saveEvent() {
         let endTime = null;
         if (endTimeStr) endTime = `${date}T${endTimeStr}:00`;
 
-        const { error } = await supabaseClient.from('events').insert({
+        const payload = {
             title, category: category,
             description: description,
             location: location,
@@ -491,9 +558,17 @@ async function saveEvent() {
             require_detailed_attendance: require_detailed_attendance,
             target_group_id: target_group_id,
             target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
-            created_by: currentUser?.email
-        });
-        if (error) throw error;
+        };
+        
+        if (!editEventId) payload.created_by = currentUser?.email;
+        
+        if (editEventId) {
+            const { error } = await supabaseClient.from('events').update(payload).eq('id', editEventId);
+            if (error) throw error;
+        } else {
+            const { error } = await supabaseClient.from('events').insert(payload);
+            if (error) throw error;
+        }
         
         await loadData();
         renderCalendar();
@@ -608,6 +683,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
             <div class="flex justify-between items-center p-4 border-b shrink-0">
                 <h3 class="text-lg font-bold text-gray-800 truncate pr-2">${ev.title}</h3>
                 <div class="flex items-center shrink-0">
+                    <button onclick="window.att_editEvent('${ev.id}')" class="text-green-600 text-xs border border-green-600 px-2 py-1 rounded hover:bg-green-50 mr-2">編集</button>
                     <button onclick="window.att_copyEvent('${ev.id}')" class="text-blue-500 text-xs border border-blue-500 px-2 py-1 rounded hover:bg-blue-50 mr-2">複製</button>
                     <button onclick="window.att_deleteEvent('${ev.id}')" class="text-red-500 text-xs border border-red-500 px-2 py-1 rounded hover:bg-red-50 mr-2">削除</button>
                     <button onclick="window.att_closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
