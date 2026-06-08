@@ -1,5 +1,5 @@
 /**
- * ANTS - 配車・出欠管理コアモジュール
+ * ANTS_BB - 配車・出欠管理コアモジュール
  * 認証、ロック防止ローディング、手動スワップ、管理マスタロジック
  */
 
@@ -333,7 +333,7 @@ const viewTemplates = {
           <div class="w-16 h-16 bg-brand-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-brand-500/20">
             <i data-lucide="lock" class="w-8 h-8"></i>
           </div>
-          <h2 class="text-2xl font-bold text-slate-800">ANTSへログイン</h2>
+          <h2 class="text-2xl font-bold text-slate-800">ANTS_BBへログイン</h2>
           <p class="text-sm text-slate-400 mt-2">配車と出欠をスマートに調整・確認</p>
         </div>
         
@@ -422,7 +422,7 @@ function showToast(message, type = 'success') {
 
 // クリップボードへコピー
 function copyMatchingToClipboard() {
-  let text = "【ANTS 配車マッチング決定表】\n\n";
+  let text = "【ANTS_BB 配車マッチング決定表】\n\n";
   state.cars.forEach(car => {
     const allocation = state.allocations.find(a => a.carId === car.id);
     text += `🚘 ${car.driver} 車 [定員: ${car.capacity} / ${car.parking}]\n`;
