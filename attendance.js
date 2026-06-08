@@ -11,6 +11,23 @@ let allAttendances = [];
 let appUsers = [];
 let isAttendanceInitialized = false;
 
+// イベントの対象グループ情報を取得するヘルパー
+function getEventTargetGroupsInfo(ev) {
+    let gIds = ev.target_group_ids || [];
+    if (gIds.length === 0 && ev.target_group_id) gIds = [ev.target_group_id];
+    
+    if (gIds.length === 0) return { ids: [], name: '全体', color: '#e5e7eb' };
+    
+    const matchedGroups = groups.filter(g => gIds.includes(g.id));
+    if (matchedGroups.length === 0) return { ids: [], name: '全体', color: '#e5e7eb' };
+    
+    return {
+        ids: gIds,
+        name: matchedGroups.map(g => g.name).join(', '),
+        color: matchedGroups[0].color || '#e5e7eb'
+    };
+}
+
 // =====================================
 // 初期化とイベントリスナー設定
 // =====================================
@@ -78,6 +95,12 @@ function setupEventListeners() {
     window.att_openEventDetail = openEventDetailModal;
     window.att_openAttendanceForm = openAttendanceFormModal;
     window.att_saveAttendance = saveAttendance;
+    window.att_exportCsv = exportCsv;
+    window.att_copyEvent = function(eventId) {
+        const ev = events.find(e => e.id === eventId);
+        if (!ev) return;
+        openAddEventModal('', ev);
+    };
 }
 
 function switchTab(tab) {
@@ -168,7 +191,11 @@ function getFilteredEvents() {
     
     return events.filter(e => {
         if (catFilter && e.category !== catFilter) return false;
-        if (groupFilter && e.target_group_id !== groupFilter) return false;
+        if (groupFilter) {
+            const groupInfo = getEventTargetGroupsInfo(e);
+            if (groupInfo.ids.length === 0) return false; // 全体の予定は除外
+            if (!groupInfo.ids.includes(groupFilter)) return false;
+        }
         return true;
     });
 }
@@ -231,7 +258,7 @@ function renderCalendar() {
                 const status = myAtt ? myAtt.status : '未入力';
                 if (status === '出席') iconHtml = '<span class="text-green-700 mr-0.5 font-bold leading-none">[出]</span>';
                 else if (status === '欠席') iconHtml = '<span class="text-red-500 mr-0.5 font-bold leading-none">[欠]</span>';
-                else if (status === '未定') iconHtml = '<span class="text-orange-500 mr-0.5 font-bold leading-none">[保]</span>';
+                else if (status === '保留' || status === '未定') iconHtml = '<span class="text-orange-500 mr-0.5 font-bold leading-none">[保]</span>';
                 else iconHtml = '<span class="text-gray-500 mr-0.5 font-bold leading-none">[未]</span>';
             }
             
@@ -282,20 +309,21 @@ function renderList() {
             if (e.end_time) dt += ' 〜 ' + e.end_time.substring(11, 16);
         }
         
-        const group = groups.find(g => g.id === e.target_group_id);
-        const groupName = group?.name || '全体';
-        const groupColor = group?.color || '#e5e7eb';
+        const groupInfo = getEventTargetGroupsInfo(e);
+        const groupName = groupInfo.name;
+        const groupColor = groupInfo.color;
         const categoryObj = categories.find(c => c.name === e.category);
         const categoryColor = categoryObj?.color || '#bfdbfe';
         const myAtt = attendances.find(a => a.event_id === e.id);
-        const statusStr = myAtt ? myAtt.status : '未入力';
+        let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
+        if (statusStr === '未定') statusStr = '保留';
         
         let iconHtml = '';
         if (e.requires_attendance) {
             if (statusStr === '出席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-green-100 text-green-700 rounded-md mr-3 font-bold text-sm shrink-0" title="出席">出</div>';
             else if (statusStr === '欠席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-red-100 text-red-600 rounded-md mr-3 font-bold text-sm shrink-0" title="欠席">欠</div>';
-            else if (statusStr === '未定') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-500 rounded-md mr-3 font-bold text-sm shrink-0" title="保留/未定">保</div>';
-            else iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-500 rounded-md mr-3 font-bold text-sm shrink-0" title="未入力">未</div>';
+            else if (statusStr === '保留') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-500 rounded-md mr-3 font-bold text-sm shrink-0" title="保留">保</div>';
+            else iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-500 rounded-md mr-3 font-bold text-sm shrink-0" title="未回答">未</div>';
         }
         
         return `
@@ -313,7 +341,7 @@ function renderList() {
             </div>
             <div class="flex items-center space-x-3 shrink-0">
                 ${e.requires_attendance ? 
-                    `<span class="text-sm font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':'text-gray-500'}">出欠: ${statusStr}</span>` 
+                    `<span class="text-sm font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':statusStr==='保留'?'text-orange-500':'text-gray-500'}">出欠: ${statusStr}</span>` 
                     : '<span class="text-xs text-gray-400">出欠なし</span>'}
             </div>
         </div>
@@ -324,53 +352,101 @@ function renderList() {
 // =====================================
 // モーダルとDB操作（イベント）
 // =====================================
-function openAddEventModal(dateStr = '') {
+function openAddEventModal(dateStr = '', copyEvent = null) {
+    const titleVal = copyEvent ? (copyEvent.title + ' (コピー)').replace(/"/g, '&quot;') : '';
+    const dateVal = copyEvent && copyEvent.start_time ? copyEvent.start_time.split('T')[0] : dateStr;
+    const timeVal = copyEvent && copyEvent.start_time && !copyEvent.is_all_day ? copyEvent.start_time.split('T')[1].substring(0,5) : '';
+    const endTimeVal = copyEvent && copyEvent.end_time && !copyEvent.is_all_day ? copyEvent.end_time.split('T')[1].substring(0,5) : '';
+    const isAllDay = copyEvent ? copyEvent.is_all_day : false;
+    const categoryVal = copyEvent ? copyEvent.category : '';
+    const locationVal = copyEvent ? (copyEvent.location || '').replace(/"/g, '&quot;') : '';
+    const descVal = copyEvent ? (copyEvent.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '';
+    const reqAtt = copyEvent ? copyEvent.requires_attendance : true;
+    const reqDetAtt = copyEvent ? copyEvent.require_detailed_attendance : false;
+
+    const copyGroupIds = copyEvent ? (copyEvent.target_group_ids && copyEvent.target_group_ids.length > 0 ? copyEvent.target_group_ids : (copyEvent.target_group_id ? [copyEvent.target_group_id] : [])) : [];
+
+    const modalTitle = copyEvent ? 'イベントを複製' : '新規イベント登録';
+
+    const groupCheckboxes = `
+        <div class="border p-2 rounded max-h-32 overflow-y-auto space-y-1 bg-white">
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" id="ev-group-all" value="all" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${(copyGroupIds.length === 0) ? 'checked' : ''}>
+                <span class="text-sm font-medium">全体</span>
+            </label>
+            ${groups.map(g => `
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" name="ev-group-cb" value="${g.id}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${copyGroupIds.includes(g.id) ? 'checked' : ''}>
+                    <span class="text-sm">${g.name}</span>
+                </label>
+            `).join('')}
+        </div>
+    `;
+
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-            <h3 class="text-xl font-bold mb-4">新規イベント登録</h3>
-            <div class="space-y-3">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <h3 class="text-xl font-bold mb-4 shrink-0">${modalTitle}</h3>
+            <div class="space-y-3 overflow-y-auto pr-1 flex-1">
                 <div><label class="text-xs font-bold text-gray-600">イベント名*</label>
-                <input type="text" id="ev-title" placeholder="イベント名" class="w-full border p-2 rounded"></div>
+                <input type="text" id="ev-title" value="${titleVal}" placeholder="イベント名" class="w-full border p-2 rounded"></div>
                 <div class="flex space-x-2">
-                    <div class="w-1/2"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateStr}" class="w-full border p-2 rounded" onchange="this.blur()"></div>
-                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">開始</label><input type="time" id="ev-time" class="w-full border p-2 rounded"></div>
-                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">終了</label><input type="time" id="ev-end-time" class="w-full border p-2 rounded"></div>
+                    <div class="w-1/2"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateVal}" class="w-full border p-2 rounded" onchange="this.blur()"></div>
+                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">開始</label><input type="time" id="ev-time" value="${timeVal}" class="w-full border p-2 rounded" ${isAllDay ? 'disabled' : ''}></div>
+                    <div class="w-1/4"><label class="text-xs font-bold text-gray-600">終了</label><input type="time" id="ev-end-time" value="${endTimeVal}" class="w-full border p-2 rounded" ${isAllDay ? 'disabled' : ''}></div>
                 </div>
                 <div class="flex items-center space-x-2 mt-1 mb-2">
-                    <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" onchange="const t=document.getElementById('ev-time'); const et=document.getElementById('ev-end-time'); t.disabled=this.checked; et.disabled=this.checked; if(this.checked){t.value=''; et.value='';} t.parentElement.classList.toggle('opacity-50', this.checked); et.parentElement.classList.toggle('opacity-50', this.checked);">
+                    <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" ${isAllDay ? 'checked' : ''} onchange="const t=document.getElementById('ev-time'); const et=document.getElementById('ev-end-time'); t.disabled=this.checked; et.disabled=this.checked; if(this.checked){t.value=''; et.value='';} t.parentElement.classList.toggle('opacity-50', this.checked); et.parentElement.classList.toggle('opacity-50', this.checked);">
                     <label for="ev-all-day" class="font-bold text-gray-700 text-sm cursor-pointer">終日イベントにする</label>
                 </div>
                 <div class="flex space-x-2">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">カテゴリ</label>
                         <select id="ev-category" class="w-full border p-2 rounded">
-                            ${categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                            ${categories.map(c => `<option value="${c.name}" ${c.name === categoryVal ? 'selected' : ''}>${c.name}</option>`).join('')}
                         </select>
                     </div>
-                    <div class="w-1/2">
-                        <label class="text-xs font-bold text-gray-600">対象グループ</label>
-                        <select id="ev-target-group" class="w-full border p-2 rounded">
-                            <option value="">全体</option>
-                            ${groups.map(g => `<option value="${g.id}">${g.name}</option>`).join('')}
-                        </select>
+                    <div class="w-1/2 flex flex-col">
+                        <label class="text-xs font-bold text-gray-600 mb-1">対象グループ</label>
+                        ${groupCheckboxes}
                     </div>
                 </div>
-                <div><label class="text-xs font-bold text-gray-600">場所</label><input type="text" id="ev-location" placeholder="場所" class="w-full border p-2 rounded"></div>
-                <div><label class="text-xs font-bold text-gray-600">説明</label><textarea id="ev-description" placeholder="説明" class="w-full border p-2 rounded" rows="3"></textarea></div>
+                <div><label class="text-xs font-bold text-gray-600">場所</label><input type="text" id="ev-location" value="${locationVal}" placeholder="場所" class="w-full border p-2 rounded"></div>
+                <div><label class="text-xs font-bold text-gray-600">説明</label><textarea id="ev-description" placeholder="説明" class="w-full border p-2 rounded" rows="3">${descVal}</textarea></div>
                 
-                <div class="flex items-center space-x-2 pt-2">
-                    <input type="checkbox" id="ev-requires-attendance" checked class="w-4 h-4 text-blue-600">
-                    <label for="ev-requires-attendance" class="font-bold text-gray-700">出欠管理を行う</label>
+                <div class="pt-2">
+                    <label class="text-xs font-bold text-gray-600">出欠設定</label>
+                    <select id="ev-attendance-type" class="w-full border p-2 rounded font-bold">
+                        <option value="none" ${!reqAtt ? 'selected' : ''}>出欠をとらない</option>
+                        <option value="simple" ${reqAtt && !reqDetAtt ? 'selected' : ''}>簡易出欠をとる (ステータス・コメントのみ)</option>
+                        <option value="detailed" ${reqAtt && reqDetAtt ? 'selected' : ''}>詳細出欠をとる (車出し・同伴者も確認)</option>
+                    </select>
                 </div>
             </div>
-            <div class="flex justify-end space-x-3 mt-6">
+            <div class="flex justify-end space-x-3 mt-4 pt-4 border-t shrink-0">
                 <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded font-bold">キャンセル</button>
                 <button onclick="window.att_saveEvent()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">保存</button>
             </div>
         </div>
     </div>`;
     document.getElementById('attendance-modals').innerHTML = modalHtml;
+
+    // 全体と個別の排他制御イベントリスナー
+    const allCb = document.getElementById('ev-group-all');
+    const groupCbs = document.querySelectorAll('input[name="ev-group-cb"]');
+    
+    allCb.addEventListener('change', function() {
+        if (this.checked) {
+            groupCbs.forEach(cb => cb.checked = false);
+        }
+    });
+    groupCbs.forEach(cb => {
+        cb.addEventListener('change', function() {
+            if (this.checked) {
+                allCb.checked = false;
+            }
+        });
+    });
 }
 
 async function saveEvent() {
@@ -386,8 +462,16 @@ async function saveEvent() {
     const category = document.getElementById('ev-category').value;
     const description = document.getElementById('ev-description').value;
     const location = document.getElementById('ev-location').value;
-    const requires_attendance = document.getElementById('ev-requires-attendance').checked;
-    const target_group_id = document.getElementById('ev-target-group').value || null;
+    const attType = document.getElementById('ev-attendance-type').value;
+    const requires_attendance = attType !== 'none';
+    const require_detailed_attendance = attType === 'detailed';
+    
+    const isAll = document.getElementById('ev-group-all').checked;
+    let target_group_ids = [];
+    if (!isAll) {
+        document.querySelectorAll('input[name="ev-group-cb"]:checked').forEach(cb => target_group_ids.push(cb.value));
+    }
+    const target_group_id = target_group_ids.length > 0 ? target_group_ids[0] : null;
 
     window.att_closeModal();
     showLoading();
@@ -404,7 +488,9 @@ async function saveEvent() {
             end_time: endTime,
             is_all_day: isAllDay,
             requires_attendance: requires_attendance,
+            require_detailed_attendance: require_detailed_attendance,
             target_group_id: target_group_id,
+            target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
             created_by: currentUser?.email
         });
         if (error) throw error;
@@ -442,9 +528,9 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     const ev = events.find(e => e.id === eventId);
     if(!ev) return;
 
-    const group = groups.find(g => g.id === ev.target_group_id);
-    const groupName = group?.name || '全体';
-    const groupColor = group?.color || '#e5e7eb';
+    const groupInfo = getEventTargetGroupsInfo(ev);
+    const groupName = groupInfo.name;
+    const groupColor = groupInfo.color;
     const categoryObj = categories.find(c => c.name === ev.category);
     const categoryColor = categoryObj?.color || '#bfdbfe';
     let dt = '日時未定';
@@ -456,18 +542,19 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     }
     
     const myAtt = attendances.find(a => a.event_id === ev.id) || {};
-    const statusStr = myAtt ? myAtt.status : '未入力';
+    let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
+    if (statusStr === '未定') statusStr = '保留';
 
     // 所属グループ判定 (全体 or 所属しているか)
-    const canAttend = !ev.target_group_id || userGroups.some(ug => ug.group_id === ev.target_group_id);
+    const canAttend = groupInfo.ids.length === 0 || userGroups.some(ug => groupInfo.ids.includes(ug.group_id));
 
     let attendanceSummaryHtml = '';
     if (ev.requires_attendance) {
         let targetUsers = [];
-        if (!ev.target_group_id) {
+        if (groupInfo.ids.length === 0) {
             targetUsers = appUsers;
         } else {
-            const memberEmails = allUserGroups.filter(ug => ug.group_id === ev.target_group_id).map(ug => ug.user_email);
+            const memberEmails = allUserGroups.filter(ug => groupInfo.ids.includes(ug.group_id)).map(ug => ug.user_email);
             targetUsers = appUsers.filter(u => memberEmails.includes(u.email));
         }
 
@@ -481,10 +568,10 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
         targetUsers.forEach(u => {
             const att = evAtts.find(a => a.user_email === u.email);
             const userName = u.name || u.email.split('@')[0];
-            if (!att) unassigned.push(userName);
+            if (!att || att.status === '未回答' || !att.status) unassigned.push(userName);
             else if (att.status === '出席') attending.push(userName);
             else if (att.status === '欠席') absent.push(userName);
-            else pending.push(userName);
+            else pending.push(userName); // 保留
         });
         
         attendanceSummaryHtml = `
@@ -500,7 +587,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                         <div class="text-xs text-gray-600 break-words">${absent.join(', ') || 'なし'}</div>
                     </div>
                     <div class="bg-orange-50 p-2 rounded border border-orange-100">
-                        <div class="font-bold text-orange-700 mb-1 flex justify-between items-center"><span>未定/保留</span><span class="bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full text-xs">${pending.length}</span></div>
+                        <div class="font-bold text-orange-700 mb-1 flex justify-between items-center"><span>保留</span><span class="bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full text-xs">${pending.length}</span></div>
                         <div class="text-xs text-gray-600 break-words">${pending.join(', ') || 'なし'}</div>
                     </div>
                     <div class="bg-blue-50 p-2 rounded border border-blue-100">
@@ -521,6 +608,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
             <div class="flex justify-between items-center p-4 border-b shrink-0">
                 <h3 class="text-lg font-bold text-gray-800 truncate pr-2">${ev.title}</h3>
                 <div class="flex items-center shrink-0">
+                    <button onclick="window.att_copyEvent('${ev.id}')" class="text-blue-500 text-xs border border-blue-500 px-2 py-1 rounded hover:bg-blue-50 mr-2">複製</button>
                     <button onclick="window.att_deleteEvent('${ev.id}')" class="text-red-500 text-xs border border-red-500 px-2 py-1 rounded hover:bg-red-50 mr-2">削除</button>
                     <button onclick="window.att_closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
                 </div>
@@ -551,23 +639,31 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                             <div>
                                 <label class="block text-sm font-bold text-gray-700 mb-1">ステータス*</label>
                                 <select id="att-status" class="w-full border p-2 rounded font-bold text-sm">
+                                    <option value="未回答" ${statusStr==='未回答'?'selected':''}>未回答</option>
                                     <option value="出席" ${myAtt.status==='出席'?'selected':''}>出席</option>
                                     <option value="欠席" ${myAtt.status==='欠席'?'selected':''}>欠席</option>
-                                    <option value="未定" ${myAtt.status==='未定'?'selected':''}>未定</option>
+                                    <option value="保留" ${statusStr==='保留'?'selected':''}>保留</option>
                                 </select>
                             </div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
-                                <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否 (乗車可能人数)</label>
-                                <input type="number" id="att-car" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" placeholder="0で不可">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">別行動 (例: 現地集合、早退)</label>
-                                <input type="text" id="att-sep" value="${myAtt.separate_action||''}" class="w-full border p-2 rounded text-sm">
-                            </div>
+                            ${ev.require_detailed_attendance ? `
+                                <div>
+                                    <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
+                                    <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <div class="w-1/3">
+                                        <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否</label>
+                                        <select id="att-car-flag" class="w-full border p-2 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap').value == 0) document.getElementById('att-car-cap').value = 1;">
+                                            <option value="否" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
+                                            <option value="可" ${myAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
+                                        </select>
+                                    </div>
+                                    <div class="w-2/3">
+                                        <label class="block text-sm font-bold text-gray-700 mb-1">乗車可能人数 (運転手除く)</label>
+                                        <input type="number" id="att-car-cap" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'disabled' : ''}>
+                                    </div>
+                                </div>
+                            ` : ''}
                             <div>
                                 <label class="block text-sm font-bold text-gray-700 mb-1">コメント</label>
                                 <textarea id="att-comment" class="w-full border p-2 rounded text-sm" rows="2">${myAtt.comment||''}</textarea>
@@ -588,7 +684,11 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
 // 出欠登録フォーム
 // =====================================
 function openAttendanceFormModal(eventId) {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
     const myAtt = attendances.find(a => a.event_id === eventId) || {};
+    let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
+    if (statusStr === '未定') statusStr = '保留';
     
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]">
@@ -598,23 +698,31 @@ function openAttendanceFormModal(eventId) {
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">ステータス*</label>
                     <select id="att-status" class="w-full border p-2 rounded font-bold">
-                        <option value="出席" ${myAtt.status==='出席'?'selected':''}>出席</option>
-                        <option value="欠席" ${myAtt.status==='欠席'?'selected':''}>欠席</option>
-                        <option value="未定" ${myAtt.status==='未定'?'selected':''}>未定</option>
+                        <option value="未回答" ${statusStr==='未回答'?'selected':''}>未回答</option>
+                        <option value="出席" ${statusStr==='出席'?'selected':''}>出席</option>
+                        <option value="欠席" ${statusStr==='欠席'?'selected':''}>欠席</option>
+                        <option value="保留" ${statusStr==='保留'?'selected':''}>保留</option>
                     </select>
                 </div>
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
-                    <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
-                </div>
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否 (乗車可能人数)</label>
-                    <input type="number" id="att-car" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" placeholder="0で不可">
-                </div>
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">別行動 (例: 現地集合、早退)</label>
-                    <input type="text" id="att-sep" value="${myAtt.separate_action||''}" class="w-full border p-2 rounded text-sm">
-                </div>
+                ${ev.require_detailed_attendance ? `
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
+                        <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
+                    </div>
+                    <div class="flex space-x-2">
+                        <div class="w-1/3">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否</label>
+                            <select id="att-car-flag" class="w-full border p-2 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap').value == 0) document.getElementById('att-car-cap').value = 1;">
+                                <option value="否" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
+                                <option value="可" ${myAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
+                            </select>
+                        </div>
+                        <div class="w-2/3">
+                            <label class="block text-sm font-bold text-gray-700 mb-1">乗車可能人数 (運転手除く)</label>
+                            <input type="number" id="att-car-cap" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'disabled' : ''}>
+                        </div>
+                    </div>
+                ` : ''}
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">コメント</label>
                     <textarea id="att-comment" class="w-full border p-2 rounded text-sm" rows="2">${myAtt.comment||''}</textarea>
@@ -632,10 +740,11 @@ function openAttendanceFormModal(eventId) {
 async function saveAttendance(eventId) {
     // DOMを削除する前に各入力値を取得する
     const status = document.getElementById('att-status').value;
-    const accompanyingPersons = document.getElementById('att-acc').value;
-    const carCapacity = parseInt(document.getElementById('att-car').value) || 0;
-    const separateAction = document.getElementById('att-sep').value;
+    const accompanyingPersons = document.getElementById('att-acc') ? document.getElementById('att-acc').value : '';
+    const carFlag = document.getElementById('att-car-flag') ? document.getElementById('att-car-flag').value : '否';
+    const carCapacity = carFlag === '可' ? (parseInt(document.getElementById('att-car-cap').value) || 0) : 0;
     const comment = document.getElementById('att-comment').value;
+    const separateAction = null; // 別行動は廃止されたためnull
 
     window.att_closeModal(); // モーダルを閉じる
     
@@ -672,14 +781,16 @@ async function saveAttendance(eventId) {
 // CSV インポート・エクスポート
 // =====================================
 function exportCsv() {
-    const header = ['タイトル', '日付', '開始時刻', '終了時刻', '終日', 'カテゴリ', '対象グループ', '場所', '出欠管理', '説明'];
+    const header = ['タイトル', '日付', '開始時刻', '終了時刻', '終日', 'カテゴリ', '対象グループ', '場所', '出欠管理', '詳細出欠', '説明'];
     const rows = [header.join(',')];
     
     events.forEach(e => {
         const date = e.start_time ? e.start_time.split('T')[0] : '';
         const startTime = e.start_time && !e.is_all_day ? e.start_time.split('T')[1].substring(0,5) : '';
         const endTime = e.end_time && !e.is_all_day ? e.end_time.split('T')[1].substring(0,5) : '';
-        const group = groups.find(g => g.id === e.target_group_id)?.name || '';
+        
+        const groupInfo = getEventTargetGroupsInfo(e);
+        const groupName = groupInfo.name;
         
         const escapeCsv = (str) => {
             if (str === null || str === undefined) return '""';
@@ -694,9 +805,10 @@ function exportCsv() {
             escapeCsv(endTime),
             e.is_all_day ? 'TRUE' : 'FALSE',
             escapeCsv(e.category),
-            escapeCsv(group),
+            escapeCsv(groupName),
             escapeCsv(e.location),
             e.requires_attendance ? 'TRUE' : 'FALSE',
+            e.require_detailed_attendance ? 'TRUE' : 'FALSE',
             escapeCsv(e.description)
         ].join(','));
     });
@@ -758,17 +870,20 @@ window.att_importCsv = async function(event) {
             const endTime = row[3];
             const isAllDay = (row[4] || '').toUpperCase() === 'TRUE';
             const category = row[5];
-            const groupName = row[6];
+            const groupNameStr = row[6] || '';
             const location = row[7];
             const reqAtt = (row[8] || '').toUpperCase() === 'TRUE' || (row[8] || '').trim() === '';
-            const description = row[9];
+            const reqDetAtt = (row[9] || '').toUpperCase() === 'TRUE';
+            const description = row[10];
             
             const startDt = `${date}T${startTime || '00:00'}:00`;
             let endDt = null;
             if (endTime) endDt = `${date}T${endTime}:00`;
             
-            const group = groups.find(g => g.name === groupName);
-            const groupId = group ? group.id : null;
+            const groupNames = groupNameStr.split(',').map(s => s.trim());
+            const matchedGroups = groups.filter(g => groupNames.includes(g.name));
+            const target_group_ids = matchedGroups.length > 0 ? matchedGroups.map(g => g.id) : null;
+            const target_group_id = target_group_ids ? target_group_ids[0] : null;
             
             newEvents.push({
                 title,
@@ -779,7 +894,9 @@ window.att_importCsv = async function(event) {
                 end_time: endDt,
                 is_all_day: isAllDay,
                 requires_attendance: reqAtt,
-                target_group_id: groupId,
+                require_detailed_attendance: reqDetAtt,
+                target_group_id: target_group_id,
+                target_group_ids: target_group_ids,
                 created_by: currentUser?.email
             });
         }
