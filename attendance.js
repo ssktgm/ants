@@ -229,14 +229,16 @@ function renderCalendar() {
             let iconHtml = '';
             if (e.requires_attendance) {
                 const status = myAtt ? myAtt.status : '未入力';
-                if (status === '出席') iconHtml = '<span class="text-green-700 mr-0.5 font-bold leading-none">●</span>';
-                else if (status === '欠席') iconHtml = '<span class="text-gray-500 mr-0.5 font-bold leading-none">✖</span>';
-                else iconHtml = '<span class="text-orange-500 mr-0.5 font-bold leading-none">➖</span>';
+                if (status === '出席') iconHtml = '<span class="text-green-700 mr-0.5 font-bold leading-none">[出]</span>';
+                else if (status === '欠席') iconHtml = '<span class="text-red-500 mr-0.5 font-bold leading-none">[欠]</span>';
+                else if (status === '未定') iconHtml = '<span class="text-orange-500 mr-0.5 font-bold leading-none">[保]</span>';
+                else iconHtml = '<span class="text-gray-500 mr-0.5 font-bold leading-none">[未]</span>';
             }
             
-            const groupColor = groups.find(g => g.id === e.target_group_id)?.color || '#d1fae5';
+            const categoryObj = categories.find(c => c.name === e.category);
+            const categoryColor = categoryObj?.color || '#bfdbfe';
             evEl.className = 'text-[10px] text-gray-800 rounded px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight';
-            evEl.style.backgroundColor = groupColor;
+            evEl.style.backgroundColor = categoryColor;
             evEl.innerHTML = `${iconHtml}${e.title}`;
             evEl.title = e.title;
             evEl.onclick = (ev) => {
@@ -283,23 +285,26 @@ function renderList() {
         const group = groups.find(g => g.id === e.target_group_id);
         const groupName = group?.name || '全体';
         const groupColor = group?.color || '#e5e7eb';
+        const categoryObj = categories.find(c => c.name === e.category);
+        const categoryColor = categoryObj?.color || '#bfdbfe';
         const myAtt = attendances.find(a => a.event_id === e.id);
         const statusStr = myAtt ? myAtt.status : '未入力';
         
         let iconHtml = '';
         if (e.requires_attendance) {
-            if (statusStr === '出席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-green-100 text-green-600 rounded-md mr-3 font-bold text-lg shrink-0" title="出席">●</div>';
-            else if (statusStr === '欠席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-gray-200 text-gray-600 rounded-md mr-3 font-bold text-lg shrink-0" title="欠席">✖</div>';
-            else iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-500 rounded-md mr-3 font-bold text-lg shrink-0" title="保留/未定">➖</div>';
+            if (statusStr === '出席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-green-100 text-green-700 rounded-md mr-3 font-bold text-sm shrink-0" title="出席">出</div>';
+            else if (statusStr === '欠席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-red-100 text-red-600 rounded-md mr-3 font-bold text-sm shrink-0" title="欠席">欠</div>';
+            else if (statusStr === '未定') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-500 rounded-md mr-3 font-bold text-sm shrink-0" title="保留/未定">保</div>';
+            else iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-500 rounded-md mr-3 font-bold text-sm shrink-0" title="未入力">未</div>';
         }
         
         return `
-        <div class="p-4 border-l-4 rounded-lg hover:shadow-md transition bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer border-gray-200" style="border-left-color: ${groupColor}" onclick="window.att_openEventDetail('${e.id}')">
+        <div class="p-4 border-l-4 rounded-lg hover:shadow-md transition bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer border-gray-200" style="border-left-color: ${categoryColor}" onclick="window.att_openEventDetail('${e.id}')">
             <div class="flex items-center">
                 ${iconHtml}
                 <div>
                     <div class="flex items-center space-x-2 mb-1">
-                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">${e.category || 'イベント'}</span>
+                        <span class="text-xs text-gray-800 px-2 py-0.5 rounded shadow-sm" style="background-color: ${categoryColor}">${e.category || 'イベント'}</span>
                         <span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded" style="background-color: ${groupColor}">${groupName}</span>
                     </div>
                     <h3 class="font-bold text-lg text-gray-800">${e.title}</h3>
@@ -437,7 +442,11 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     const ev = events.find(e => e.id === eventId);
     if(!ev) return;
 
-    const groupName = groups.find(g => g.id === ev.target_group_id)?.name || '全体';
+    const group = groups.find(g => g.id === ev.target_group_id);
+    const groupName = group?.name || '全体';
+    const groupColor = group?.color || '#e5e7eb';
+    const categoryObj = categories.find(c => c.name === ev.category);
+    const categoryColor = categoryObj?.color || '#bfdbfe';
     let dt = '日時未定';
     if (ev.is_all_day && ev.start_time) {
         dt = ev.start_time.substring(0, 10) + ' (終日)';
@@ -446,7 +455,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
         if (ev.end_time) dt += ' 〜 ' + ev.end_time.substring(11, 16);
     }
     
-    const myAtt = attendances.find(a => a.event_id === ev.id);
+    const myAtt = attendances.find(a => a.event_id === ev.id) || {};
     const statusStr = myAtt ? myAtt.status : '未入力';
 
     // 所属グループ判定 (全体 or 所属しているか)
@@ -527,7 +536,8 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                     <div class="text-sm text-gray-600 mb-4 space-y-1">
                         <p><strong>日時:</strong> ${dt}</p>
                         <p><strong>場所:</strong> ${ev.location || '未定'}</p>
-                        <p><strong>対象:</strong> ${groupName}</p>
+                        <p class="flex items-center gap-1 mt-1"><strong>カテゴリ:</strong> <span class="px-2 py-0.5 rounded text-xs text-gray-800 shadow-sm" style="background-color: ${categoryColor}">${ev.category || '未設定'}</span></p>
+                        <p class="flex items-center gap-1 mt-1"><strong>対象:</strong> <span class="px-2 py-0.5 rounded text-xs border border-gray-300 text-gray-800 shadow-sm" style="background-color: ${groupColor}">${groupName}</span></p>
                         <p class="mt-2 whitespace-pre-wrap border p-2 bg-gray-50 rounded min-h-[60px] text-gray-800">${ev.description || '説明なし'}</p>
                     </div>
                     ${ev.requires_attendance ? attendanceSummaryHtml : ''}
@@ -657,3 +667,173 @@ async function saveAttendance(eventId) {
         }
     } finally { hideLoading(); }
 }
+
+// =====================================
+// CSV インポート・エクスポート
+// =====================================
+function exportCsv() {
+    const header = ['タイトル', '日付', '開始時刻', '終了時刻', '終日', 'カテゴリ', '対象グループ', '場所', '出欠管理', '説明'];
+    const rows = [header.join(',')];
+    
+    events.forEach(e => {
+        const date = e.start_time ? e.start_time.split('T')[0] : '';
+        const startTime = e.start_time && !e.is_all_day ? e.start_time.split('T')[1].substring(0,5) : '';
+        const endTime = e.end_time && !e.is_all_day ? e.end_time.split('T')[1].substring(0,5) : '';
+        const group = groups.find(g => g.id === e.target_group_id)?.name || '';
+        
+        const escapeCsv = (str) => {
+            if (str === null || str === undefined) return '""';
+            const s = String(str).replace(/"/g, '""');
+            return `"${s}"`;
+        };
+        
+        rows.push([
+            escapeCsv(e.title),
+            escapeCsv(date),
+            escapeCsv(startTime),
+            escapeCsv(endTime),
+            e.is_all_day ? 'TRUE' : 'FALSE',
+            escapeCsv(e.category),
+            escapeCsv(group),
+            escapeCsv(e.location),
+            e.requires_attendance ? 'TRUE' : 'FALSE',
+            escapeCsv(e.description)
+        ].join(','));
+    });
+    
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+    const blob = new Blob([bom, rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `events_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function parseCSV(text) {
+    const result = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (inQuotes) {
+            if (char === '"') {
+                if (i + 1 < text.length && text[i + 1] === '"') { field += '"'; i++; }
+                else { inQuotes = false; }
+            } else { field += char; }
+        } else {
+            if (char === '"') { inQuotes = true; }
+            else if (char === ',') { row.push(field); field = ''; }
+            else if (char === '\n' || char === '\r') {
+                row.push(field); result.push(row); row = []; field = '';
+                if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
+            } else { field += char; }
+        }
+    }
+    if (field || row.length > 0) { row.push(field); result.push(row); }
+    return result;
+}
+
+window.att_importCsv = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const text = e.target.result;
+        const rows = parseCSV(text);
+        if (rows.length < 2) return alert('インポートするデータがありません。');
+        
+        const newEvents = [];
+        for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (row.length < 2) continue;
+            if (!row[0] || !row[1]) continue;
+            
+            const title = row[0];
+            const date = row[1];
+            const startTime = row[2];
+            const endTime = row[3];
+            const isAllDay = (row[4] || '').toUpperCase() === 'TRUE';
+            const category = row[5];
+            const groupName = row[6];
+            const location = row[7];
+            const reqAtt = (row[8] || '').toUpperCase() === 'TRUE' || (row[8] || '').trim() === '';
+            const description = row[9];
+            
+            const startDt = `${date}T${startTime || '00:00'}:00`;
+            let endDt = null;
+            if (endTime) endDt = `${date}T${endTime}:00`;
+            
+            const group = groups.find(g => g.name === groupName);
+            const groupId = group ? group.id : null;
+            
+            newEvents.push({
+                title,
+                category: category || null,
+                description: description || null,
+                location: location || null,
+                start_time: startDt,
+                end_time: endDt,
+                is_all_day: isAllDay,
+                requires_attendance: reqAtt,
+                target_group_id: groupId,
+                created_by: currentUser?.email
+            });
+        }
+        
+        if (newEvents.length === 0) return alert('インポート可能なイベントがありませんでした。\nタイトルと日付は必須です。');
+
+        const listHtml = newEvents.map(ev => {
+            const dt = ev.is_all_day ? ev.start_time.split('T')[0] + ' (終日)' : ev.start_time.replace('T', ' ').substring(0, 16);
+            return `<div class="text-sm border-b py-2 border-gray-200">
+                <div class="font-bold text-gray-800">${ev.title}</div>
+                <div class="text-gray-600 text-xs">${dt}</div>
+            </div>`;
+        }).join('');
+
+        const modalHtml = `
+        <div id="csv-import-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[120]">
+            <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+                <h3 class="text-lg font-bold mb-4">インポート確認 (${newEvents.length}件)</h3>
+                <div class="overflow-y-auto flex-1 mb-4 border rounded p-2 bg-gray-50 min-h-[150px]">
+                    ${listHtml}
+                </div>
+                <div class="flex justify-end space-x-3 mt-2">
+                    <button id="btn-cancel-import" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded font-bold">キャンセル</button>
+                    <button id="btn-exec-import" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">インポート実行</button>
+                </div>
+            </div>
+        </div>`;
+
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = modalHtml;
+        document.body.appendChild(tempDiv.firstElementChild);
+
+        document.getElementById('btn-cancel-import').onclick = () => {
+            document.getElementById('csv-import-confirm-modal').remove();
+            document.getElementById('file-import-csv').value = '';
+        };
+
+        document.getElementById('btn-exec-import').onclick = async () => {
+            document.getElementById('csv-import-confirm-modal').remove();
+            showLoading();
+            try {
+                const { error } = await supabaseClient.from('events').insert(newEvents);
+                if (error) throw error;
+                alert(`${newEvents.length}件のインポートが完了しました。`);
+                await loadData();
+                renderCalendar();
+                renderList();
+            } catch (err) {
+                alert('インポート中にエラーが発生しました:\n' + err.message);
+            } finally {
+                hideLoading();
+                document.getElementById('file-import-csv').value = '';
+            }
+        };
+    };
+    reader.readAsText(file);
+};

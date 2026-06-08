@@ -168,7 +168,7 @@ function pushHistoryState(screenId, subView = null) {
 
 // 画面切り替えヘルパー関数
 export function switchAuthScreen(screenId, subView = null) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view'].forEach(id => {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -735,9 +735,10 @@ async function loadAdminUsersData() {
         <h3 class="font-bold text-blue-800 mb-2">イベントカテゴリの管理</h3>
         <div class="flex flex-wrap gap-2 mb-3">
             ${categoriesData.length === 0 ? '<span class="text-sm text-gray-500">カテゴリなし</span>' : ''}
-            ${categoriesData.map(c => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+            ${categoriesData.map(c => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${c.color || '#bfdbfe'}" onchange="updateCategoryColorAdmin('${c.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
         </div>
         <div class="flex space-x-2 items-center">
+            <input type="color" id="admin-new-category-color" value="#bfdbfe" class="w-8 h-8 border p-0 rounded cursor-pointer" title="カテゴリの色">
             <input type="text" id="admin-new-category-name" placeholder="新しいカテゴリ名" class="border p-1 rounded text-sm w-48">
             <button onclick="saveNewCategoryAdmin()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
         </div>
@@ -923,10 +924,11 @@ window.deleteAdminUser = async function(email) {
 
 window.saveNewCategoryAdmin = async function() {
     const name = document.getElementById('admin-new-category-name').value.trim();
+    const color = document.getElementById('admin-new-category-color')?.value || '#bfdbfe';
     if (!name) return alert('カテゴリ名を入力してください');
     showLoading();
     try {
-        const { error } = await supabaseClient.from('event_categories').insert([{ name }]);
+        const { error } = await supabaseClient.from('event_categories').insert([{ name, color }]);
         if (error) throw error;
         loadAdminUsersData();
     } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
@@ -948,6 +950,15 @@ window.renameCategoryAdmin = async function(id, currentName) {
     showLoading();
     try {
         const { error } = await supabaseClient.from('event_categories').update({ name: newName.trim() }).eq('id', id);
+        if (error) throw error;
+        loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
+};
+
+window.updateCategoryColorAdmin = async function(id, color) {
+    showLoading();
+    try {
+        const { error } = await supabaseClient.from('event_categories').update({ color }).eq('id', id);
         if (error) throw error;
         loadAdminUsersData();
     } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
