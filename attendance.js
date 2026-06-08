@@ -6,6 +6,9 @@ let groups = [];
 let categories = [];
 let userGroups = [];
 let attendances = [];
+let allUserGroups = [];
+let allAttendances = [];
+let appUsers = [];
 let isAttendanceInitialized = false;
 
 // =====================================
@@ -117,14 +120,22 @@ async function loadData() {
         const { data: eData } = await supabaseClient.from('events').select('*').order('start_time');
         if (eData) events = eData;
 
-        if (currentUser) {
-            // 所属グループ
-            const { data: ugData } = await supabaseClient.from('user_groups').select('*').eq('user_email', currentUser.email);
-            if (ugData) userGroups = ugData;
+        // 全ユーザー情報（出欠集計用）
+        const { data: uData } = await supabaseClient.from('app_users').select('email, name');
+        if (uData) appUsers = uData;
 
-            // 自身の出欠情報
-            const { data: aData } = await supabaseClient.from('attendances').select('*').eq('user_email', currentUser.email);
-            if (aData) attendances = aData;
+        // 全員の所属グループ
+        const { data: ugData } = await supabaseClient.from('user_groups').select('*');
+        if (ugData) {
+            allUserGroups = ugData;
+            if (currentUser) userGroups = ugData.filter(u => u.user_email === currentUser.email);
+        }
+
+        // 全員の出欠情報
+        const { data: aData } = await supabaseClient.from('attendances').select('*');
+        if (aData) {
+            allAttendances = aData;
+            if (currentUser) attendances = aData.filter(a => a.user_email === currentUser.email);
         }
     } catch (e) {
         console.error("Attendance DB Error:", e);
@@ -200,9 +211,9 @@ function renderCalendar() {
             let iconHtml = '';
             if (e.requires_attendance) {
                 const status = myAtt ? myAtt.status : '未入力';
-                if (status === '出席') iconHtml = '<span class="text-green-600 mr-1 font-bold">●</span>';
-                else if (status === '欠席') iconHtml = '<span class="text-black mr-1 font-bold">✖</span>';
-                else iconHtml = '<span class="text-orange-500 mr-1 font-bold">➖</span>';
+                if (status === '出席') iconHtml = '<span class="inline-block bg-green-100 text-green-700 rounded px-1 mr-1 text-[10px] font-bold leading-none py-0.5">●</span>';
+                else if (status === '欠席') iconHtml = '<span class="inline-block bg-gray-200 text-gray-700 rounded px-1 mr-1 text-[10px] font-bold leading-none py-0.5">✖</span>';
+                else iconHtml = '<span class="inline-block bg-orange-100 text-orange-700 rounded px-1 mr-1 text-[10px] font-bold leading-none py-0.5">➖</span>';
             }
             
             const groupColor = groups.find(g => g.id === e.target_group_id)?.color || '#d1fae5';
@@ -216,7 +227,7 @@ function renderCalendar() {
             cell.appendChild(evEl);
         });
         
-        cell.onclick = () => openAddEventModal(targetDateStr);
+        // カレンダーの空きセルクリック時の新規作成モーダル表示は、誤操作防止のため無効化
         grid.appendChild(cell);
     }
 }
@@ -240,9 +251,9 @@ function renderList() {
         
         let iconHtml = '';
         if (e.requires_attendance) {
-            if (statusStr === '出席') iconHtml = '<span class="text-green-600 text-xl mr-3 leading-none" title="出席">●</span>';
-            else if (statusStr === '欠席') iconHtml = '<span class="text-black text-xl mr-3 leading-none" title="欠席">✖</span>';
-            else iconHtml = '<span class="text-orange-500 text-xl mr-3 leading-none" title="保留/未定">➖</span>';
+            if (statusStr === '出席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-green-100 text-green-600 rounded-md mr-3 font-bold text-lg shrink-0" title="出席">●</div>';
+            else if (statusStr === '欠席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-gray-200 text-gray-600 rounded-md mr-3 font-bold text-lg shrink-0" title="欠席">✖</div>';
+            else iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-500 rounded-md mr-3 font-bold text-lg shrink-0" title="保留/未定">➖</div>';
         }
         
         return `
@@ -378,12 +389,63 @@ window.openEventDetailModal = function(eventId) {
     // 所属グループ判定 (全体 or 所属しているか)
     const canAttend = !ev.target_group_id || userGroups.some(ug => ug.group_id === ev.target_group_id);
 
+    let attendanceSummaryHtml = '';
+    if (ev.requires_attendance) {
+        let targetUsers = [];
+        if (!ev.target_group_id) {
+            targetUsers = appUsers;
+        } else {
+            const memberEmails = allUserGroups.filter(ug => ug.group_id === ev.target_group_id).map(ug => ug.user_email);
+            targetUsers = appUsers.filter(u => memberEmails.includes(u.email));
+        }
+
+        const evAtts = allAttendances.filter(a => a.event_id === ev.id);
+        
+        let attending = [];
+        let absent = [];
+        let pending = [];
+        let unassigned = [];
+        
+        targetUsers.forEach(u => {
+            const att = evAtts.find(a => a.user_email === u.email);
+            const userName = u.name || u.email.split('@')[0];
+            if (!att) unassigned.push(userName);
+            else if (att.status === '出席') attending.push(userName);
+            else if (att.status === '欠席') absent.push(userName);
+            else pending.push(userName);
+        });
+        
+        attendanceSummaryHtml = `
+            <div class="mt-4 border-t pt-4">
+                <h4 class="font-bold text-gray-700 mb-2">メンバーの出欠状況</h4>
+                <div class="grid grid-cols-2 gap-2 text-sm">
+                    <div class="bg-green-50 p-2 rounded border border-green-100">
+                        <div class="font-bold text-green-700 mb-1 flex justify-between items-center"><span>出席</span><span class="bg-green-200 text-green-800 px-1.5 py-0.5 rounded-full text-xs">${attending.length}</span></div>
+                        <div class="text-xs text-gray-600 break-words">${attending.join(', ') || 'なし'}</div>
+                    </div>
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <div class="font-bold text-gray-700 mb-1 flex justify-between items-center"><span>欠席</span><span class="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs">${absent.length}</span></div>
+                        <div class="text-xs text-gray-600 break-words">${absent.join(', ') || 'なし'}</div>
+                    </div>
+                    <div class="bg-orange-50 p-2 rounded border border-orange-100">
+                        <div class="font-bold text-orange-700 mb-1 flex justify-between items-center"><span>未定/保留</span><span class="bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full text-xs">${pending.length}</span></div>
+                        <div class="text-xs text-gray-600 break-words">${pending.join(', ') || 'なし'}</div>
+                    </div>
+                    <div class="bg-blue-50 p-2 rounded border border-blue-100">
+                        <div class="font-bold text-blue-700 mb-1 flex justify-between items-center"><span>未回答</span><span class="bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full text-xs">${unassigned.length}</span></div>
+                        <div class="text-xs text-gray-600 break-words">${unassigned.join(', ') || 'なし'}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-start mb-4">
                 <h3 class="text-xl font-bold text-gray-800">${ev.title}</h3>
-                <button onclick="window.att_deleteEvent('${ev.id}')" class="text-red-500 text-xs border border-red-500 px-2 py-1 rounded hover:bg-red-50">削除</button>
+                <button onclick="window.att_deleteEvent('${ev.id}')" class="text-red-500 text-xs border border-red-500 px-2 py-1 rounded hover:bg-red-50 shrink-0 ml-2">削除</button>
             </div>
             <div class="text-sm text-gray-600 mb-4 space-y-1">
                 <p><strong>日時:</strong> ${dt}</p>
@@ -393,13 +455,14 @@ window.openEventDetailModal = function(eventId) {
             </div>
             
             ${ev.requires_attendance ? `
-            <div class="border-t pt-4">
-                <h4 class="font-bold text-gray-700 mb-2">あなたの出欠情報: <span class="${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':''}">${statusStr}</span></h4>
+            <div class="border-t pt-4 mt-4">
+                <h4 class="font-bold text-gray-700 mb-2">あなたの出欠情報: <span class="${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-gray-600':''}">${statusStr}</span></h4>
                 ${canAttend ? 
                     `<button onclick="window.att_openAttendanceForm('${ev.id}')" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded shadow">出欠を登録・変更する</button>` 
                     : `<p class="text-xs text-red-500">※対象グループに所属していないため入力できません</p>`
                 }
             </div>
+            ${attendanceSummaryHtml}
             ` : ''}
             
             <div class="mt-6 text-center">
@@ -456,17 +519,25 @@ function openAttendanceFormModal(eventId) {
 }
 
 async function saveAttendance(eventId) {
-    window.att_closeModal();
+    // DOMを削除する前に各入力値を取得する
+    const status = document.getElementById('att-status').value;
+    const accompanyingPersons = document.getElementById('att-acc').value;
+    const carCapacity = parseInt(document.getElementById('att-car').value) || 0;
+    const separateAction = document.getElementById('att-sep').value;
+    const comment = document.getElementById('att-comment').value;
+
+    window.att_closeModal(); // モーダルを閉じる
+    
     showLoading();
     try {
         const payload = {
             event_id: eventId,
             user_email: currentUser.email,
-            status: document.getElementById('att-status').value,
-            accompanying_persons: document.getElementById('att-acc').value,
-            car_capacity: parseInt(document.getElementById('att-car').value) || 0,
-            separate_action: document.getElementById('att-sep').value,
-            comment: document.getElementById('att-comment').value,
+            status: status,
+            accompanying_persons: accompanyingPersons,
+            car_capacity: carCapacity,
+            separate_action: separateAction,
+            comment: comment,
             updated_at: new Date().toISOString()
         };
 
