@@ -859,8 +859,9 @@ async function saveAttendance(eventId) {
         if (error) throw error;
         
         await loadData(); // 再取得
+        renderCalendar(); // カレンダーの表示を更新
+        renderList();     // リストの表示を更新
         window.att_openEventDetail(eventId); // 詳細画面に戻る
-        if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
     } catch (e) {
         console.error('Save Attendance Error:', e);
         if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
