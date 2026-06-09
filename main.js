@@ -104,13 +104,16 @@ async function logAction(actionType, details) {
 
 // --- 認証 (Auth) ロジック ---
 document.addEventListener('DOMContentLoaded', () => {
-    // ページタイトルと画面内のテキストを「少年野球に役立つツール for arinko ants.」に変更
-    document.title = "少年野球に役立つツール for arinko ants.";
+    // ページタイトルと画面内のテキストを「bb-sys for arinko ants.」に変更
+    document.title = "bb-sys for arinko ants.";
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
     let node;
     while ((node = walker.nextNode())) {
         if (node.nodeValue.includes('配車調整アプリ')) {
-            node.nodeValue = node.nodeValue.replace(/配車調整アプリ/g, '少年野球に役立つツール for arinko ants.');
+            node.nodeValue = node.nodeValue.replace(/配車調整アプリ/g, 'bb-sys for arinko ants.');
+        }
+        if (node.nodeValue.includes('少年野球に役立つツール for arinko ants.')) {
+            node.nodeValue = node.nodeValue.replace(/少年野球に役立つツール for arinko ants./g, 'bb-sys for arinko ants.');
         }
     }
 
@@ -227,6 +230,10 @@ export function switchAuthScreen(screenId, subView = null) {
     if (targetEl) targetEl.classList.remove('hidden');
     
     pushHistoryState(screenId, subView);
+
+    if (screenId !== 'auth-view' && currentUser) {
+        logAction('NAVIGATE', `画面遷移: ${screenId}${subView ? ' > ' + subView : ''}`);
+    }
 }
 
 // ブラウザの戻る/進む（popstate）対応
@@ -267,15 +274,21 @@ if (supabaseClient) {
         if (session) {
             showLoading('ユーザー権限確認中...');
             try {
+                const isNewLogin = !currentUser || currentUser.id !== session.user.id;
                 currentUser = session.user;
+                
+                if (isNewLogin) {
+                    logAction('LOGIN', 'ログインしました');
+                }
                 
                 // 管理者権限のチェック
                 let canUseDispatch = true;
                 let canUseDashboard = true;
+                let canUseAttendance = true;
 
                 try {
                     const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 8000));
-                    const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard').eq('email', currentUser.email).single();
+                    const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
                     const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
                     
                     if (userData) {
@@ -283,6 +296,7 @@ if (supabaseClient) {
                         currentUser.name = userData.name; // 取得したメンバー名を保持
                         if (userData.can_use_dispatch === false) canUseDispatch = false;
                         if (userData.can_use_dashboard === false) canUseDashboard = false;
+                        if (userData.can_use_attendance === false) canUseAttendance = false;
                     } else {
                         currentUserRole = 'user';
                     }
@@ -299,6 +313,7 @@ if (supabaseClient) {
                 if (currentUserRole === 'admin') {
                     canUseDispatch = true;
                     canUseDashboard = true;
+                    canUseAttendance = true;
                 }
 
                 // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
@@ -369,6 +384,14 @@ if (supabaseClient) {
                 } else {
                     navDispatch?.classList.add('hidden');
                     btnAppDispatch?.classList.add('hidden');
+                }
+
+                // 出欠管理メニューの表示制御
+                const btnAppAttendance = document.getElementById('btn-app-attendance');
+                if (canUseAttendance) {
+                    btnAppAttendance?.classList.remove('hidden');
+                } else {
+                    btnAppAttendance?.classList.add('hidden');
                 }
 
                 const emailDisplay = document.getElementById('user-email-display');
@@ -727,6 +750,7 @@ async function handlePasswordChangeInApp(e) {
 
 async function handleLogout(e) {
     if (e && e.preventDefault) e.preventDefault();
+    if (currentUser) logAction('LOGOUT', 'ログアウトしました');
     showLoading('ログアウト処理中...');
     try {
         const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
@@ -907,6 +931,7 @@ async function loadAdminUsersData() {
                     <div class="flex items-center space-x-3 ml-2 border-l pl-2">
                         <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dispatch-${i}" class="rounded text-blue-600" ${u.can_use_dispatch !== false ? 'checked' : ''}><span>配車可</span></label>
                         <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
+                        <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-attendance-${i}" class="rounded text-blue-600" ${u.can_use_attendance !== false ? 'checked' : ''}><span>出欠可</span></label>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 shrink-0">
@@ -965,6 +990,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
     const roleEl = document.getElementById(`edit-role-${index}`);
     const useDispatchEl = document.getElementById(`edit-use-dispatch-${index}`);
     const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
+    const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
     
     const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
     const newName = nameEl.value.trim();
@@ -972,6 +998,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
     const newRole = roleEl.disabled ? oldRole : roleEl.value;
     const canUseDispatch = useDispatchEl ? useDispatchEl.checked : true;
     const canUseDashboard = useDashboardEl ? useDashboardEl.checked : true;
+    const canUseAttendance = useAttendanceEl ? useAttendanceEl.checked : true;
 
     if (!newEmail) return alert('メールアドレスを入力してください');
     if (!confirm(`${oldEmail} のユーザー情報と所属グループ設定を保存しますか？`)) return;
@@ -986,6 +1013,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
         updatePayload.attribute_id = newAttributeId;
         updatePayload.can_use_dispatch = canUseDispatch;
         updatePayload.can_use_dashboard = canUseDashboard;
+        updatePayload.can_use_attendance = canUseAttendance;
         
         if (Object.keys(updatePayload).length > 0) {
             const { error } = await supabaseClient.from('app_users').update(updatePayload).eq('email', oldEmail);
@@ -1008,6 +1036,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
             if (insErr) throw insErr;
         }
         
+        logAction('UPDATE_USER', `ユーザー「${oldEmail}」の設定を更新しました`);
         alert('設定を保存しました');
         loadAdminUsersData();
     } catch (err) {
@@ -1039,6 +1068,7 @@ window.adminAddUser = async function() {
     showLoading('ユーザー追加処理中...');
     try {
         await supabaseClient.from('app_users').insert([{ email, role }]);
+        logAction('ADD_USER', `ユーザー「${email}」を追加しました`);
         document.getElementById('admin-add-email').value = '';
         loadAdminUsersData();
     } catch (err) {
@@ -1053,6 +1083,7 @@ window.deleteAdminUser = async function(email) {
     showLoading('ユーザー削除処理中...');
     try {
         await supabaseClient.from('app_users').delete().eq('email', email);
+        logAction('DELETE_USER', `ユーザー「${email}」を削除しました`);
         loadAdminUsersData();
     } catch (err) {
         console.error(err);
@@ -1449,6 +1480,26 @@ async function fetchAndRenderMasterData() {
 
 async function loadLogs() {
     const btn = document.getElementById('btn-load-logs');
+
+    // CSVダウンロードボタンの動的追加
+    if (btn && !document.getElementById('btn-download-logs-csv')) {
+        const dlBtn = document.createElement('button');
+        dlBtn.id = 'btn-download-logs-csv';
+        dlBtn.className = 'ml-2 bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-bold shadow';
+        dlBtn.textContent = 'CSVダウンロード';
+        dlBtn.onclick = downloadLogsCsv;
+        btn.parentNode.insertBefore(dlBtn, btn.nextSibling);
+    }
+
+    // 6ヶ月前のログを削除 (ログローテート)
+    try {
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        await supabaseClient.from('action_logs').delete().lt('created_at', sixMonthsAgo.toISOString());
+    } catch (e) {
+        console.error("Log rotation error:", e);
+    }
+
     if (btn) btn.textContent = "読込中...";
     const { data, error } = await supabaseClient
         .from('action_logs')
@@ -1480,6 +1531,46 @@ async function loadLogs() {
         </div>
         `;
     }).join('');
+}
+
+async function downloadLogsCsv() {
+    showLoading('ログ取得中...');
+    try {
+        const { data, error } = await supabaseClient
+            .from('action_logs')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(10000);
+            
+        if (error) throw error;
+        if (!data || data.length === 0) return alert('ログデータがありません');
+
+        const rows = [['日時', 'アクション', 'ユーザー', '詳細']];
+        data.forEach(log => {
+            const dateStr = new Date(log.created_at).toLocaleString('ja-JP');
+            const escapeCsv = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+            rows.push([
+                escapeCsv(dateStr),
+                escapeCsv(log.action_type),
+                escapeCsv(log.user_email),
+                escapeCsv(log.details)
+            ]);
+        });
+
+        const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+        const blob = new Blob([bom, rows.map(r => r.join(',')).join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `action_logs_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.error(e);
+        alert('CSVの作成に失敗しました: ' + e.message);
+    } finally {
+        hideLoading();
+    }
 }
 
 // ==========================================

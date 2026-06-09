@@ -1,4 +1,4 @@
-import { supabaseClient, showLoading, hideLoading, currentUserRole } from './main.js';
+import { supabaseClient, showLoading, hideLoading, currentUserRole, logAction } from './main.js';
 
 let isDashboardInitialized = false;
 let allGames = [];
@@ -1043,6 +1043,7 @@ async function handleCsvImport() {
             const { error: sErr } = await supabaseClient.from(tableName).upsert(stats, { onConflict: 'player_id, game_id' });
             if (sErr) throw sErr;
 
+            logAction('IMPORT_CSV', `成績データ(${type === 'batter' ? '打者' : '投手'})を${stats.length}件インポートしました`);
             msgEl.textContent = `成功: ${stats.length} 件のデータをインポートしました。`;
             msgEl.className = "mt-4 text-sm font-bold text-green-600";
             msgEl.classList.remove('hidden');

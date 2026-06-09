@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading, forceHideLoading, currentUserRole, openChangePasswordModal } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, forceHideLoading, currentUserRole, openChangePasswordModal, logAction } from './main.js';
 
 let currentDate = new Date();
 let events = [];
@@ -605,9 +605,11 @@ async function saveEvent(editEventId = null) {
         if (editEventId) {
             const { error } = await supabaseClient.from('events').update(payload).eq('id', editEventId);
             if (error) throw error;
+            logAction('UPDATE_EVENT', `イベント「${title}」を更新しました`);
         } else {
             const { error } = await supabaseClient.from('events').insert(payload);
             if (error) throw error;
+            logAction('CREATE_EVENT', `イベント「${title}」を作成しました`);
         }
         
         await loadData();
@@ -631,6 +633,7 @@ async function deleteEvent(id) {
     showLoading('イベント削除中...');
     try {
         await supabaseClient.from('events').delete().eq('id', id);
+        logAction('DELETE_EVENT', `イベント(ID:${id})を削除しました`);
         await loadData();
         renderCalendar();
         renderList();
@@ -879,6 +882,7 @@ async function saveAttendance(eventId) {
 
         const { error } = await supabaseClient.from('attendances').upsert(payload, { onConflict: 'event_id, user_email' });
         if (error) throw error;
+        logAction('UPDATE_ATTENDANCE', `イベント(ID:${eventId})の出欠を「${status}」で更新しました`);
         
         await loadData(); // 再取得
         renderCalendar(); // カレンダーの表示を更新
@@ -1057,6 +1061,7 @@ window.att_importCsv = async function(event) {
             try {
                 const { error } = await supabaseClient.from('events').insert(newEvents);
                 if (error) throw error;
+                logAction('IMPORT_EVENTS', `イベントデータを${newEvents.length}件インポートしました`);
                 alert(`${newEvents.length}件のインポートが完了しました。`);
                 await loadData();
                 renderCalendar();
