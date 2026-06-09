@@ -103,6 +103,16 @@ async function logAction(actionType, details) {
 
 // --- 認証 (Auth) ロジック ---
 document.addEventListener('DOMContentLoaded', () => {
+    // ページタイトルと画面内のテキストを「少年野球に役立つツール for arinko ants.」に変更
+    document.title = "少年野球に役立つツール for arinko ants.";
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while ((node = walker.nextNode())) {
+        if (node.nodeValue.includes('配車調整アプリ')) {
+            node.nodeValue = node.nodeValue.replace(/配車調整アプリ/g, '少年野球に役立つツール for arinko ants.');
+        }
+    }
+
     // UI表示の初期化
     document.documentElement.style.setProperty('--layout-columns', LAYOUT_COLUMNS);
     window.addEventListener('resize', updateLayouts);
@@ -241,11 +251,12 @@ if (supabaseClient) {
                 // 管理者権限のチェック
                 try {
                     const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 8000));
-                    const queryPromise = supabaseClient.from('app_users').select('role').eq('email', currentUser.email).single();
+                    const queryPromise = supabaseClient.from('app_users').select('role, name').eq('email', currentUser.email).single();
                     const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
                     
                     if (userData) {
                         currentUserRole = userData.role;
+                        currentUser.name = userData.name; // 取得したメンバー名を保持
                     } else {
                         currentUserRole = 'user';
                     }
@@ -311,7 +322,7 @@ if (supabaseClient) {
 
                 switchAuthScreen('app-menu-view');
                 const emailDisplay = document.getElementById('user-email-display');
-                if (emailDisplay) emailDisplay.textContent = currentUser.email;
+                if (emailDisplay) emailDisplay.textContent = currentUser.name || currentUser.email; // 名前があれば名前を表示
             } finally {
                 hideLoading();
             }
@@ -2152,4 +2163,4 @@ function showMasterMessage(msg, type='info') {
 }
 function hideMasterMessage() { document.getElementById('master-message').classList.add('hidden'); }
 
-export { supabaseClient, currentUser, currentUserRole, showLoading, hideLoading, logAction, withLoading, goToUsersAdmin, openChangePasswordModal };
+export { supabaseClient, currentUser, currentUserRole, showLoading, hideLoading, forceHideLoading, logAction, withLoading, goToUsersAdmin, openChangePasswordModal };
