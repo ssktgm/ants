@@ -1,4 +1,4 @@
-import { supabaseClient, showLoading, hideLoading } from './main.js';
+import { supabaseClient, showLoading, hideLoading, currentUserRole } from './main.js';
 
 let isDashboardInitialized = false;
 let allGames = [];
@@ -15,6 +15,17 @@ export async function initDashboardApp() {
         setupDashboardUI();
         isDashboardInitialized = true;
     }
+    
+    // 権限による制御 (データインポートタブは管理者のみ表示)
+    const importTabBtn = document.querySelector('button[data-tab="import-data"]');
+    if (importTabBtn) {
+        if (currentUserRole === 'admin') {
+            importTabBtn.classList.remove('hidden');
+        } else {
+            importTabBtn.classList.add('hidden');
+        }
+    }
+
     await loadDashboardData();
 }
 

@@ -184,9 +184,8 @@ document.addEventListener('DOMContentLoaded', () => {
         await withLoading(initAttendanceApp, '出欠管理画面を準備中...');
     });
     document.getElementById('btn-app-dashboard')?.addEventListener('click', async () => {
-        switchAuthScreen('dashboard-view');
-        // initDashboardAppは画面切り替え後に呼ばれるのでここでは不要
         await withLoading(initDashboardApp, 'ダッシュボードを準備中...');
+        switchAuthScreen('dashboard-view');
     });
     document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
         switchAuthScreen('app-menu-view');
@@ -291,6 +290,23 @@ if (supabaseClient) {
                     currentUserRole = 'admin';
                 }
 
+                // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
+                let dashMenuBtn = document.getElementById('btn-app-dashboard');
+                if (!dashMenuBtn) {
+                    const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                    if (menuContainer) {
+                        dashMenuBtn = document.createElement('button');
+                        dashMenuBtn.id = 'btn-app-dashboard';
+                        dashMenuBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-200 text-lg flex items-center justify-center';
+                        dashMenuBtn.innerHTML = '<span>成績ダッシュボード</span>';
+                        dashMenuBtn.onclick = async () => { 
+                            await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
+                            switchAuthScreen('dashboard-view'); 
+                        };
+                        menuContainer.appendChild(dashMenuBtn);
+                    }
+                }
+
                 // ロールに基づくUI制御
                 const navUsers = document.getElementById('nav-users');
                 const navMaster = document.getElementById('nav-master');
@@ -322,20 +338,6 @@ if (supabaseClient) {
                         }
                     } else {
                         adminMenuBtn.classList.remove('hidden');
-                    }
-                    
-                    // ダッシュボードボタンの追加 (メニュー画面用)
-                    let dashMenuBtn = document.getElementById('btn-app-dashboard');
-                    if (!dashMenuBtn) {
-                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
-                        if (menuContainer) {
-                            dashMenuBtn = document.createElement('button');
-                            dashMenuBtn.id = 'btn-app-dashboard';
-                            dashMenuBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-200 text-lg flex items-center justify-center';
-                            dashMenuBtn.innerHTML = '<span>成績ダッシュボード</span>';
-                            dashMenuBtn.onclick = async () => { switchAuthScreen('dashboard-view'); await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); };
-                            menuContainer.appendChild(dashMenuBtn);
-                        }
                     }
                 } else if (currentUserRole === 'leader') {
                     navUsers?.classList.add('hidden');
