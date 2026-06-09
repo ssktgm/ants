@@ -145,8 +145,8 @@
                 <span id="user-email-display" class="hidden md:inline text-xs text-gray-300"></span>
                 <button id="btn-back-to-menu" class="text-xs font-bold bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded transition">&lt; メニュー</button>
                 <button id="nav-dispatch" class="font-bold text-blue-300 px-2 py-1 transition">配車調整</button>
-                <button id="nav-master" class="text-gray-400 hover:text-white px-2 py-1 transition">マスター</button>
-                <button id="nav-users" class="hidden text-gray-400 hover:text-white px-2 py-1 transition font-bold">ユーザー管理</button>
+                <button id="nav-master" class="text-gray-400 hover:text-white px-2 py-1 transition">配車マスタ</button>
+                <button id="nav-users" class="hidden text-gray-400 hover:text-white px-2 py-1 transition font-bold">メンバー・マスタ管理</button>
                 <button id="btn-change-password" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">アカウント設定</button>
                 <button id="btn-logout" class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded transition">ログアウト</button>
             </div>
@@ -377,10 +377,18 @@
     <!-- ユーザー管理画面 (View: Users)               -->
     <!-- ========================================== -->
     <div id="view-users" class="hidden container mx-auto max-w-6xl bg-white p-6 rounded-lg shadow mt-6">
-        <h2 class="text-2xl font-bold text-gray-800 mb-6">ユーザー管理</h2>
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">メンバー・マスタ管理</h2>
         
-        <section class="mb-6 border p-4 rounded bg-gray-50">
-            <h3 class="text-xl font-semibold mb-3">新しいアカウントの追加（アクセス許可）</h3>
+        <!-- タブボタン -->
+        <div class="flex border-b mb-6 space-x-4">
+            <button id="tab-users-admin" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors">ユーザー管理</button>
+            <button id="tab-master-admin" class="px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors">マスタ管理</button>
+        </div>
+
+        <!-- タブ1: ユーザー管理 -->
+        <div id="tab-content-users-admin">
+            <section class="mb-6 border p-4 rounded bg-gray-50">
+                <h3 class="text-xl font-semibold mb-3">新しいアカウントの追加（アクセス許可）</h3>
             <div class="flex flex-wrap gap-2 items-center">
                 <input id="admin-add-email" type="email" placeholder="メールアドレス" class="border p-2 rounded w-64 shadow-sm focus:ring-blue-500">
                 <select id="admin-add-role" class="border p-2 rounded shadow-sm focus:ring-blue-500">
@@ -395,7 +403,7 @@
 
         <section class="mb-6">
             <div class="flex justify-between items-center mb-3">
-                <h3 class="text-xl font-semibold">許可済みユーザー一覧</h3>
+                    <h3 class="text-xl font-semibold">ユーザー・メンバー管理</h3>
                 <button id="btn-reload-users" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm font-bold shadow">再読込</button>
             </div>
             <div id="allowed-users-list" class="space-y-2"></div>
@@ -405,6 +413,12 @@
             <h3 class="text-xl font-semibold mb-3">新規利用申請（承認待ち）</h3>
             <div id="signup-requests-list" class="space-y-2"></div>
         </section>
+        </div>
+
+        <!-- タブ2: マスタ管理 -->
+        <div id="tab-content-master-admin" class="hidden">
+            <div id="admin-master-list"></div>
+        </div>
     </div>
 
     <!-- アカウント設定 (パスワード変更) モーダル -->

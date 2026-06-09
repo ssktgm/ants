@@ -153,6 +153,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
     document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
 
+    // ユーザー管理画面のタブ切り替え
+    document.getElementById('tab-users-admin')?.addEventListener('click', () => {
+        document.getElementById('tab-users-admin').className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
+        document.getElementById('tab-master-admin').className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
+        document.getElementById('tab-content-users-admin').classList.remove('hidden');
+        document.getElementById('tab-content-master-admin').classList.add('hidden');
+    });
+    document.getElementById('tab-master-admin')?.addEventListener('click', () => {
+        document.getElementById('tab-master-admin').className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
+        document.getElementById('tab-users-admin').className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
+        document.getElementById('tab-content-master-admin').classList.remove('hidden');
+        document.getElementById('tab-content-users-admin').classList.add('hidden');
+    });
+
     // アプリメニューイベント
     document.getElementById('btn-app-dispatch')?.addEventListener('click', () => {
         switchAuthScreen('app-view', 'dispatch');
@@ -294,7 +308,7 @@ if (supabaseClient) {
                             adminMenuBtn = document.createElement('button');
                             adminMenuBtn.id = 'btn-app-users-admin';
                             adminMenuBtn.className = 'w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200 mt-4';
-                            adminMenuBtn.textContent = 'ユーザー・グループ管理 (管理者)';
+                            adminMenuBtn.textContent = 'メンバー・マスタ管理 (管理者)';
                             adminMenuBtn.onclick = () => goToUsersAdmin();
                             attBtn.parentNode.insertBefore(adminMenuBtn, attBtn.nextSibling);
                         }
@@ -790,7 +804,6 @@ async function loadAdminUsersData() {
             <button onclick="saveNewGroupAdmin()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
         </div>
     </div>
-    <h3 class="font-bold text-gray-800 mb-2 border-b pb-1">ユーザー・メンバー管理</h3>
     `;
 
     // --- ユーザー一覧ブロック ---
@@ -834,7 +847,12 @@ async function loadAdminUsersData() {
         `;
     }).join('');
 
-    allowedListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml + usersHtml;
+    allowedListEl.innerHTML = usersHtml;
+
+    const masterListEl = document.getElementById('admin-master-list');
+    if (masterListEl) {
+        masterListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml;
+    }
 
     // 2. 申請待ち一覧の取得
     const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
