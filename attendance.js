@@ -153,8 +153,7 @@ function switchTab(tab) {
 }
 
 async function loadData() {
-    showLoading();
-    showLoading('データ読み込み中...');
+    showLoading('イベント・出欠データ読み込み中...');
     try {
         // グループ読み込み
         const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
@@ -551,7 +550,6 @@ async function saveEvent(editEventId = null) {
     const target_group_id = target_group_ids.length > 0 ? target_group_ids[0] : null;
 
     window.att_closeModal();
-    showLoading();
     showLoading('イベント保存中...');
     try {
         const startTime = `${date}T${time || '00:00'}:00`;
@@ -599,7 +597,6 @@ async function saveEvent(editEventId = null) {
 async function deleteEvent(id) {
     if(!confirm("このイベントを削除しますか？")) return;
     window.att_closeModal();
-    showLoading();
     showLoading('イベント削除中...');
     try {
         await supabaseClient.from('events').delete().eq('id', id);
@@ -836,7 +833,6 @@ async function saveAttendance(eventId) {
 
     window.att_closeModal(); // モーダルを閉じる
     
-    showLoading();
     showLoading('出欠保存中...');
     try {
         const payload = {
@@ -1025,7 +1021,6 @@ window.att_importCsv = async function(event) {
 
         document.getElementById('btn-exec-import').onclick = async () => {
             document.getElementById('csv-import-confirm-modal').remove();
-            showLoading();
             showLoading('インポート実行中...');
             try {
                 const { error } = await supabaseClient.from('events').insert(newEvents);

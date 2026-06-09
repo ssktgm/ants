@@ -23,22 +23,36 @@ let currentUserRole = 'user'; // 'admin' or 'user'
 
 // --- ローディング表示のカウント管理 ---
 let loadingCount = 0;
+let loadingDetailEl = null;
+
+function updateLoadingText(msg) {
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay) {
+        const span = overlay.querySelector('span');
+        if (span) span.textContent = msg;
+    }
+    if (!loadingDetailEl) {
+        loadingDetailEl = document.createElement('div');
+        loadingDetailEl.id = 'loading-detail-text';
+        loadingDetailEl.className = 'fixed bottom-2 right-2 text-xs md:text-sm font-bold text-gray-600 bg-white/90 border border-gray-300 px-3 py-1.5 rounded shadow-lg pointer-events-none z-[9999] transition-opacity duration-300';
+        document.body.appendChild(loadingDetailEl);
+    }
+    loadingDetailEl.textContent = msg;
+    loadingDetailEl.style.opacity = '1';
+}
+
 function showLoading(msg = '通信中...') {
     loadingCount++;
-    if (loadingCount === 1) {
-        const overlay = document.getElementById('loading-overlay');
-        if (overlay) {
-            const span = overlay.querySelector('span');
-            if (span) span.textContent = msg;
-            overlay.classList.remove('hidden');
-        }
-    }
+    const overlay = document.getElementById('loading-overlay');
+    if (overlay && loadingCount === 1) overlay.classList.remove('hidden');
+    updateLoadingText(msg);
 }
 function hideLoading() {
     loadingCount--;
     if (loadingCount <= 0) {
         loadingCount = 0;
         document.getElementById('loading-overlay')?.classList.add('hidden');
+        if (loadingDetailEl) loadingDetailEl.style.opacity = '0';
     }
 }
 
@@ -46,6 +60,7 @@ function hideLoading() {
 function forceHideLoading() {
     loadingCount = 0;
     document.getElementById('loading-overlay')?.classList.add('hidden');
+    if (loadingDetailEl) loadingDetailEl.style.opacity = '0';
 }
 
 // --- ローディングラッパー ---
@@ -219,7 +234,7 @@ if (supabaseClient) {
         }
 
         if (session) {
-            showLoading();
+            showLoading('ユーザー権限確認中...');
             try {
                 currentUser = session.user;
                 
@@ -316,7 +331,7 @@ async function handleClearCache(e) {
         return;
     }
     
-    showLoading();
+    showLoading('キャッシュクリア中...');
     try {
         // 通信環境が悪くサインアウト処理がフリーズするのを防ぐため、3秒でタイムアウトさせる
         const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
@@ -354,7 +369,7 @@ async function handleLogin(e) {
     if (msg) msg.classList.add('hidden');
     
     isAuthenticating = true;
-    showLoading();
+    showLoading('ログイン認証中...');
     try {
         // 15秒でタイムアウトするPromiseを作成
         const timeoutPromise = new Promise((_, reject) =>
@@ -447,7 +462,7 @@ async function handleSignupRequest(e) {
     }
 
     isSigningUp = true;
-    showLoading('申請を送信中...');
+    showLoading('利用申請を送信中...');
     try {
         // 1. Supabase Auth にアカウントを作成（サインアップ）
         const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
@@ -513,7 +528,7 @@ async function handlePasswordResetRequest(e) {
 
     if (!email) return;
     
-    showLoading();
+    showLoading('パスワード再設定メール送信中...');
     try {
         // ユーザーにパスワード再設定メールを送信
         const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
@@ -562,7 +577,7 @@ async function handlePasswordUpdate(e) {
         return;
     }
     
-    showLoading();
+    showLoading('パスワード更新中...');
     try {
         // 新しいパスワードをSupabaseに反映
         const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
@@ -591,7 +606,7 @@ async function handlePasswordChangeInApp(e) {
     const newPassword = document.getElementById('change-new-password')?.value || '';
     if (!newPassword || newPassword.length < 6) return alert("6文字以上のパスワードを入力してください");
     
-    showLoading();
+    showLoading('パスワード変更中...');
     try {
         const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
         
@@ -613,7 +628,7 @@ async function handlePasswordChangeInApp(e) {
 
 async function handleLogout(e) {
     if (e && e.preventDefault) e.preventDefault();
-    showLoading();
+    showLoading('ログアウト処理中...');
     try {
         const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
         await Promise.race([
@@ -844,7 +859,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
     if (!newEmail) return alert('メールアドレスを入力してください');
     if (!confirm(`${oldEmail} のユーザー情報と所属グループ設定を保存しますか？`)) return;
 
-    showLoading();
+    showLoading('ユーザー情報更新中...');
     try {
         // 1. ユーザー情報の更新
         const updatePayload = {};
@@ -886,7 +901,7 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
 window.forceResetPassword = async function(email) {
     if (!confirm(`${email} 宛にパスワード再設定メールを送信し、強制的にパスワードをリセットさせますか？`)) return;
     
-    showLoading();
+    showLoading('パスワード再設定メール送信中...');
     try {
         const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
         if (error) { alert("送信失敗: " + error.message); } 
@@ -902,7 +917,7 @@ window.adminAddUser = async function() {
     const email = document.getElementById('admin-add-email').value.trim();
     const role = document.getElementById('admin-add-role').value;
     if (!email) return;
-    showLoading();
+    showLoading('ユーザー追加処理中...');
     try {
         await supabaseClient.from('app_users').insert([{ email, role }]);
         document.getElementById('admin-add-email').value = '';
@@ -916,7 +931,7 @@ window.adminAddUser = async function() {
 
 window.deleteAdminUser = async function(email) {
     if (!confirm(`${email} のアクセス許可を取り消しますか？`)) return;
-    showLoading();
+    showLoading('ユーザー削除処理中...');
     try {
         await supabaseClient.from('app_users').delete().eq('email', email);
         loadAdminUsersData();
@@ -931,7 +946,7 @@ window.saveNewCategoryAdmin = async function() {
     const name = document.getElementById('admin-new-category-name').value.trim();
     const color = document.getElementById('admin-new-category-color')?.value || '#bfdbfe';
     if (!name) return alert('カテゴリ名を入力してください');
-    showLoading();
+    showLoading('カテゴリ追加中...');
     try {
         const { error } = await supabaseClient.from('event_categories').insert([{ name, color }]);
         if (error) throw error;
@@ -941,7 +956,7 @@ window.saveNewCategoryAdmin = async function() {
 
 window.deleteCategoryAdmin = async function(id) {
     if (!confirm('このカテゴリを削除しますか？\n※既存のイベントに設定されているカテゴリ名には影響しませんが、新規作成・編集時に選択できなくなります。')) return;
-    showLoading();
+    showLoading('カテゴリ削除中...');
     try {
         const { error } = await supabaseClient.from('event_categories').delete().eq('id', id);
         if (error) throw error;
@@ -952,7 +967,7 @@ window.deleteCategoryAdmin = async function(id) {
 window.renameCategoryAdmin = async function(id, currentName) {
     const newName = prompt('新しいカテゴリ名を入力してください:', currentName);
     if (!newName || newName.trim() === '' || newName === currentName) return;
-    showLoading();
+    showLoading('カテゴリ名称変更中...');
     try {
         const { error } = await supabaseClient.from('event_categories').update({ name: newName.trim() }).eq('id', id);
         if (error) throw error;
@@ -961,7 +976,7 @@ window.renameCategoryAdmin = async function(id, currentName) {
 };
 
 window.updateCategoryColorAdmin = async function(id, color) {
-    showLoading();
+    showLoading('カテゴリ色変更中...');
     try {
         const { error } = await supabaseClient.from('event_categories').update({ color }).eq('id', id);
         if (error) throw error;
@@ -970,7 +985,7 @@ window.updateCategoryColorAdmin = async function(id, color) {
 };
 
 window.updateGroupColorAdmin = async function(id, color) {
-    showLoading();
+    showLoading('グループ色変更中...');
     try {
         const { error } = await supabaseClient.from('groups').update({ color }).eq('id', id);
         if (error) throw error;
@@ -981,7 +996,7 @@ window.saveNewGroupAdmin = async function() {
     const name = document.getElementById('admin-new-group-name').value.trim();
     const color = document.getElementById('admin-new-group-color')?.value || '#d1fae5';
     if (!name) return alert('グループ名を入力してください');
-    showLoading();
+    showLoading('グループ追加中...');
     try {
         const { error } = await supabaseClient.from('groups').insert([{ name, color }]);
         if (error) throw error;
@@ -991,7 +1006,7 @@ window.saveNewGroupAdmin = async function() {
 
 window.deleteGroupAdmin = async function(id) {
     if (!confirm('このグループを削除しますか？\n※関連する出欠データやメンバー設定にも影響が出る可能性があります。')) return;
-    showLoading();
+    showLoading('グループ削除中...');
     try {
         const { error } = await supabaseClient.from('groups').delete().eq('id', id);
         if (error) throw error;
@@ -1002,7 +1017,7 @@ window.deleteGroupAdmin = async function(id) {
 window.renameGroupAdmin = async function(id, currentName) {
     const newName = prompt('新しいグループ名を入力してください:', currentName);
     if (!newName || newName.trim() === '' || newName === currentName) return;
-    showLoading();
+    showLoading('グループ名称変更中...');
     try {
         const { error } = await supabaseClient.from('groups').update({ name: newName.trim() }).eq('id', id);
         if (error) throw error;
@@ -1011,7 +1026,7 @@ window.renameGroupAdmin = async function(id, currentName) {
 };
 
 window.approveRequest = async function(id, email) {
-    showLoading();
+    showLoading('申請承認中...');
     try {
         // 申請データを取得して名前を生成
         const { data: reqData } = await supabaseClient.from('signup_requests').select('parent_name, player_name').eq('id', id).single();
@@ -1030,7 +1045,7 @@ window.approveRequest = async function(id, email) {
 
 window.rejectRequest = async function(id) {
     if (!confirm('この申請を拒否しますか？')) return;
-    showLoading();
+    showLoading('申請拒否中...');
     try {
         await supabaseClient.from('signup_requests').update({ status: 'rejected' }).eq('id', id);
         loadAdminUsersData();
@@ -1055,7 +1070,7 @@ const db = {
                 if (fam) localFamilies = fam.data || [];
                 if (cars) localCars = cars.data || [];
             }
-        });
+        }, 'マスターデータ初期化中...');
     },
     getAllFamilies: async () => localFamilies,
     getFamily: async (name) => localFamilies.find(f => f.familyName === name),
@@ -1089,7 +1104,7 @@ const db = {
             ]);
             if (error) throw error;
             logAction('UPDATE_MASTER', '初期データ(または強制)のマスター保存を実行しました');
-        });
+        }, 'マスターデータ同期中...');
     },
 
     saveState: async (state, name) => {
@@ -1104,21 +1119,21 @@ const db = {
             if (error) throw error;
             logAction('SAVE_DISPATCH', `配車データ「${name}」を保存しました`);
             return true;
-        });
+        }, '配車状態を保存中...');
     },
     getAllSavedStates: async () => {
         return withLoading(async () => {
             const { data, error } = await supabaseClient.from('states').select('*').order('created_at', { ascending: false });
             if (error) throw error;
             return data.map(d => ({ id: d.id, name: d.name, timestamp: d.created_at, state: d.state_data }));
-        });
+        }, '配車状態一覧を取得中...');
     },
     getState: async (id) => { 
         return withLoading(async () => {
             const { data, error } = await supabaseClient.from('states').select('*').eq('id', id).single();
             if (error) throw error;
             return data ? { id: data.id, name: data.name, timestamp: data.created_at, state: data.state_data } : null;
-        });
+        }, '配車状態を取得中...');
     },
     deleteState: async (id) => {
         return withLoading(async () => {
@@ -1126,7 +1141,7 @@ const db = {
             if (error) throw error;
             logAction('DELETE_DISPATCH', `配車データ(ID:${id})を削除しました`);
             return true;
-        });
+        }, '配車状態を削除中...');
     },
 
     saveParking: async (parking, name) => {
@@ -1141,21 +1156,21 @@ const db = {
             if (error) throw error;
             logAction('SAVE_PARKING', `駐車場データ「${name}」を保存しました`);
             return true;
-        });
+        }, '駐車場データを保存中...');
     },
     getAllSavedParking: async () => {
         return withLoading(async () => {
             const { data, error } = await supabaseClient.from('parkings').select('*').order('created_at', { ascending: false });
             if (error) throw error;
             return data.map(d => ({ id: d.id, name: d.name, timestamp: d.created_at, parking: d.parking_data }));
-        });
+        }, '駐車場データ一覧を取得中...');
     },
     getParking: async (id) => { 
         return withLoading(async () => {
             const { data, error } = await supabaseClient.from('parkings').select('*').eq('id', id).single();
             if (error) throw error;
             return data ? { id: data.id, name: data.name, timestamp: data.created_at, parking: data.parking_data } : null;
-        });
+        }, '駐車場データを取得中...');
     },
     updateParking: async (parkingItem) => {
         return withLoading(async () => {
@@ -1165,7 +1180,7 @@ const db = {
             }).eq('id', parkingItem.id);
             if (error) throw error;
             return true;
-        });
+        }, '駐車場データを更新中...');
     },
     deleteParking: async (id) => {
         return withLoading(async () => {
@@ -1173,7 +1188,7 @@ const db = {
             if (error) throw error;
             logAction('DELETE_PARKING', `駐車場データ(ID:${id})を削除しました`);
             return true;
-        });
+        }, '駐車場データを削除中...');
     },
 
     addParkingMaster: (parking, name) => {
@@ -1220,7 +1235,7 @@ const db = {
             }
             
             logAction('UPDATE_MASTER', 'マスターデータ(家族・車・駐車場)を一括保存しました');
-        });
+        }, 'マスターデータ一括同期中...');
     },
 
     clearDatabase: async () => { 
@@ -1230,7 +1245,7 @@ const db = {
             await supabaseClient.from('states').delete().neq('id', '');
             await supabaseClient.from('parkings').delete().neq('id', '');
             logAction('CLEAR_DB', 'データベースの全リセットを実行しました');
-        });
+        }, 'データベース初期化中...');
     }
 };
 
