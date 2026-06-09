@@ -154,6 +154,7 @@ function switchTab(tab) {
 
 async function loadData() {
     showLoading();
+    showLoading('データ読み込み中...');
     try {
         // グループ読み込み
         const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
@@ -235,6 +236,10 @@ function renderCalendar() {
     document.getElementById('cal-current-month').textContent = `${year}年 ${month + 1}月`;
     
     const grid = document.getElementById('calendar-grid');
+    if (grid) {
+        // 余白を詰めるためにgapやpaddingを削除する
+        grid.classList.remove('gap-1', 'gap-px', 'gap-2', 'p-1', 'p-2', 'p-4');
+    }
     // ヘッダー（曜日）は残してクリア
     Array.from(grid.children).forEach((child, index) => {
         if (index >= 7) grid.removeChild(child);
@@ -257,17 +262,21 @@ function renderCalendar() {
         
         const cell = document.createElement('div');
         // 余白を最小化（1px程度）
-        cell.className = `border min-h-[100px] flex flex-col p-[1px] bg-white ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
+        cell.className = `border-r border-b min-h-[100px] flex flex-col p-[1px] bg-white ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
+        // 余白を完全に削除する
+        cell.className = `border-r border-b min-h-[100px] flex flex-col p-0 bg-white ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
         
         // 日付は右上に配置
         const dateHeader = document.createElement('div');
         dateHeader.className = 'text-right text-xs text-gray-700 font-bold mb-[1px] pr-1 pt-1 leading-none';
+        dateHeader.className = 'text-right text-xs text-gray-700 font-bold mb-0 pr-1 pt-1 leading-none';
         dateHeader.textContent = cellDate;
         cell.appendChild(dateHeader);
         
         // 予定格納コンテナ
         const eventsContainer = document.createElement('div');
         eventsContainer.className = 'flex-1 overflow-hidden flex flex-col gap-[1px]';
+        eventsContainer.className = 'flex-1 overflow-hidden flex flex-col gap-0';
         
         const targetDateStr = `${cellYear}-${String(cellMonth+1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
         
@@ -293,6 +302,7 @@ function renderCalendar() {
             const categoryObj = categories.find(c => c.name === e.category);
             const categoryColor = categoryObj?.color || '#bfdbfe';
             evEl.className = 'text-[10px] text-gray-800 rounded px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight';
+            evEl.className = 'text-[10px] text-gray-800 rounded-none border-b border-white px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight';
             evEl.style.backgroundColor = categoryColor;
             evEl.innerHTML = `${iconHtml}${e.title}`;
             evEl.title = e.title;
@@ -542,6 +552,7 @@ async function saveEvent(editEventId = null) {
 
     window.att_closeModal();
     showLoading();
+    showLoading('イベント保存中...');
     try {
         const startTime = `${date}T${time || '00:00'}:00`;
         let endTime = null;
@@ -589,6 +600,7 @@ async function deleteEvent(id) {
     if(!confirm("このイベントを削除しますか？")) return;
     window.att_closeModal();
     showLoading();
+    showLoading('イベント削除中...');
     try {
         await supabaseClient.from('events').delete().eq('id', id);
         await loadData();
@@ -825,6 +837,7 @@ async function saveAttendance(eventId) {
     window.att_closeModal(); // モーダルを閉じる
     
     showLoading();
+    showLoading('出欠保存中...');
     try {
         const payload = {
             event_id: eventId,
@@ -1013,6 +1026,7 @@ window.att_importCsv = async function(event) {
         document.getElementById('btn-exec-import').onclick = async () => {
             document.getElementById('csv-import-confirm-modal').remove();
             showLoading();
+            showLoading('インポート実行中...');
             try {
                 const { error } = await supabaseClient.from('events').insert(newEvents);
                 if (error) throw error;

@@ -23,10 +23,15 @@ let currentUserRole = 'user'; // 'admin' or 'user'
 
 // --- ローディング表示のカウント管理 ---
 let loadingCount = 0;
-function showLoading() {
+function showLoading(msg = '通信中...') {
     loadingCount++;
     if (loadingCount === 1) {
-        document.getElementById('loading-overlay')?.classList.remove('hidden');
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            const span = overlay.querySelector('span');
+            if (span) span.textContent = msg;
+            overlay.classList.remove('hidden');
+        }
     }
 }
 function hideLoading() {
@@ -44,12 +49,12 @@ function forceHideLoading() {
 }
 
 // --- ローディングラッパー ---
-async function withLoading(asyncFunc) {
+async function withLoading(asyncFunc, msg = '通信中...') {
     if (!SUPABASE_URL) {
         alert("環境変数 (VITE_SUPABASE_URL) が設定されていません。Vercelの設定を確認してください。");
         return;
     }
-    showLoading();
+    showLoading(msg);
     try {
         const result = await asyncFunc();
         return result;
@@ -442,7 +447,7 @@ async function handleSignupRequest(e) {
     }
 
     isSigningUp = true;
-    showLoading();
+    showLoading('申請を送信中...');
     try {
         // 1. Supabase Auth にアカウントを作成（サインアップ）
         const { data: authData, error: authError } = await supabaseClient.auth.signUp({ email, password });
