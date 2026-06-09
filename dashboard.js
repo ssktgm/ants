@@ -5,7 +5,8 @@ let allGames = [];
 let allBatterStats = [];
 let allPitcherStats = [];
 let allPlayers = [];
-let dashboardSettings = { homeTeamNames: ['ありんこアントス', 'アントス'] }; // デフォルト値
+let dashboardSettings = { homeTeamNames: ['ありんこアントス', 'アントス'], defaultFilterDate: { from: '', to: '' } };
+let isFilterInitialized = false;
 let charts = {};
 let personalCharts = {};
 let comparisonCharts = {};
@@ -250,6 +251,16 @@ function setupDashboardUI() {
                                 <button id="btn-add-home-team" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow-sm">追加</button>
                             </div>
                         </div>
+                        <div class="mt-6 border-t pt-4">
+                            <label class="block text-sm font-bold text-gray-700 mb-2">デフォルトのフィルタ期間</label>
+                            <div class="flex items-center space-x-2 mb-2">
+                                <input type="date" id="setting-default-date-from" class="border p-2 rounded w-full md:w-auto">
+                                <span class="text-gray-500">〜</span>
+                                <input type="date" id="setting-default-date-to" class="border p-2 rounded w-full md:w-auto">
+                            </div>
+                            <p class="text-xs text-gray-500 mb-2">※ダッシュボードを開いた時や、フィルタをクリアした時に適用される期間です。</p>
+                            <button id="btn-save-default-date" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm">保存</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -328,8 +339,8 @@ function setupDashboardUI() {
         // フィルタ制御
         document.getElementById('btn-apply-filter').addEventListener('click', applyFiltersAndRender);
         document.getElementById('btn-clear-filter').addEventListener('click', () => {
-            document.getElementById('filter-date-from').value = '';
-            document.getElementById('filter-date-to').value = '';
+            document.getElementById('filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
+            document.getElementById('filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
             document.getElementById('filter-team-regex').value = '';
             document.getElementById('filter-category').value = '';
             applyFiltersAndRender();
@@ -347,6 +358,14 @@ function setupDashboardUI() {
         });
 
         document.getElementById('btn-add-home-team')?.addEventListener('click', handleAddHomeTeam);
+        
+        document.getElementById('btn-save-default-date')?.addEventListener('click', async () => {
+            const from = document.getElementById('setting-default-date-from').value;
+            const to = document.getElementById('setting-default-date-to').value;
+            dashboardSettings.defaultFilterDate = { from, to };
+            await supabaseClient.from('dashboard_settings').upsert({ key: 'defaultFilterDate', value: dashboardSettings.defaultFilterDate });
+            alert('デフォルトのフィルタ期間を保存しました。');
+        });
     }
 }
 
@@ -365,7 +384,7 @@ async function loadDashboardData() {
             supabaseClient.from('batter_stats').select('*'),
             supabaseClient.from('pitcher_stats').select('*'),
             supabaseClient.from('players').select('*'),
-            supabaseClient.from('dashboard_settings').select('value').eq('key', 'homeTeamNames').single()
+            supabaseClient.from('dashboard_settings').select('*')
         ]);
         
         if (gamesErr) throw gamesErr;
@@ -376,11 +395,25 @@ async function loadDashboardData() {
         allBatterStats = bStatsData || [];
         allPitcherStats = pStatsData || [];
         allPlayers = plData || [];
-        if (settingsData && settingsData.value) {
-            dashboardSettings.homeTeamNames = settingsData.value;
+        
+        if (settingsData) {
+            const homeTeamsObj = settingsData.find(s => s.key === 'homeTeamNames');
+            if (homeTeamsObj && homeTeamsObj.value !== null && homeTeamsObj.value !== undefined) {
+                dashboardSettings.homeTeamNames = homeTeamsObj.value;
+            }
+            const defaultFilterObj = settingsData.find(s => s.key === 'defaultFilterDate');
+            if (defaultFilterObj && defaultFilterObj.value) {
+                dashboardSettings.defaultFilterDate = defaultFilterObj.value;
+            }
         }
 
         renderHomeTeamList();
+        document.getElementById('setting-default-date-from').value = dashboardSettings.defaultFilterDate.from || '';
+        document.getElementById('setting-default-date-to').value = dashboardSettings.defaultFilterDate.to || '';
+        if (!isFilterInitialized) {
+            document.getElementById('btn-clear-filter').click(); // 初回ロード時にデフォルト期間を適用
+            isFilterInitialized = true;
+        }
 
         ['ps-player', 'tm-player'].forEach(id => {
             const sel = document.getElementById(id);
@@ -496,7 +529,7 @@ async function drawCharts(games, bStats, pStats) {
         if (!dateStr) return;
         const month = dateStr.substring(0, 7);
         if (!monthlyData[month]) {
-            monthlyData[month] = { atBats: 0, hits: 0, runs: 0, strikeOuts: 0, hitsAllowed: 0, walksAllowed: 0, strikes: 0, pitchCount: 0 };
+            monthlyData[month] = { atBats: 0, hits: 0, runs: 0, strikeOuts: 0, hitsAllowed: 0, walksAllowed: 0, strikes: 0, pitchCount: 0, earnedRuns: 0, outs: 0 };
         }
     });
 
@@ -521,12 +554,15 @@ async function drawCharts(games, bStats, pStats) {
             monthlyData[m].walksAllowed += (s.walks_allowed || 0);
             monthlyData[m].strikes += (s.strikes || 0);
             monthlyData[m].pitchCount += (s.pitch_count || 0);
+            monthlyData[m].earnedRuns += (s.earned_runs || 0);
+            monthlyData[m].outs += (s.outs || 0);
         }
     });
 
     const labels = Object.keys(monthlyData).sort();
     let cumAtBats = 0, cumHits = 0;
-    const cumAvgs = [], monthlyRuns = [], monthlySOs = [], monthlyHitsAllowed = [], monthlyWalksAllowed = [], monthlySRates = [];
+    let cumEarnedRuns = 0, cumOuts = 0;
+    const cumAvgs = [], monthlyRuns = [], monthlySOs = [], monthlyHitsAllowed = [], monthlyWalksAllowed = [], monthlySRates = [], cumERAs = [];
 
     labels.forEach(m => {
         cumAtBats += monthlyData[m].atBats;
@@ -537,6 +573,11 @@ async function drawCharts(games, bStats, pStats) {
         monthlyHitsAllowed.push(monthlyData[m].hitsAllowed);
         monthlyWalksAllowed.push(monthlyData[m].walksAllowed);
         monthlySRates.push(monthlyData[m].pitchCount > 0 ? (monthlyData[m].strikes / monthlyData[m].pitchCount * 100).toFixed(1) : 0);
+        
+        cumEarnedRuns += monthlyData[m].earnedRuns;
+        cumOuts += monthlyData[m].outs;
+        const ip = cumOuts / 3;
+        cumERAs.push(ip > 0 ? (cumEarnedRuns * 7) / ip : 0);
     });
 
     charts.batting = new window.Chart(document.getElementById('chart-batting-monthly').getContext('2d'), {
@@ -559,10 +600,18 @@ async function drawCharts(games, bStats, pStats) {
                 { label: '奪三振', data: monthlySOs, backgroundColor: 'rgba(54, 162, 235, 0.6)' },
                 { label: '被安打', data: monthlyHitsAllowed, backgroundColor: 'rgba(255, 159, 64, 0.6)' },
                 { label: '与四死球', data: monthlyWalksAllowed, backgroundColor: 'rgba(255, 205, 86, 0.6)' },
-                { label: 'S率(%)', type: 'line', data: monthlySRates, borderColor: 'rgba(153, 102, 255, 1)', yAxisID: 'y1' }
+                { label: 'S率(%)', type: 'line', data: monthlySRates, borderColor: 'rgba(153, 102, 255, 1)', yAxisID: 'y1' },
+                { label: '累積防御率', type: 'line', data: cumERAs, borderColor: 'rgba(255, 99, 132, 1)', yAxisID: 'y2' }
             ]
         },
-        options: { responsive: true, scales: { y: { position: 'left', beginAtZero: true }, y1: { position: 'right', beginAtZero: true, min: 0, max: 100 } } }
+        options: { 
+            responsive: true, 
+            scales: { 
+                y: { position: 'left', beginAtZero: true }, 
+                y1: { position: 'right', beginAtZero: true, min: 0, max: 100, grid: { drawOnChartArea: false } },
+                y2: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false } }
+            } 
+        }
     });
 
     const gameLabels = [], teamRuns = [], oppRuns = [], cumWinRates = [];
