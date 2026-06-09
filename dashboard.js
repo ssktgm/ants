@@ -199,6 +199,7 @@ function setupDashboardUI() {
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="bb7" data-role="pitcher">BB/7<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="kRate" data-role="pitcher">奪三振率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="bbRate" data-role="pitcher">与四死球率<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="sRate" data-role="pitcher">S率(%)<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="kbb" data-role="pitcher">K/BB<span></span></th>
                             </tr>
                         </thead>
@@ -211,15 +212,11 @@ function setupDashboardUI() {
                 <div class="bg-white p-4 rounded-lg shadow-md text-sm">
                     <div class="flex flex-wrap gap-4 mb-4 items-end">
                         <div><label class="block font-bold text-gray-600 mb-1">役割</label><select id="comp-role" class="border p-2 rounded w-24"><option value="batter">打撃</option><option value="pitcher">投手</option></select></div>
-                        <div><label class="block font-bold text-gray-600 mb-1">指標</label>
-                            <select id="comp-metric-b" class="border p-2 rounded w-32"><option value="avg">打率</option><option value="ops">OPS</option><option value="obp">出塁率</option><option value="slg">長打率</option></select>
-                            <select id="comp-metric-p" class="border p-2 rounded w-32 hidden"><option value="era">防御率</option><option value="whip">WHIP</option><option value="k7">K/7</option><option value="bb7">BB/7</option></select>
-                        </div>
                     </div>
                     <label class="block font-bold text-gray-600 mb-2 border-t pt-2">比較する選手を選択</label>
                     <div class="mb-2 max-h-40 overflow-y-auto border p-3 rounded grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50" id="comp-players-list"></div>
                 </div>
-                <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-comp"></canvas></div>
+                <div id="comp-charts-container" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
             </div>
 
             <div id="tab-content-test-mode" class="hidden space-y-6">
@@ -348,12 +345,9 @@ function setupDashboardUI() {
 
         ['ps-player', 'ps-role', 'ps-unit'].forEach(id => document.getElementById(id)?.addEventListener('change', renderPersonalSummary));
         ['tm-player', 'tm-role', 'tm-window'].forEach(id => document.getElementById(id)?.addEventListener('change', renderTestMode));
-        ['comp-metric-b', 'comp-metric-p'].forEach(id => document.getElementById(id)?.addEventListener('change', renderComparison));
         document.getElementById('comp-players-list')?.addEventListener('change', renderComparison);
         
         document.getElementById('comp-role')?.addEventListener('change', (e) => {
-            document.getElementById('comp-metric-b').classList.toggle('hidden', e.target.value !== 'batter');
-            document.getElementById('comp-metric-p').classList.toggle('hidden', e.target.value !== 'pitcher');
             renderComparison();
         });
 
@@ -740,14 +734,23 @@ async function renderPersonalSummary() {
     Object.values(personalCharts).forEach(c => c.destroy());
     personalCharts = {};
 
+    const heightClass = unit === 'game' ? 'h-[450px]' : 'h-[300px]';
+    const bGameHeightClass = unit === 'game' ? 'h-[600px]' : 'h-[400px]';
+    ['chart-ps-b-cum', 'chart-ps-b-rate', 'chart-ps-p-cum', 'chart-ps-p-rate'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.parentElement) el.parentElement.className = `bg-white p-4 rounded shadow-md relative ${heightClass}`;
+    });
+    const bGameWrap = document.getElementById('chart-ps-b-game')?.parentElement;
+    if (bGameWrap) bGameWrap.className = `bg-white p-4 rounded shadow-md md:col-span-2 relative ${bGameHeightClass}`;
+
     if (role === 'batter') {
-        personalCharts.bCum = new window.Chart(document.getElementById('chart-ps-b-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '打率', data: dataPoints.map(d=>d.avg), borderColor: 'red' }, { label: '出塁率', data: dataPoints.map(d=>d.obp), borderColor: 'blue' }, { label: '長打率', data: dataPoints.map(d=>d.slg), borderColor: 'green' }, { label: 'OPS', data: dataPoints.map(d=>d.ops), borderColor: 'purple', borderDash: [5,5] } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積打撃成績' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
-        personalCharts.bRate = new window.Chart(document.getElementById('chart-ps-b-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '四死球率(%)', data: dataPoints.map(d=>d.bbRate*100), borderColor: 'orange' }, { label: '三振率(%)', data: dataPoints.map(d=>d.soRate*100), borderColor: 'gray' } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積四死球・三振率' } }, scales:{ y:{min:0, max:100}, x: { ticks: { font: { size: 10 } } } } } });
+        personalCharts.bCum = new window.Chart(document.getElementById('chart-ps-b-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '打率', data: dataPoints.map(d=>d.avg), borderColor: 'red' }, { label: '出塁率', data: dataPoints.map(d=>d.obp), borderColor: 'blue' }, { label: '長打率', data: dataPoints.map(d=>d.slg), borderColor: 'green' }, { label: 'OPS', data: dataPoints.map(d=>d.ops), borderColor: 'purple', borderDash: [5,5] } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積打撃成績' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
+        personalCharts.bRate = new window.Chart(document.getElementById('chart-ps-b-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '四死球率(%)', data: dataPoints.map(d=>d.bbRate*100), borderColor: 'orange' }, { label: '三振率(%)', data: dataPoints.map(d=>d.soRate*100), borderColor: 'gray' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積四死球・三振率' } }, scales:{ y:{min:0, max:100}, x: { ticks: { font: { size: 10 } } } } } });
         const periodTitle = unit === 'game' ? '試合別 打数・安打' : (unit === 'month' ? '月別 打数・安打' : '3ヶ月毎 打数・安打');
         personalCharts.bGame = new window.Chart(document.getElementById('chart-ps-b-game').getContext('2d'), { type: 'bar', data: { labels, datasets: [ { label: '安打', data: periodDataPoints.map(d=>d.h), backgroundColor: 'blue' }, { label: '打数', data: periodDataPoints.map(d=>d.ab), backgroundColor: 'rgba(0,0,0,0.1)' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: periodTitle } }, scales: { x: { ticks: { font: { size: 10 } } } } } });
     } else {
-        personalCharts.pCum = new window.Chart(document.getElementById('chart-ps-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' }, { label: 'S率(%)', data: dataPoints.map(d=>d.sRate*100), borderColor: 'green', yAxisID: 'y1' } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積防御率・WHIP・S率' } }, scales: { y: { min:0, position: 'left' }, y1: { position: 'right', min: 0, max: 100 }, x: { ticks: { font: { size: 10 } } } } } });
-        personalCharts.pRate = new window.Chart(document.getElementById('chart-ps-p-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'K/7', data: dataPoints.map(d=>d.k7), borderColor: 'red' }, { label: 'BB/7', data: dataPoints.map(d=>d.bb7), borderColor: 'blue' } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積 K/7・BB/7' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
+        personalCharts.pCum = new window.Chart(document.getElementById('chart-ps-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' }, { label: 'S率(%)', data: dataPoints.map(d=>d.sRate*100), borderColor: 'green', yAxisID: 'y1' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積防御率・WHIP・S率' } }, scales: { y: { min:0, position: 'left' }, y1: { position: 'right', min: 0, max: 100 }, x: { ticks: { font: { size: 10 } } } } } });
+        personalCharts.pRate = new window.Chart(document.getElementById('chart-ps-p-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'K/7', data: dataPoints.map(d=>d.k7), borderColor: 'red' }, { label: 'BB/7', data: dataPoints.map(d=>d.bb7), borderColor: 'blue' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積 K/7・BB/7' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
     }
 }
 
@@ -794,7 +797,7 @@ function drawRankingTable(role) {
     if (role === 'batter') {
         document.getElementById('ranking-batter-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.pa}</td><td class="p-2">${r.avg.toFixed(3).replace(/^0/,'')}</td><td class="p-2 text-purple-700 font-bold">${r.ops.toFixed(3)}</td><td class="p-2">${r.obp.toFixed(3)}</td><td class="p-2">${r.rbi}</td><td class="p-2">${r.r}</td><td class="p-2">${r.sb}</td><td class="p-2">${r.hr}</td></tr>`).join('');
     } else {
-        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
+        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
     }
 
     // アイコンの更新
@@ -807,37 +810,52 @@ function drawRankingTable(role) {
 async function renderComparison() {
     await loadChartJs();
     const role = document.getElementById('comp-role').value;
-    const metric = role === 'batter' ? document.getElementById('comp-metric-b').value : document.getElementById('comp-metric-p').value;
     const selectedPids = Array.from(document.querySelectorAll('.comp-player-cb:checked')).map(cb => cb.value);
     
     Object.values(comparisonCharts).forEach(c => c.destroy());
     comparisonCharts = {};
+    const container = document.getElementById('comp-charts-container');
+    if(container) container.innerHTML = '';
     if(selectedPids.length === 0) return;
 
     const { games, bStats, pStats } = currentFiltered;
     const allDates = [...new Set(games.filter(g => g.date).map(g => g.date.split('T')[0]))].sort();
     const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899'];
 
-    const datasets = selectedPids.map((pid, i) => {
-        const tStats = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == pid);
-        const merged = tStats.map(s => ({ date: games.find(x => x.id === s.game_id)?.date.split('T')[0] || '', stats: s })).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
-        
-        let cCum = [], dMap = {};
-        merged.forEach(m => {
-            cCum.push(m.stats);
-            const cStat = role === 'batter' ? calcBatterStats(cCum) : calcPitcherStats(cCum);
-            dMap[m.date] = cStat[metric];
+    const metrics = role === 'batter' 
+        ? [{key: 'avg', name: '打率'}, {key: 'ops', name: 'OPS'}, {key: 'obp', name: '出塁率'}, {key: 'slg', name: '長打率'}]
+        : [{key: 'era', name: '防御率'}, {key: 'whip', name: 'WHIP'}, {key: 'k7', name: 'K/7'}, {key: 'bb7', name: 'BB/7'}, {key: 'sRate', name: 'S率(%)'}];
+
+    metrics.forEach((metricObj, mIndex) => {
+        const chartId = `chart-comp-${mIndex}`;
+        const wrap = document.createElement('div');
+        wrap.className = 'bg-white p-4 rounded shadow-md relative h-[300px] md:h-[400px]';
+        wrap.innerHTML = `<canvas id="${chartId}"></canvas>`;
+        container.appendChild(wrap);
+
+        const datasets = selectedPids.map((pid, i) => {
+            const tStats = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == pid);
+            const merged = tStats.map(s => ({ date: games.find(x => x.id === s.game_id)?.date.split('T')[0] || '', stats: s })).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
+            
+            let cCum = [], dMap = {};
+            merged.forEach(m => {
+                cCum.push(m.stats);
+                const cStat = role === 'batter' ? calcBatterStats(cCum) : calcPitcherStats(cCum);
+                let val = cStat[metricObj.key];
+                if (metricObj.key === 'sRate') val = val * 100;
+                dMap[m.date] = val;
+            });
+
+            let lastVal = null;
+            const dataArr = allDates.map(d => { if(dMap[d] !== undefined) lastVal = dMap[d]; return lastVal; });
+            
+            return { label: allPlayers.find(x => x.id == pid)?.name || '不明', data: dataArr, borderColor: colors[i % colors.length], spanGaps: true, tension: 0.1 };
         });
 
-        let lastVal = null;
-        const dataArr = allDates.map(d => { if(dMap[d] !== undefined) lastVal = dMap[d]; return lastVal; });
-        
-        return { label: allPlayers.find(x => x.id == pid)?.name || '不明', data: dataArr, borderColor: colors[i % colors.length], spanGaps: true, tension: 0.1 };
-    });
-
-    comparisonCharts.comp = new window.Chart(document.getElementById('chart-comp').getContext('2d'), {
-        type: 'line', data: { labels: allDates, datasets },
-        options: { responsive: true, plugins: { title: { display: true, text: `選手比較 (${metric.toUpperCase()})` } } }
+        comparisonCharts[chartId] = new window.Chart(document.getElementById(chartId).getContext('2d'), {
+            type: 'line', data: { labels: allDates, datasets },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: `選手比較 (${metricObj.name})` } } }
+        });
     });
 }
 
@@ -872,7 +890,7 @@ async function renderTestMode() {
         testModeCharts.bCum = new window.Chart(document.getElementById('chart-tm-b-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA 打率', data: dataPoints.map(d=>d.avg), borderColor: 'red' }, { label: 'MA OPS', data: dataPoints.map(d=>d.ops), borderColor: 'purple' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均` } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
         testModeCharts.bRate = new window.Chart(document.getElementById('chart-tm-b-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA 四死球率(%)', data: dataPoints.map(d=>d.bbRate*100), borderColor: 'orange' }, { label: 'MA 三振率(%)', data: dataPoints.map(d=>d.soRate*100), borderColor: 'gray' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均 四死球・三振率` } }, scales:{ y:{min:0, max:100}, x: { ticks: { font: { size: 10 } } } } } });
     } else {
-        testModeCharts.pCum = new window.Chart(document.getElementById('chart-tm-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA 防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'MA WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均 防御率・WHIP` } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
+        testModeCharts.pCum = new window.Chart(document.getElementById('chart-tm-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA 防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'MA WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' }, { label: 'MA S率(%)', data: dataPoints.map(d=>d.sRate*100), borderColor: 'green', yAxisID: 'y1' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均 防御率・WHIP・S率` } }, scales:{ y:{min:0, position: 'left'}, y1:{min:0, max:100, position:'right'}, x: { ticks: { font: { size: 10 } } } } } });
         testModeCharts.pRate = new window.Chart(document.getElementById('chart-tm-p-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA K/7', data: dataPoints.map(d=>d.k7), borderColor: 'red' }, { label: 'MA BB/7', data: dataPoints.map(d=>d.bb7), borderColor: 'blue' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均 K/7・BB/7` } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
     }
 }
