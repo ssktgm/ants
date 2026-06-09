@@ -150,12 +150,12 @@ function setupDashboardUI() {
                 <div class="bg-white p-4 rounded-lg shadow-md flex flex-wrap gap-4 items-end text-sm">
                     <div><label class="block font-bold text-gray-600 mb-1">選手</label><select id="ps-player" class="border p-2 rounded w-48"></select></div>
                     <div><label class="block font-bold text-gray-600 mb-1">役割</label><select id="ps-role" class="border p-2 rounded w-24"><option value="batter">打撃</option><option value="pitcher">投手</option></select></div>
-                    <div><label class="block font-bold text-gray-600 mb-1">集計単位</label><select id="ps-unit" class="border p-2 rounded w-32"><option value="game">試合別</option><option value="month">月別</option><option value="3month">3ヶ月ごと</option></select></div>
+                    <div><label class="block font-bold text-gray-600 mb-1">集計単位</label><select id="ps-unit" class="border p-2 rounded w-32"><option value="game">試合別</option><option value="month" selected>月別</option><option value="3month">3ヶ月ごと</option></select></div>
                 </div>
                 <div id="ps-batter-charts" class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-b-cum"></canvas></div>
                     <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-b-rate"></canvas></div>
-                    <div class="bg-white p-4 rounded shadow-md md:col-span-2"><canvas id="chart-ps-b-game"></canvas></div>
+                    <div class="bg-white p-4 rounded shadow-md md:col-span-2 relative min-h-[300px] md:min-h-[400px]"><canvas id="chart-ps-b-game"></canvas></div>
                 </div>
                 <div id="ps-pitcher-charts" class="grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
                     <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-p-cum"></canvas></div>
@@ -415,13 +415,6 @@ async function loadDashboardData() {
             isFilterInitialized = true;
         }
 
-        ['ps-player', 'tm-player'].forEach(id => {
-            const sel = document.getElementById(id);
-            if(sel) sel.innerHTML = allPlayers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-        });
-        const cpList = document.getElementById('comp-players-list');
-        if(cpList) cpList.innerHTML = allPlayers.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="comp-player-cb rounded text-blue-600"><span>${p.name}</span></label>`).join('');
-        
         applyFiltersAndRender();
     } catch (e) {
         console.error(e);
@@ -479,6 +472,26 @@ function applyFiltersAndRender() {
     const filteredPStats = allPitcherStats.filter(s => gameIds.has(s.game_id));
 
     currentFiltered = { games: filteredGames, bStats: filteredBStats, pStats: filteredPStats };
+
+    // フィルタ結果に含まれる選手のみをリストに表示する
+    const activePlayerIds = new Set();
+    filteredBStats.forEach(s => activePlayerIds.add(s.player_id));
+    filteredPStats.forEach(s => activePlayerIds.add(s.player_id));
+    const activePlayers = allPlayers.filter(p => activePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+
+    ['ps-player', 'tm-player'].forEach(id => {
+        const sel = document.getElementById(id);
+        if (sel) {
+            const currentVal = sel.value;
+            sel.innerHTML = activePlayers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            if (currentVal && activePlayerIds.has(parseInt(currentVal))) sel.value = currentVal;
+        }
+    });
+    const cpList = document.getElementById('comp-players-list');
+    if (cpList) {
+        const checkedVals = new Set(Array.from(document.querySelectorAll('.comp-player-cb:checked')).map(cb => cb.value));
+        cpList.innerHTML = activePlayers.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="comp-player-cb rounded text-blue-600" ${checkedVals.has(String(p.id)) ? 'checked' : ''}><span>${p.name}</span></label>`).join('');
+    }
 
     renderTeamSummary(filteredGames, filteredBStats, filteredPStats);
     renderRanking();
@@ -562,7 +575,7 @@ async function drawCharts(games, bStats, pStats) {
     const labels = Object.keys(monthlyData).sort();
     let cumAtBats = 0, cumHits = 0;
     let cumEarnedRuns = 0, cumOuts = 0;
-    const cumAvgs = [], monthlyRuns = [], monthlySOs = [], monthlyHitsAllowed = [], monthlyWalksAllowed = [], monthlySRates = [], cumERAs = [];
+    const cumAvgs = [], monthlyRuns = [], monthlySOs = [], monthlyHitsAllowed = [], monthlyWalksAllowed = [], monthlySRates = [], cumERAs = [], monthlyERAs = [];
 
     labels.forEach(m => {
         cumAtBats += monthlyData[m].atBats;
@@ -574,6 +587,12 @@ async function drawCharts(games, bStats, pStats) {
         monthlyWalksAllowed.push(monthlyData[m].walksAllowed);
         monthlySRates.push(monthlyData[m].pitchCount > 0 ? (monthlyData[m].strikes / monthlyData[m].pitchCount * 100).toFixed(1) : 0);
         
+        // 月別防御率の計算
+        const mEarnedRuns = monthlyData[m].earnedRuns;
+        const mOuts = monthlyData[m].outs;
+        const mIp = mOuts / 3;
+        monthlyERAs.push(mIp > 0 ? (mEarnedRuns * 7) / mIp : 0);
+
         cumEarnedRuns += monthlyData[m].earnedRuns;
         cumOuts += monthlyData[m].outs;
         const ip = cumOuts / 3;
@@ -601,7 +620,8 @@ async function drawCharts(games, bStats, pStats) {
                 { label: '被安打', data: monthlyHitsAllowed, backgroundColor: 'rgba(255, 159, 64, 0.6)' },
                 { label: '与四死球', data: monthlyWalksAllowed, backgroundColor: 'rgba(255, 205, 86, 0.6)' },
                 { label: 'S率(%)', type: 'line', data: monthlySRates, borderColor: 'rgba(153, 102, 255, 1)', yAxisID: 'y1' },
-                { label: '累積防御率', type: 'line', data: cumERAs, borderColor: 'rgba(255, 99, 132, 1)', yAxisID: 'y2' }
+                { label: '累積防御率', type: 'line', data: cumERAs, borderColor: 'rgba(255, 99, 132, 1)', yAxisID: 'y2' },
+                { label: '月別防御率', type: 'line', data: monthlyERAs, borderColor: 'rgba(75, 192, 192, 1)', borderDash: [5, 5], yAxisID: 'y2' }
             ]
         },
         options: { 
@@ -724,7 +744,7 @@ async function renderPersonalSummary() {
         personalCharts.bCum = new window.Chart(document.getElementById('chart-ps-b-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '打率', data: dataPoints.map(d=>d.avg), borderColor: 'red' }, { label: '出塁率', data: dataPoints.map(d=>d.obp), borderColor: 'blue' }, { label: '長打率', data: dataPoints.map(d=>d.slg), borderColor: 'green' }, { label: 'OPS', data: dataPoints.map(d=>d.ops), borderColor: 'purple', borderDash: [5,5] } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積打撃成績' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
         personalCharts.bRate = new window.Chart(document.getElementById('chart-ps-b-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '四死球率(%)', data: dataPoints.map(d=>d.bbRate*100), borderColor: 'orange' }, { label: '三振率(%)', data: dataPoints.map(d=>d.soRate*100), borderColor: 'gray' } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積四死球・三振率' } }, scales:{ y:{min:0, max:100}, x: { ticks: { font: { size: 10 } } } } } });
         const periodTitle = unit === 'game' ? '試合別 打数・安打' : (unit === 'month' ? '月別 打数・安打' : '3ヶ月毎 打数・安打');
-        personalCharts.bGame = new window.Chart(document.getElementById('chart-ps-b-game').getContext('2d'), { type: 'bar', data: { labels, datasets: [ { label: '安打', data: periodDataPoints.map(d=>d.h), backgroundColor: 'blue' }, { label: '打数', data: periodDataPoints.map(d=>d.ab), backgroundColor: 'rgba(0,0,0,0.1)' } ]}, options: { responsive: true, plugins: { title: { display: true, text: periodTitle } }, scales: { x: { ticks: { font: { size: 10 } } } } } });
+        personalCharts.bGame = new window.Chart(document.getElementById('chart-ps-b-game').getContext('2d'), { type: 'bar', data: { labels, datasets: [ { label: '安打', data: periodDataPoints.map(d=>d.h), backgroundColor: 'blue' }, { label: '打数', data: periodDataPoints.map(d=>d.ab), backgroundColor: 'rgba(0,0,0,0.1)' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: periodTitle } }, scales: { x: { ticks: { font: { size: 10 } } } } } });
     } else {
         personalCharts.pCum = new window.Chart(document.getElementById('chart-ps-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' }, { label: 'S率(%)', data: dataPoints.map(d=>d.sRate*100), borderColor: 'green', yAxisID: 'y1' } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積防御率・WHIP・S率' } }, scales: { y: { min:0, position: 'left' }, y1: { position: 'right', min: 0, max: 100 }, x: { ticks: { font: { size: 10 } } } } } });
         personalCharts.pRate = new window.Chart(document.getElementById('chart-ps-p-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'K/7', data: dataPoints.map(d=>d.k7), borderColor: 'red' }, { label: 'BB/7', data: dataPoints.map(d=>d.bb7), borderColor: 'blue' } ]}, options: { responsive: true, plugins: { title: { display: true, text: '累積 K/7・BB/7' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
