@@ -270,14 +270,19 @@ if (supabaseClient) {
                 currentUser = session.user;
                 
                 // 管理者権限のチェック
+                let canUseDispatch = true;
+                let canUseDashboard = true;
+
                 try {
                     const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 8000));
-                    const queryPromise = supabaseClient.from('app_users').select('role, name').eq('email', currentUser.email).single();
+                    const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard').eq('email', currentUser.email).single();
                     const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
                     
                     if (userData) {
                         currentUserRole = userData.role;
                         currentUser.name = userData.name; // 取得したメンバー名を保持
+                        if (userData.can_use_dispatch === false) canUseDispatch = false;
+                        if (userData.can_use_dashboard === false) canUseDashboard = false;
                     } else {
                         currentUserRole = 'user';
                     }
@@ -289,22 +294,34 @@ if (supabaseClient) {
                 if (currentUser.email === 'hishinumak@gmail.com') {
                     currentUserRole = 'admin';
                 }
+                
+                // 管理者は無条件に全機能を利用可能とする
+                if (currentUserRole === 'admin') {
+                    canUseDispatch = true;
+                    canUseDashboard = true;
+                }
 
                 // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
                 let dashMenuBtn = document.getElementById('btn-app-dashboard');
-                if (!dashMenuBtn) {
-                    const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
-                    if (menuContainer) {
-                        dashMenuBtn = document.createElement('button');
-                        dashMenuBtn.id = 'btn-app-dashboard';
-                        dashMenuBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-200 text-lg flex items-center justify-center';
-                        dashMenuBtn.innerHTML = '<span>成績ダッシュボード</span>';
-                        dashMenuBtn.onclick = async () => { 
-                            await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
-                            switchAuthScreen('dashboard-view'); 
-                        };
-                        menuContainer.appendChild(dashMenuBtn);
+                if (canUseDashboard) {
+                    if (!dashMenuBtn) {
+                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                        if (menuContainer) {
+                            dashMenuBtn = document.createElement('button');
+                            dashMenuBtn.id = 'btn-app-dashboard';
+                            dashMenuBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-200 text-lg flex items-center justify-center';
+                            dashMenuBtn.innerHTML = '<span>成績ダッシュボード</span>';
+                            dashMenuBtn.onclick = async () => { 
+                                await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
+                                switchAuthScreen('dashboard-view'); 
+                            };
+                            menuContainer.appendChild(dashMenuBtn);
+                        }
+                    } else {
+                        dashMenuBtn.classList.remove('hidden');
                     }
+                } else {
+                    if (dashMenuBtn) dashMenuBtn.classList.add('hidden');
                 }
 
                 // ロールに基づくUI制御
@@ -317,11 +334,10 @@ if (supabaseClient) {
                 
                 let adminMenuBtn = document.getElementById('btn-app-users-admin');
 
+                navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除 (全員共通)
+
                 if (currentUserRole === 'admin') {
-                    navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除
                     navMaster?.classList.remove('hidden');
-                    navDispatch?.classList.remove('hidden');
-                    btnAppDispatch?.classList.remove('hidden');
                     btnGotoMaster?.classList.remove('hidden');
                     clearDbBtn?.classList.remove('hidden');
                     
@@ -339,23 +355,20 @@ if (supabaseClient) {
                     } else {
                         adminMenuBtn.classList.remove('hidden');
                     }
-                } else if (currentUserRole === 'leader') {
-                    navUsers?.classList.add('hidden');
+                } else {
                     navMaster?.classList.add('hidden');
+                    btnGotoMaster?.classList.add('hidden');
+                    clearDbBtn?.classList.add('hidden');
+                    if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
+                }
+                
+                // 配車調整メニューの表示制御
+                if (canUseDispatch) {
                     navDispatch?.classList.remove('hidden');
                     btnAppDispatch?.classList.remove('hidden');
-                    btnGotoMaster?.classList.add('hidden');
-                    clearDbBtn?.classList.add('hidden');
-                    if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
                 } else {
-                    // 一般ユーザー
-                    navUsers?.classList.add('hidden');
-                    navMaster?.classList.add('hidden');
                     navDispatch?.classList.add('hidden');
                     btnAppDispatch?.classList.add('hidden');
-                    btnGotoMaster?.classList.add('hidden');
-                    clearDbBtn?.classList.add('hidden');
-                    if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
                 }
 
                 const emailDisplay = document.getElementById('user-email-display');
@@ -799,140 +812,149 @@ async function handleNavUsers() {
 }
 
 async function loadAdminUsersData() {
-    // 1. 許可済みユーザー一覧の取得
-    const { data: usersData } = await supabaseClient.from('app_users').select('*').order('created_at', { ascending: false });
-    
-    // 出欠グループ関連データの取得
-    let groupsData = [];
-    let userGroupsData = [];
-    let categoriesData = [];
-    let userAttributesData = [];
+    showLoading('メンバー・マスタ情報読み込み中...');
     try {
-        const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
-        if (gData) groupsData = gData;
-        const { data: ugData } = await supabaseClient.from('user_groups').select('*');
-        if (ugData) userGroupsData = ugData;
-        const { data: catData } = await supabaseClient.from('event_categories').select('*').order('created_at');
-        if (catData) categoriesData = catData;
-        const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
-        if (attrData) userAttributesData = attrData;
-    } catch (e) { console.error("Groups DB Error:", e); }
-
-    const allowedListEl = document.getElementById('allowed-users-list');
+        // 1. 許可済みユーザー一覧の取得
+        const { data: usersData } = await supabaseClient.from('app_users').select('*').order('created_at', { ascending: false });
+        
+        // 出欠グループ関連データの取得
+        let groupsData = [];
+        let userGroupsData = [];
+        let categoriesData = [];
+        let userAttributesData = [];
+        try {
+            const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
+            if (gData) groupsData = gData;
+            const { data: ugData } = await supabaseClient.from('user_groups').select('*');
+            if (ugData) userGroupsData = ugData;
+            const { data: catData } = await supabaseClient.from('event_categories').select('*').order('created_at');
+            if (catData) categoriesData = catData;
+            const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
+            if (attrData) userAttributesData = attrData;
+        } catch (e) { console.error("Groups DB Error:", e); }
     
-    // --- ユーザー属性マスター管理ブロック ---
-    let attributeMasterHtml = `
-    <div class="mb-6 p-4 bg-orange-50 border border-orange-200 rounded shadow-sm">
-        <h3 class="font-bold text-orange-800 mb-2">ユーザー属性の管理</h3>
-        <div class="flex flex-wrap gap-2 mb-3">
-            ${userAttributesData.length === 0 ? '<span class="text-sm text-gray-500">属性なし</span>' : ''}
-            ${userAttributesData.map(a => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><span class="mr-2 font-bold">${a.name}</span><button onclick="renameUserAttributeAdmin('${a.id}', '${a.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteUserAttributeAdmin('${a.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
-        </div>
-        <div class="flex space-x-2 items-center">
-            <input type="text" id="admin-new-attribute-name" placeholder="新しい属性名" class="border p-1 rounded text-sm w-48">
-            <button onclick="saveNewUserAttributeAdmin()" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
-        </div>
-    </div>
-    `;
-
-    // --- カテゴリマスター管理ブロック ---
-    let categoryMasterHtml = `
-    <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded shadow-sm">
-        <h3 class="font-bold text-blue-800 mb-2">イベントカテゴリの管理</h3>
-        <div class="flex flex-wrap gap-2 mb-3">
-            ${categoriesData.length === 0 ? '<span class="text-sm text-gray-500">カテゴリなし</span>' : ''}
-            ${categoriesData.map(c => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${c.color || '#bfdbfe'}" onchange="updateCategoryColorAdmin('${c.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
-        </div>
-        <div class="flex space-x-2 items-center">
-            <input type="color" id="admin-new-category-color" value="#bfdbfe" class="w-8 h-8 border p-0 rounded cursor-pointer" title="カテゴリの色">
-            <input type="text" id="admin-new-category-name" placeholder="新しいカテゴリ名" class="border p-1 rounded text-sm w-48">
-            <button onclick="saveNewCategoryAdmin()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
-        </div>
-    </div>
-    `;
-
-    // --- グループマスター管理ブロック ---
-    let groupMasterHtml = `
-    <div class="mb-6 p-4 bg-purple-50 border border-purple-200 rounded shadow-sm">
-        <h3 class="font-bold text-purple-800 mb-2">出欠グループの管理</h3>
-        <div class="flex flex-col gap-2 mb-3">
-            ${groupsData.length === 0 ? '<span class="text-sm text-gray-500">グループなし</span>' : ''}
-            ${groupsData.map(g => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${g.color || '#d1fae5'}" onchange="updateGroupColorAdmin('${g.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${g.name}</span><button onclick="renameGroupAdmin('${g.id}', '${g.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
-        </div>
-        <div class="flex space-x-2 items-center">
-            <input type="color" id="admin-new-group-color" value="#d1fae5" class="w-8 h-8 border p-0 rounded cursor-pointer" title="グループの色">
-            <input type="text" id="admin-new-group-name" placeholder="新しいグループ名" class="border p-1 rounded text-sm w-48">
-            <button onclick="saveNewGroupAdmin()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
-        </div>
-    </div>
-    `;
-
-    // --- ユーザー一覧ブロック ---
-    const usersHtml = (usersData || []).map((u, i) => {
-        const groupCheckboxes = groupsData.map(g => {
-            const isMember = userGroupsData.some(ug => ug.user_email === u.email && ug.group_id === g.id);
-            return `<label class="inline-flex items-center mr-3 mb-1 cursor-pointer"><input type="checkbox" id="edit-group-${i}-${g.id}" value="${g.id}" class="mr-1" ${isMember ? 'checked' : ''}> <span class="text-sm font-medium">${g.name}</span></label>`;
-        }).join('');
-
-        return `
-        <div class="flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition">
-            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
-                <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
-                <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
-                <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
-                <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
-                    <option value="">属性なし</option>
-                    ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
-                </select>
-                <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
-                    <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
-                    <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
-                    <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
-                </select>
+        const allowedListEl = document.getElementById('allowed-users-list');
+        
+        // --- ユーザー属性マスター管理ブロック ---
+        let attributeMasterHtml = `
+        <div class="mb-6 p-4 bg-orange-50 border border-orange-200 rounded shadow-sm">
+            <h3 class="font-bold text-orange-800 mb-2">ユーザー属性の管理</h3>
+            <div class="flex flex-wrap gap-2 mb-3">
+                ${userAttributesData.length === 0 ? '<span class="text-sm text-gray-500">属性なし</span>' : ''}
+                ${userAttributesData.map(a => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><span class="mr-2 font-bold">${a.name}</span><button onclick="renameUserAttributeAdmin('${a.id}', '${a.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteUserAttributeAdmin('${a.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
             </div>
-            <div class="flex items-center space-x-2 shrink-0">
-                <button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>
-                ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
-            </div>
-        </div>
-            <div class="flex flex-col md:flex-row md:items-start justify-between gap-2">
-                <div class="flex-grow">
-                    <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
-                    <div class="flex flex-wrap" id="group-container-${i}">${groupCheckboxes || '<span class="text-xs text-gray-400">グループがありません</span>'}</div>
-                </div>
-                <div class="shrink-0 mt-2 md:mt-0 flex items-end">
-                    <button onclick="updateAdminUser('${u.email}', ${i}, '${u.role}')" class="text-sm bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded shadow font-bold">設定を保存</button>
-                </div>
+            <div class="flex space-x-2 items-center">
+                <input type="text" id="admin-new-attribute-name" placeholder="新しい属性名" class="border p-1 rounded text-sm w-48">
+                <button onclick="saveNewUserAttributeAdmin()" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
             </div>
         </div>
         `;
-    }).join('');
-
-    allowedListEl.innerHTML = usersHtml;
-
-    const masterListEl = document.getElementById('admin-master-list');
-    if (masterListEl) {
-        masterListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml;
-    }
-
-    // 2. 申請待ち一覧の取得
-    const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
-    const requestsListEl = document.getElementById('signup-requests-list');
-    if (!requestsData || requestsData.length === 0) {
-        requestsListEl.innerHTML = '<p class="text-gray-500 text-sm">現在、承認待ちの申請はありません。</p>';
-    } else {
-        requestsListEl.innerHTML = requestsData.map(r => `
-            <div class="p-3 bg-white border rounded shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2">
-                <div>
-                    <div class="font-bold">${r.parent_name} <span class="text-sm font-normal text-gray-600">様 (選手: ${r.player_name})</span></div>
-                    <div class="text-sm text-gray-500">${r.email}</div>
+    
+        // --- カテゴリマスター管理ブロック ---
+        let categoryMasterHtml = `
+        <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded shadow-sm">
+            <h3 class="font-bold text-blue-800 mb-2">イベントカテゴリの管理</h3>
+            <div class="flex flex-wrap gap-2 mb-3">
+                ${categoriesData.length === 0 ? '<span class="text-sm text-gray-500">カテゴリなし</span>' : ''}
+                ${categoriesData.map(c => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${c.color || '#bfdbfe'}" onchange="updateCategoryColorAdmin('${c.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+            </div>
+            <div class="flex space-x-2 items-center">
+                <input type="color" id="admin-new-category-color" value="#bfdbfe" class="w-8 h-8 border p-0 rounded cursor-pointer" title="カテゴリの色">
+                <input type="text" id="admin-new-category-name" placeholder="新しいカテゴリ名" class="border p-1 rounded text-sm w-48">
+                <button onclick="saveNewCategoryAdmin()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
+            </div>
+        </div>
+        `;
+    
+        // --- グループマスター管理ブロック ---
+        let groupMasterHtml = `
+        <div class="mb-6 p-4 bg-purple-50 border border-purple-200 rounded shadow-sm">
+            <h3 class="font-bold text-purple-800 mb-2">出欠グループの管理</h3>
+            <div class="flex flex-col gap-2 mb-3">
+                ${groupsData.length === 0 ? '<span class="text-sm text-gray-500">グループなし</span>' : ''}
+                ${groupsData.map(g => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${g.color || '#d1fae5'}" onchange="updateGroupColorAdmin('${g.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${g.name}</span><button onclick="renameGroupAdmin('${g.id}', '${g.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+            </div>
+            <div class="flex space-x-2 items-center">
+                <input type="color" id="admin-new-group-color" value="#d1fae5" class="w-8 h-8 border p-0 rounded cursor-pointer" title="グループの色">
+                <input type="text" id="admin-new-group-name" placeholder="新しいグループ名" class="border p-1 rounded text-sm w-48">
+                <button onclick="saveNewGroupAdmin()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
+            </div>
+        </div>
+        `;
+    
+        // --- ユーザー一覧ブロック ---
+        const usersHtml = (usersData || []).map((u, i) => {
+            const groupCheckboxes = groupsData.map(g => {
+                const isMember = userGroupsData.some(ug => ug.user_email === u.email && ug.group_id === g.id);
+                return `<label class="inline-flex items-center mr-3 mb-1 cursor-pointer"><input type="checkbox" id="edit-group-${i}-${g.id}" value="${g.id}" class="mr-1" ${isMember ? 'checked' : ''}> <span class="text-sm font-medium">${g.name}</span></label>`;
+            }).join('');
+    
+            return `
+            <div class="flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
+                    <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
+                    <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
+                    <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
+                    <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
+                        <option value="">属性なし</option>
+                        ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                    </select>
+                    <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
+                        <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
+                        <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
+                        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
+                    </select>
+                    <div class="flex items-center space-x-3 ml-2 border-l pl-2">
+                        <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dispatch-${i}" class="rounded text-blue-600" ${u.can_use_dispatch !== false ? 'checked' : ''}><span>配車可</span></label>
+                        <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
+                    </div>
                 </div>
-                <div class="flex space-x-2">
-                    <button onclick="approveRequest('${r.id}', '${r.email}')" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-bold shadow">承認</button>
-                    <button onclick="rejectRequest('${r.id}')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm shadow">拒否</button>
+                <div class="flex items-center space-x-2 shrink-0">
+                    <button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>
+                    ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
                 </div>
             </div>
-        `).join('');
+                <div class="flex flex-col md:flex-row md:items-start justify-between gap-2">
+                    <div class="flex-grow">
+                        <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
+                        <div class="flex flex-wrap" id="group-container-${i}">${groupCheckboxes || '<span class="text-xs text-gray-400">グループがありません</span>'}</div>
+                    </div>
+                    <div class="shrink-0 mt-2 md:mt-0 flex items-end">
+                        <button onclick="updateAdminUser('${u.email}', ${i}, '${u.role}')" class="text-sm bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded shadow font-bold">設定を保存</button>
+                    </div>
+                </div>
+            </div>
+            `;
+        }).join('');
+    
+        allowedListEl.innerHTML = usersHtml;
+    
+        const masterListEl = document.getElementById('admin-master-list');
+        if (masterListEl) {
+            masterListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml;
+        }
+    
+        // 2. 申請待ち一覧の取得
+        const { data: requestsData } = await supabaseClient.from('signup_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+        const requestsListEl = document.getElementById('signup-requests-list');
+        if (!requestsData || requestsData.length === 0) {
+            requestsListEl.innerHTML = '<p class="text-gray-500 text-sm">現在、承認待ちの申請はありません。</p>';
+        } else {
+            requestsListEl.innerHTML = requestsData.map(r => `
+                <div class="p-3 bg-white border rounded shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-2">
+                    <div>
+                        <div class="font-bold">${r.parent_name} <span class="text-sm font-normal text-gray-600">様 (選手: ${r.player_name})</span></div>
+                        <div class="text-sm text-gray-500">${r.email}</div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="approveRequest('${r.id}', '${r.email}')" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-sm font-bold shadow">承認</button>
+                        <button onclick="rejectRequest('${r.id}')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm shadow">拒否</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+    } finally {
+        hideLoading();
     }
 }
 
@@ -941,10 +963,15 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
     const nameEl = document.getElementById(`edit-name-${index}`);
     const attrEl = document.getElementById(`edit-attribute-${index}`);
     const roleEl = document.getElementById(`edit-role-${index}`);
+    const useDispatchEl = document.getElementById(`edit-use-dispatch-${index}`);
+    const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
+    
     const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
     const newName = nameEl.value.trim();
     const newAttributeId = attrEl ? (attrEl.value || null) : null;
     const newRole = roleEl.disabled ? oldRole : roleEl.value;
+    const canUseDispatch = useDispatchEl ? useDispatchEl.checked : true;
+    const canUseDashboard = useDashboardEl ? useDashboardEl.checked : true;
 
     if (!newEmail) return alert('メールアドレスを入力してください');
     if (!confirm(`${oldEmail} のユーザー情報と所属グループ設定を保存しますか？`)) return;
@@ -957,6 +984,8 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
         if (!roleEl.disabled) updatePayload.role = newRole;
         updatePayload.name = newName;
         updatePayload.attribute_id = newAttributeId;
+        updatePayload.can_use_dispatch = canUseDispatch;
+        updatePayload.can_use_dashboard = canUseDashboard;
         
         if (Object.keys(updatePayload).length > 0) {
             const { error } = await supabaseClient.from('app_users').update(updatePayload).eq('email', oldEmail);
