@@ -1,4 +1,5 @@
 import { initAttendanceApp } from './attendance.js';
+import { initDashboardApp } from './dashboard.js';
 
 // ==========================================
 // ★Vercel環境変数からSupabase情報を読み込む
@@ -180,7 +181,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.getElementById('btn-app-attendance')?.addEventListener('click', async () => {
         switchAuthScreen('attendance-view');
-        await initAttendanceApp();
+        await withLoading(initAttendanceApp, '出欠管理画面を準備中...');
+    });
+    document.getElementById('btn-app-dashboard')?.addEventListener('click', async () => {
+        switchAuthScreen('dashboard-view');
+        // initDashboardAppは画面切り替え後に呼ばれるのでここでは不要
+        await withLoading(initDashboardApp, 'ダッシュボードを準備中...');
     });
     document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
         switchAuthScreen('app-menu-view');
@@ -214,7 +220,7 @@ function pushHistoryState(screenId, subView = null) {
 
 // 画面切り替えヘルパー関数
 export function switchAuthScreen(screenId, subView = null) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users'].forEach(id => {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -316,6 +322,20 @@ if (supabaseClient) {
                         }
                     } else {
                         adminMenuBtn.classList.remove('hidden');
+                    }
+                    
+                    // ダッシュボードボタンの追加 (メニュー画面用)
+                    let dashMenuBtn = document.getElementById('btn-app-dashboard');
+                    if (!dashMenuBtn) {
+                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                        if (menuContainer) {
+                            dashMenuBtn = document.createElement('button');
+                            dashMenuBtn.id = 'btn-app-dashboard';
+                            dashMenuBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-200 text-lg flex items-center justify-center';
+                            dashMenuBtn.innerHTML = '<span>成績ダッシュボード</span>';
+                            dashMenuBtn.onclick = async () => { switchAuthScreen('dashboard-view'); await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); };
+                            menuContainer.appendChild(dashMenuBtn);
+                        }
                     }
                 } else if (currentUserRole === 'leader') {
                     navUsers?.classList.add('hidden');
