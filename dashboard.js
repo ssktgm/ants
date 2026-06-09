@@ -5,6 +5,7 @@ let allGames = [];
 let allBatterStats = [];
 let allPitcherStats = [];
 let allPlayers = [];
+let dashboardSettings = { homeTeamNames: ['ありんこアントス', 'アントス'] }; // デフォルト値
 let charts = {};
 let personalCharts = {};
 let comparisonCharts = {};
@@ -74,6 +75,7 @@ function setupDashboardUI() {
                 <button data-tab="ranking" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">ランキング</button>
                 <button data-tab="comparison" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">選手比較</button>
                 <button data-tab="test-mode" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">テストモード</button>
+                <button data-tab="settings" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">設定</button>
                 <button data-tab="import-data" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">データインポート</button>
             </div>
             
@@ -207,6 +209,22 @@ function setupDashboardUI() {
                 </div>
             </div>
 
+            <div id="tab-content-settings" class="hidden space-y-6">
+                <div class="bg-white p-4 rounded-lg shadow-md">
+                    <h3 class="font-bold text-lg mb-4 text-gray-800 border-b pb-2">集計設定</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">自チームとして集計するチーム名</label>
+                            <div id="home-team-list" class="flex flex-wrap gap-2 mb-3"></div>
+                            <div class="flex items-center space-x-2">
+                                <input type="text" id="new-home-team-name" placeholder="チーム名を追加 (例: ありんこアントス@A軍)" class="border p-2 rounded w-full md:w-1/2">
+                                <button id="btn-add-home-team" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold shadow-sm">追加</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div id="tab-content-import-data" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
                 <h3 class="text-lg font-bold mb-4 border-b pb-2">CSVデータインポート</h3>
                 <div class="space-y-4">
@@ -244,7 +262,7 @@ function setupDashboardUI() {
                     b.classList.remove('text-blue-600', 'border-blue-600');
                     b.classList.add('text-gray-500', 'border-transparent');
                 });
-                ['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'import-data'].forEach(t => document.getElementById(`tab-content-${t}`)?.classList.add('hidden'));
+                ['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'settings', 'import-data'].forEach(t => document.getElementById(`tab-content-${t}`)?.classList.add('hidden'));
 
                 const target = e.currentTarget;
                 target.classList.remove('text-gray-500', 'border-transparent');
@@ -273,6 +291,8 @@ function setupDashboardUI() {
             document.getElementById('comp-metric-p').classList.toggle('hidden', e.target.value !== 'pitcher');
             renderComparison();
         });
+
+        document.getElementById('btn-add-home-team')?.addEventListener('click', handleAddHomeTeam);
     }
 }
 
@@ -284,12 +304,14 @@ async function loadDashboardData() {
             { data: gamesData, error: gamesErr },
             { data: bStatsData, error: bStatsErr },
             { data: pStatsData, error: pStatsErr },
-            { data: plData, error: plErr }
+            { data: plData, error: plErr },
+            { data: settingsData, error: settingsErr }
         ] = await Promise.all([
             supabaseClient.from('games').select('*').order('date', { ascending: true }),
             supabaseClient.from('batter_stats').select('*'),
             supabaseClient.from('pitcher_stats').select('*'),
-            supabaseClient.from('players').select('*')
+            supabaseClient.from('players').select('*'),
+            supabaseClient.from('dashboard_settings').select('value').eq('key', 'homeTeamNames').single()
         ]);
         
         if (gamesErr) throw gamesErr;
@@ -300,6 +322,11 @@ async function loadDashboardData() {
         allBatterStats = bStatsData || [];
         allPitcherStats = pStatsData || [];
         allPlayers = plData || [];
+        if (settingsData && settingsData.value) {
+            dashboardSettings.homeTeamNames = settingsData.value;
+        }
+
+        renderHomeTeamList();
 
         ['ps-player', 'tm-player'].forEach(id => {
             const sel = document.getElementById(id);
@@ -475,8 +502,8 @@ async function drawCharts(games, bStats, pStats) {
         gameLabels.push(dateStr ? dateStr.substring(5) : `G${idx+1}`);
         let tr = 0, or = 0;
         if (g.score && g.score.includes('-')) {
-            const [s1, s2] = g.score.split('-').map(Number);
-            const isAntsFirst = (g.team_first || '').includes('ありんこ') || (g.team_first || '').includes('アントス');
+            const [s1, s2] = g.score.split('-').map(s => parseInt(s, 10) || 0);
+            const isAntsFirst = dashboardSettings.homeTeamNames.some(name => (g.team_first || '').includes(name));
             if (isAntsFirst) { tr = s1; or = s2; } else { tr = s2; or = s1; }
         }
         teamRuns.push(tr); oppRuns.push(-or);
@@ -649,6 +676,37 @@ async function renderTestMode() {
         testModeCharts.pCum = new window.Chart(document.getElementById('chart-tm-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA 防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'MA WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均 防御率・WHIP` } }, scales:{ y:{min:0} } } });
         testModeCharts.pRate = new window.Chart(document.getElementById('chart-tm-p-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'MA K/7', data: dataPoints.map(d=>d.k7), borderColor: 'red' }, { label: 'MA BB/7', data: dataPoints.map(d=>d.bb7), borderColor: 'blue' } ]}, options: { responsive: true, plugins: { title: { display: true, text: `直近${wSize}試合 移動平均 K/7・BB/7` } }, scales:{ y:{min:0} } } });
     }
+}
+
+// --- タブ6: 設定 ---
+function renderHomeTeamList() {
+    const listEl = document.getElementById('home-team-list');
+    if (!listEl) return;
+    listEl.innerHTML = dashboardSettings.homeTeamNames.map(name => 
+        `<div class="bg-gray-200 text-gray-800 text-sm font-medium px-3 py-1 rounded-full flex items-center gap-2">
+            <span>${name}</span>
+            <button onclick="window.dashboard_removeHomeTeam('${name}')" class="text-red-500 hover:text-red-700 font-bold">&times;</button>
+        </div>`
+    ).join('');
+}
+
+async function handleAddHomeTeam() {
+    const input = document.getElementById('new-home-team-name');
+    const newName = input.value.trim();
+    if (!newName || dashboardSettings.homeTeamNames.includes(newName)) return;
+
+    dashboardSettings.homeTeamNames.push(newName);
+    await supabaseClient.from('dashboard_settings').upsert({ key: 'homeTeamNames', value: dashboardSettings.homeTeamNames });
+    renderHomeTeamList();
+    input.value = '';
+}
+
+window.dashboard_removeHomeTeam = async function(nameToRemove) {
+    dashboardSettings.homeTeamNames = dashboardSettings.homeTeamNames.filter(name => name !== nameToRemove);
+    await supabaseClient.from('dashboard_settings').upsert({ key: 'homeTeamNames', value: dashboardSettings.homeTeamNames });
+    renderHomeTeamList();
+    // 削除後に再描画
+    applyFiltersAndRender();
 }
 
 async function handleCsvImport() {

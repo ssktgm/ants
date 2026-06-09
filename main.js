@@ -219,7 +219,7 @@ function pushHistoryState(screenId, subView = null) {
 
 // 画面切り替えヘルパー関数
 export function switchAuthScreen(screenId, subView = null) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view'].forEach(id => {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -358,9 +358,41 @@ if (supabaseClient) {
                     if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
                 }
 
-                switchAuthScreen('app-menu-view');
                 const emailDisplay = document.getElementById('user-email-display');
                 if (emailDisplay) emailDisplay.textContent = currentUser.name || currentUser.email; // 名前があれば名前を表示
+
+                // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
+                const hash = window.location.hash;
+                if (hash && hash !== '#app-menu-view') {
+                    const validScreens = ['app-view', 'attendance-view', 'dashboard-view'];
+                    let restored = false;
+                    for (const sId of validScreens) {
+                        if (hash.startsWith('#' + sId)) {
+                            const subView = hash.length > sId.length + 1 ? hash.substring(sId.length + 2) : null;
+                            if (sId === 'app-view') {
+                                switchAuthScreen('app-view', subView);
+                                if (!isAppInitialized) {
+                                    initApp().then(() => {
+                                        if (subView === 'users') handleNavUsers();
+                                        else if (subView === 'master') document.getElementById('nav-master')?.click();
+                                        else document.getElementById('nav-dispatch')?.click();
+                                    });
+                                }
+                            } else if (sId === 'attendance-view') {
+                                switchAuthScreen('attendance-view');
+                                initAttendanceApp();
+                            } else if (sId === 'dashboard-view') {
+                                switchAuthScreen('dashboard-view');
+                                initDashboardApp();
+                            }
+                            restored = true;
+                            break;
+                        }
+                    }
+                    if (!restored) switchAuthScreen('app-menu-view');
+                } else {
+                    switchAuthScreen('app-menu-view');
+                }
             } finally {
                 hideLoading();
             }
