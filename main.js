@@ -369,9 +369,10 @@ if (supabaseClient) {
                 let adminMenuBtn = document.getElementById('btn-app-users-admin');
 
                 navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除 (全員共通)
+                navDispatch?.classList.add('hidden'); // 上部バーの配車調整導線を削除
+                navMaster?.classList.add('hidden'); // 上部バーの配車マスタ導線を削除
 
                 if (currentUserRole === 'admin') {
-                    navMaster?.classList.remove('hidden');
                     btnGotoMaster?.classList.remove('hidden');
                     clearDbBtn?.classList.remove('hidden');
                     
@@ -390,7 +391,6 @@ if (supabaseClient) {
                         adminMenuBtn.classList.remove('hidden');
                     }
                 } else {
-                    navMaster?.classList.add('hidden');
                     btnGotoMaster?.classList.add('hidden');
                     clearDbBtn?.classList.add('hidden');
                     if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
@@ -398,10 +398,8 @@ if (supabaseClient) {
                 
                 // 配車調整メニューの表示制御
                 if (canUseDispatch) {
-                    navDispatch?.classList.remove('hidden');
                     btnAppDispatch?.classList.remove('hidden');
                 } else {
-                    navDispatch?.classList.add('hidden');
                     btnAppDispatch?.classList.add('hidden');
                 }
 
@@ -818,6 +816,14 @@ async function initApp() {
         await fetchAndRenderMasterData();
         loadLogs(); // マスター画面を開いた時にログも読み込む
     });
+    
+    // 画面内ボタンからのタブ切り替えサポート（導線が非表示になっても遷移できるように）
+    document.getElementById('btn-goto-master')?.addEventListener('click', () => {
+        navMaster?.click();
+    });
+    document.getElementById('btn-back-to-dispatch')?.addEventListener('click', () => {
+        navDispatch?.click();
+    });
 
     try {
         await db.initMasterData();
@@ -1057,9 +1063,9 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
         
         logAction('UPDATE_USER', `ユーザー「${oldEmail}」の設定を更新しました`);
         alert('設定を保存しました');
-        loadAdminUsersData();
+        await loadAdminUsersData();
     } catch (err) {
-        alert('更新処理中にエラーが発生しました: ' + err.message);
+        alert('更新処理中にエラーが発生しました: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
     } finally {
         hideLoading();
     }
@@ -1089,9 +1095,10 @@ window.adminAddUser = async function() {
         await supabaseClient.from('app_users').insert([{ email, role }]);
         logAction('ADD_USER', `ユーザー「${email}」を追加しました`);
         document.getElementById('admin-add-email').value = '';
-        loadAdminUsersData();
+        await loadAdminUsersData();
     } catch (err) {
         console.error(err);
+        alert('追加エラー: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
     } finally {
         hideLoading();
     }
@@ -1103,9 +1110,10 @@ window.deleteAdminUser = async function(email) {
     try {
         await supabaseClient.from('app_users').delete().eq('email', email);
         logAction('DELETE_USER', `ユーザー「${email}」を削除しました`);
-        loadAdminUsersData();
+        await loadAdminUsersData();
     } catch (err) {
         console.error(err);
+        alert('削除エラー: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
     } finally {
         hideLoading();
     }
@@ -1119,8 +1127,8 @@ window.saveNewCategoryAdmin = async function() {
     try {
         const { error } = await supabaseClient.from('event_categories').insert([{ name, color }]);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('追加エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.deleteCategoryAdmin = async function(id) {
@@ -1129,8 +1137,8 @@ window.deleteCategoryAdmin = async function(id) {
     try {
         const { error } = await supabaseClient.from('event_categories').delete().eq('id', id);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('削除エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.renameCategoryAdmin = async function(id, currentName) {
@@ -1140,8 +1148,8 @@ window.renameCategoryAdmin = async function(id, currentName) {
     try {
         const { error } = await supabaseClient.from('event_categories').update({ name: newName.trim() }).eq('id', id);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.updateCategoryColorAdmin = async function(id, color) {
@@ -1149,8 +1157,8 @@ window.updateCategoryColorAdmin = async function(id, color) {
     try {
         const { error } = await supabaseClient.from('event_categories').update({ color }).eq('id', id);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.updateGroupColorAdmin = async function(id, color) {
@@ -1158,7 +1166,8 @@ window.updateGroupColorAdmin = async function(id, color) {
     try {
         const { error } = await supabaseClient.from('groups').update({ color }).eq('id', id);
         if (error) throw error;
-    } catch (e) { alert('色変更エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('色変更エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.saveNewGroupAdmin = async function() {
@@ -1169,8 +1178,8 @@ window.saveNewGroupAdmin = async function() {
     try {
         const { error } = await supabaseClient.from('groups').insert([{ name, color }]);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('追加エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('追加エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.deleteGroupAdmin = async function(id) {
@@ -1179,8 +1188,8 @@ window.deleteGroupAdmin = async function(id) {
     try {
         const { error } = await supabaseClient.from('groups').delete().eq('id', id);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('削除エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('削除エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.renameGroupAdmin = async function(id, currentName) {
@@ -1190,8 +1199,40 @@ window.renameGroupAdmin = async function(id, currentName) {
     try {
         const { error } = await supabaseClient.from('groups').update({ name: newName.trim() }).eq('id', id);
         if (error) throw error;
-        loadAdminUsersData();
-    } catch (e) { alert('変更エラー: ' + e.message); } finally { hideLoading(); }
+        await loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
+};
+
+window.saveNewUserAttributeAdmin = async function() {
+    const name = document.getElementById('admin-new-attribute-name').value.trim();
+    if (!name) return alert('属性名を入力してください');
+    showLoading('属性追加中...');
+    try {
+        const { error } = await supabaseClient.from('user_attributes').insert([{ name }]);
+        if (error) throw error;
+        await loadAdminUsersData();
+    } catch (e) { alert('追加エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
+};
+
+window.deleteUserAttributeAdmin = async function(id) {
+    if (!confirm('この属性を削除しますか？\n※ユーザーに設定されている属性は解除されます。')) return;
+    showLoading('属性削除中...');
+    try {
+        const { error } = await supabaseClient.from('user_attributes').delete().eq('id', id);
+        if (error) throw error;
+        await loadAdminUsersData();
+    } catch (e) { alert('削除エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
+};
+
+window.renameUserAttributeAdmin = async function(id, currentName) {
+    const newName = prompt('新しい属性名を入力してください:', currentName);
+    if (!newName || newName.trim() === '' || newName === currentName) return;
+    showLoading('属性名称変更中...');
+    try {
+        const { error } = await supabaseClient.from('user_attributes').update({ name: newName.trim() }).eq('id', id);
+        if (error) throw error;
+        await loadAdminUsersData();
+    } catch (e) { alert('変更エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
 };
 
 window.approveRequest = async function(id, email) {
@@ -1204,9 +1245,10 @@ window.approveRequest = async function(id, email) {
         await supabaseClient.from('app_users').insert([{ email, role: 'user', name: nameToSave }]);
         // リクエストのステータスを更新
         await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
-        loadAdminUsersData();
+        await loadAdminUsersData();
     } catch (err) {
         console.error(err);
+        alert('承認エラー: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
     } finally {
         hideLoading();
     }
@@ -1217,9 +1259,10 @@ window.rejectRequest = async function(id) {
     showLoading('申請拒否中...');
     try {
         await supabaseClient.from('signup_requests').update({ status: 'rejected' }).eq('id', id);
-        loadAdminUsersData();
+        await loadAdminUsersData();
     } catch (err) {
         console.error(err);
+        alert('拒否エラー: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
     } finally {
         hideLoading();
     }
@@ -1468,12 +1511,17 @@ const parkingListMasterEl = document.getElementById('parking-list-master');
 
 function updateLayouts() { 
     const resultsSection = document.getElementById('results-section');
-    if (window.innerWidth >= 768) {
-        document.getElementById('main-content').style.gridTemplateColumns = `repeat(${LAYOUT_COLUMNS}, minmax(0, 1fr))`;
-        resultsSection.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
-    } else {
-        document.getElementById('main-content').style.gridTemplateColumns = 'repeat(1, minmax(0, 1fr))';
-        resultsSection.style.gridColumn = 'auto';
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) {
+        mainContent.style.display = 'grid';
+        mainContent.style.gap = '1.5rem';
+        if (window.innerWidth >= 768) {
+            mainContent.style.gridTemplateColumns = `repeat(${LAYOUT_COLUMNS}, minmax(0, 1fr))`;
+            if (resultsSection) resultsSection.style.gridColumn = `span ${LAYOUT_COLUMNS}`;
+        } else {
+            mainContent.style.gridTemplateColumns = 'repeat(1, minmax(0, 1fr))';
+            if (resultsSection) resultsSection.style.gridColumn = 'auto';
+        }
     }
 }
 
