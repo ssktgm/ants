@@ -666,6 +666,9 @@ async function handleCsvImport() {
     reader.onload = async (e) => {
         let text = e.target.result;
         
+        // BOM(Byte Order Mark)が含まれている場合は除去して誤動作を防ぐ
+        text = text.replace(/^\uFEFF/, '');
+        
         // 投手データの改行欠落バグを正規表現で強制補正（例: "FO247,難波" -> "FO\n247,難波"）
         if (type === 'pitcher') {
             text = text.replace(/([A-Za-z0-9]+)(\d{3},[^0-9,])/g, '$1\n$2');
@@ -698,10 +701,22 @@ async function handleCsvImport() {
                     uniform_number: row[2] || null
                 });
 
+              // 日付の安全なパース (タイムゾーンのズレを防ぐため YYYY-MM-DD 形式に変換)
+                let validDate = null;
+                if (row[4] && row[4].trim()) {
+                    const d = new Date(row[4].trim());
+                    if (!isNaN(d.getTime())) {
+                        const y = d.getFullYear();
+                        const m = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        validDate = `${y}-${m}-${day}`;
+                    }
+                }
+
                 // 試合情報の抽出
                 gamesMap.set(gameId, {
                     id: gameId,
-                    date: row[4] ? new Date(row[4]).toISOString() : null,
+                    date: validDate,
                     team_first: row[5] || null,
                     score: row[6] || null,
                     team_second: row[7] || null,
