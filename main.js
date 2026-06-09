@@ -344,7 +344,7 @@ if (supabaseClient) {
                             dashMenuBtn = document.createElement('button');
                             dashMenuBtn.id = 'btn-app-dashboard';
                             dashMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-indigo-600 hover:bg-indigo-700 text-white';
-                            dashMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📊</span><span class="text-[10px] sm:text-sm leading-tight mt-1 block">成績<br>ダッシュボード</span>';
+                            dashMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📊</span><span class="text-xs sm:text-sm leading-tight mt-1 block">分析</span>';
                             dashMenuBtn.onclick = async () => { 
                                 await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
                                 switchAuthScreen('dashboard-view'); 
