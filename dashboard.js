@@ -503,7 +503,13 @@ async function drawCharts(games, bStats, pStats) {
         let tr = 0, or = 0;
         if (g.score && g.score.includes('-')) {
             const [s1, s2] = g.score.split('-').map(s => parseInt(s, 10) || 0);
-            const isAntsFirst = dashboardSettings.homeTeamNames.some(name => (g.team_first || '').includes(name));
+            const isAntsFirst = dashboardSettings.homeTeamNames.some(name => {
+                try {
+                    return new RegExp(name, 'i').test(g.team_first || '');
+                } catch (e) {
+                    return (g.team_first || '').includes(name); // 正規表現として不正な場合は部分一致
+                }
+            });
             if (isAntsFirst) { tr = s1; or = s2; } else { tr = s2; or = s1; }
         }
         teamRuns.push(tr); oppRuns.push(-or);
