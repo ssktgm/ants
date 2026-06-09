@@ -120,6 +120,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ログインボタン等のイベント
     document.getElementById('btn-login')?.addEventListener('click', handleLogin);
+    // フォームのsubmitイベントでログイン処理を発火（オートフィル対応）
+    document.getElementById('auth-form')?.addEventListener('submit', handleLogin);
     document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
     document.getElementById('btn-logout-menu')?.addEventListener('click', handleLogout);
     document.getElementById('btn-clear-cache')?.addEventListener('click', handleClearCache);
@@ -392,6 +394,11 @@ async function handleLogin(e) {
     const password = document.getElementById('password')?.value || '';
     const msg = document.getElementById('auth-message');
     if (msg) msg.classList.add('hidden');
+    
+    // 入力が空の場合は処理を中断（パスワード補助機能などによる意図しない空の自動送信を防ぐ）
+    if (!email || !password) {
+        return;
+    }
     
     isAuthenticating = true;
     showLoading('ログイン認証中...');
