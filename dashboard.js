@@ -704,12 +704,24 @@ async function handleCsvImport() {
               // 日付の安全なパース (タイムゾーンのズレを防ぐため YYYY-MM-DD 形式に変換)
                 let validDate = null;
                 if (row[4] && row[4].trim()) {
-                    const d = new Date(row[4].trim());
+                    const dateStr = row[4].trim().replace(/\//g, '-');
+                    const d = new Date(dateStr);
                     if (!isNaN(d.getTime())) {
                         const y = d.getFullYear();
                         const m = String(d.getMonth() + 1).padStart(2, '0');
                         const day = String(d.getDate()).padStart(2, '0');
                         validDate = `${y}-${m}-${day}`;
+                    } else {
+                        // Safari対策: ゼロ埋めされていない YYYY-M-D を手動でパース
+                        const parts = dateStr.split('-');
+                        if (parts.length === 3) {
+                            const y = parseInt(parts[0], 10);
+                            const m = parseInt(parts[1], 10);
+                            const day = parseInt(parts[2], 10);
+                            if (!isNaN(y) && !isNaN(m) && !isNaN(day)) {
+                                validDate = `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            }
+                        }
                     }
                 }
 
