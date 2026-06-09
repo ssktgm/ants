@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading, currentUserRole, openChangePasswordModal } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, forceHideLoading, currentUserRole, openChangePasswordModal } from './main.js';
 
 let currentDate = new Date();
 let events = [];
@@ -41,14 +41,19 @@ function generateGroupTagsHtml(groupInfo) {
 // 初期化とイベントリスナー設定
 // =====================================
 export async function initAttendanceApp() {
-    if (!isAttendanceInitialized) {
-        setupEventListeners();
-        isAttendanceInitialized = true;
+    try {
+        if (!isAttendanceInitialized) {
+            setupEventListeners();
+            isAttendanceInitialized = true;
+        }
+        await loadData();
+        renderCalendar();
+        updateGroupFilter();
+        updateCategoryFilter();
+    } catch (err) {
+        console.error("Attendance App Init Error:", err);
+        if (typeof forceHideLoading === 'function') forceHideLoading();
     }
-    await loadData();
-    renderCalendar();
-    updateGroupFilter();
-    updateCategoryFilter();
 }
 
 function setupEventListeners() {
@@ -154,45 +159,62 @@ function switchTab(tab) {
 
 async function loadData() {
     showLoading('イベント・出欠データ読み込み中...');
+    
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout: 通信に時間がかかりすぎています')), 15000)
+    );
+
     try {
-        // グループ読み込み
-        const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
-        if (gData) groups = gData;
+        const loadProcess = async () => {
+            // グループ読み込み
+            const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
+            if (gData) groups = gData;
 
-        // カテゴリ読み込み
-        const { data: cData } = await supabaseClient.from('event_categories').select('*').order('created_at');
-        if (cData && cData.length > 0) {
-            categories = cData;
-        } else {
-            categories = [{id:'1', name:'練習'}, {id:'2', name:'試合'}, {id:'3', name:'イベント'}];
-        }
+            // カテゴリ読み込み
+            const { data: cData } = await supabaseClient.from('event_categories').select('*').order('created_at');
+            if (cData && cData.length > 0) {
+                categories = cData;
+            } else {
+                categories = [{id:'1', name:'練習'}, {id:'2', name:'試合'}, {id:'3', name:'イベント'}];
+            }
 
-        // イベント読み込み
-        const { data: eData } = await supabaseClient.from('events').select('*').order('start_time');
-        if (eData) events = eData;
+            // イベント読み込み
+            const { data: eData } = await supabaseClient.from('events').select('*').order('start_time');
+            if (eData) events = eData;
 
-        // 全ユーザー情報（出欠集計用）
-        const { data: uData } = await supabaseClient.from('app_users').select('email, name');
-        if (uData) appUsers = uData;
+            // 全ユーザー情報（出欠集計用）
+            const { data: uData } = await supabaseClient.from('app_users').select('email, name');
+            if (uData) appUsers = uData;
 
-        // 全員の所属グループ
-        const { data: ugData } = await supabaseClient.from('user_groups').select('*');
-        if (ugData) {
-            allUserGroups = ugData;
-            if (currentUser) userGroups = ugData.filter(u => u.user_email === currentUser.email);
-        }
+            // 全員の所属グループ
+            const { data: ugData } = await supabaseClient.from('user_groups').select('*');
+            if (ugData) {
+                allUserGroups = ugData;
+                if (currentUser) userGroups = ugData.filter(u => u.user_email === currentUser.email);
+            }
 
-        // 全員の出欠情報
-        const { data: aData } = await supabaseClient.from('attendances').select('*');
-        if (aData) {
-            allAttendances = aData;
-            if (currentUser) attendances = aData.filter(a => a.user_email === currentUser.email);
-        }
+            // 全員の出欠情報
+            const { data: aData } = await supabaseClient.from('attendances').select('*');
+            if (aData) {
+                allAttendances = aData;
+                if (currentUser) attendances = aData.filter(a => a.user_email === currentUser.email);
+            }
+        };
+
+        await Promise.race([loadProcess(), timeoutPromise]);
+
     } catch (e) {
         console.error("Attendance DB Error:", e);
+        if (e.message && e.message.includes('Timeout')) {
+            alert('通信タイムアウトによりデータの一部が読み込めませんでした。電波状況の良い場所で再度お試しください。');
+        }
         // テーブルがない場合などのエラーを握りつぶし、空の状態で動作させる
     } finally {
-        hideLoading();
+        if (typeof forceHideLoading === 'function') {
+            forceHideLoading();
+        } else {
+            hideLoading();
+        }
     }
 }
 
