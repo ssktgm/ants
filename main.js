@@ -208,6 +208,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-back-to-menu-att')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
     document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
+
+    // 既存メニューのレイアウトを正方形のグリッドに変更
+    const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+    if (menuContainer) {
+        menuContainer.classList.remove('space-y-4');
+        menuContainer.classList.add('grid', 'grid-cols-2', 'md:grid-cols-3', 'gap-4');
+    }
+
+    const btnDispatch = document.getElementById('btn-app-dispatch');
+    if (btnDispatch) {
+        btnDispatch.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-blue-600 hover:bg-blue-700 text-white';
+        btnDispatch.innerHTML = '<span class="text-4xl mb-2">🚗</span><span class="text-sm md:text-base leading-tight mt-1">配車調整</span>';
+    }
+
+    const btnAttendance = document.getElementById('btn-app-attendance');
+    if (btnAttendance) {
+        btnAttendance.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-green-600 hover:bg-green-700 text-white';
+        btnAttendance.innerHTML = '<span class="text-4xl mb-2">📅</span><span class="text-sm md:text-base leading-tight mt-1">出欠管理</span>';
+    }
 });
 
 let isPopStateNavigating = false;
@@ -320,12 +339,12 @@ if (supabaseClient) {
                 let dashMenuBtn = document.getElementById('btn-app-dashboard');
                 if (canUseDashboard) {
                     if (!dashMenuBtn) {
-                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.grid') || document.getElementById('app-menu-view')?.querySelector('.space-y-4');
                         if (menuContainer) {
                             dashMenuBtn = document.createElement('button');
                             dashMenuBtn.id = 'btn-app-dashboard';
-                            dashMenuBtn.className = 'w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 px-6 rounded-lg shadow-md transition duration-200 text-lg flex items-center justify-center';
-                            dashMenuBtn.innerHTML = '<span>成績ダッシュボード</span>';
+                            dashMenuBtn.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-indigo-600 hover:bg-indigo-700 text-white';
+                            dashMenuBtn.innerHTML = '<span class="text-4xl mb-2">📊</span><span class="text-sm md:text-base leading-tight mt-1">成績ダッシュボード</span>';
                             dashMenuBtn.onclick = async () => { 
                                 await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
                                 switchAuthScreen('dashboard-view'); 
@@ -358,14 +377,14 @@ if (supabaseClient) {
                     
                     // メインメニューに「ユーザー・グループ管理」ボタンを追加
                     if (!adminMenuBtn) {
-                        const attBtn = document.getElementById('btn-app-attendance');
-                        if (attBtn && attBtn.parentNode) {
+                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.grid') || document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                        if (menuContainer) {
                             adminMenuBtn = document.createElement('button');
                             adminMenuBtn.id = 'btn-app-users-admin';
-                            adminMenuBtn.className = 'w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition duration-200 mt-4';
-                            adminMenuBtn.textContent = 'メンバー・マスタ管理 (管理者)';
+                            adminMenuBtn.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-purple-600 hover:bg-purple-700 text-white order-last';
+                            adminMenuBtn.innerHTML = '<span class="text-4xl mb-2">⚙️</span><span class="text-sm md:text-base leading-tight mt-1">管理者<br>メニュー</span>';
                             adminMenuBtn.onclick = () => goToUsersAdmin();
-                            attBtn.parentNode.insertBefore(adminMenuBtn, attBtn.nextSibling);
+                            menuContainer.appendChild(adminMenuBtn);
                         }
                     } else {
                         adminMenuBtn.classList.remove('hidden');
