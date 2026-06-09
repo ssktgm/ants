@@ -218,14 +218,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const btnDispatch = document.getElementById('btn-app-dispatch');
     if (btnDispatch) {
-        btnDispatch.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-blue-600 hover:bg-blue-700 text-white';
-        btnDispatch.innerHTML = '<span class="text-4xl mb-2">🚗</span><span class="text-sm md:text-base leading-tight mt-1">配車調整</span>';
+        btnDispatch.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-blue-600 hover:bg-blue-700 text-white';
+        btnDispatch.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">🚗</span><span class="text-xs sm:text-sm leading-tight mt-1 block">配車調整</span>';
     }
 
     const btnAttendance = document.getElementById('btn-app-attendance');
     if (btnAttendance) {
-        btnAttendance.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-green-600 hover:bg-green-700 text-white';
-        btnAttendance.innerHTML = '<span class="text-4xl mb-2">📅</span><span class="text-sm md:text-base leading-tight mt-1">出欠管理</span>';
+        btnAttendance.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-green-600 hover:bg-green-700 text-white';
+        btnAttendance.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📅</span><span class="text-xs sm:text-sm leading-tight mt-1 block">出欠管理</span>';
     }
 });
 
@@ -343,8 +343,8 @@ if (supabaseClient) {
                         if (menuContainer) {
                             dashMenuBtn = document.createElement('button');
                             dashMenuBtn.id = 'btn-app-dashboard';
-                            dashMenuBtn.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-indigo-600 hover:bg-indigo-700 text-white';
-                            dashMenuBtn.innerHTML = '<span class="text-4xl mb-2">📊</span><span class="text-sm md:text-base leading-tight mt-1">成績ダッシュボード</span>';
+                            dashMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-indigo-600 hover:bg-indigo-700 text-white';
+                            dashMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📊</span><span class="text-[10px] sm:text-sm leading-tight mt-1 block">成績<br>ダッシュボード</span>';
                             dashMenuBtn.onclick = async () => { 
                                 await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
                                 switchAuthScreen('dashboard-view'); 
@@ -381,8 +381,8 @@ if (supabaseClient) {
                         if (menuContainer) {
                             adminMenuBtn = document.createElement('button');
                             adminMenuBtn.id = 'btn-app-users-admin';
-                            adminMenuBtn.className = 'flex flex-col items-center justify-center aspect-square rounded-xl shadow-md transition duration-200 font-bold p-4 text-center bg-purple-600 hover:bg-purple-700 text-white order-last';
-                            adminMenuBtn.innerHTML = '<span class="text-4xl mb-2">⚙️</span><span class="text-sm md:text-base leading-tight mt-1">管理者<br>メニュー</span>';
+                            adminMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-purple-600 hover:bg-purple-700 text-white order-last';
+                            adminMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">⚙️</span><span class="text-[10px] sm:text-sm leading-tight mt-1 block">管理者<br>メニュー</span>';
                             adminMenuBtn.onclick = () => goToUsersAdmin();
                             menuContainer.appendChild(adminMenuBtn);
                         }
