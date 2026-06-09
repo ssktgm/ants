@@ -159,19 +159,76 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
     document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
 
+    // 配車調整マスター画面からログUIを削除 (管理者メニューへ移動するため)
+    const oldLoadLogsBtn = document.querySelector('#view-master #btn-load-logs');
+    if (oldLoadLogsBtn) oldLoadLogsBtn.remove();
+    const oldLogList = document.querySelector('#view-master #log-list');
+    if (oldLogList) {
+        const parentBlock = oldLogList.closest('.bg-white');
+        if (parentBlock) parentBlock.remove();
+        else oldLogList.remove();
+    }
+    document.querySelectorAll('#view-master h2').forEach(h2 => {
+        if (h2.textContent.includes('操作ログ')) h2.remove();
+    });
+
+    // 管理者メニューに「操作ログ」タブを動的に追加
+    const tabMasterAdminBtn = document.getElementById('tab-master-admin');
+    if (tabMasterAdminBtn && !document.getElementById('tab-logs-admin')) {
+        const tabsContainer = tabMasterAdminBtn.parentElement;
+        const tabLogsAdmin = document.createElement('button');
+        tabLogsAdmin.id = 'tab-logs-admin';
+        tabLogsAdmin.className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
+        tabLogsAdmin.textContent = '操作ログ';
+        tabsContainer.appendChild(tabLogsAdmin);
+
+        const tabContentLogsAdmin = document.createElement('div');
+        tabContentLogsAdmin.id = 'tab-content-logs-admin';
+        tabContentLogsAdmin.className = 'hidden';
+        tabContentLogsAdmin.innerHTML = `
+            <div class="mb-4 flex space-x-2 mt-4">
+                <button id="btn-load-logs" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow font-bold">最新を読み込み</button>
+            </div>
+            <div class="bg-white p-4 rounded-lg shadow-md overflow-x-auto">
+                <div id="log-list" class="min-w-[600px] text-sm flex flex-col">
+                    <p class="text-gray-500 py-4 text-center">「最新を読み込み」ボタンを押してください</p>
+                </div>
+            </div>
+        `;
+        const tabContentMasterAdmin = document.getElementById('tab-content-master-admin');
+        if (tabContentMasterAdmin && tabContentMasterAdmin.parentElement) {
+            tabContentMasterAdmin.parentElement.appendChild(tabContentLogsAdmin);
+        }
+    }
+
     // ユーザー管理画面のタブ切り替え
-    document.getElementById('tab-users-admin')?.addEventListener('click', () => {
-        document.getElementById('tab-users-admin').className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
-        document.getElementById('tab-master-admin').className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
-        document.getElementById('tab-content-users-admin').classList.remove('hidden');
-        document.getElementById('tab-content-master-admin').classList.add('hidden');
-    });
-    document.getElementById('tab-master-admin')?.addEventListener('click', () => {
-        document.getElementById('tab-master-admin').className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
-        document.getElementById('tab-users-admin').className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
-        document.getElementById('tab-content-master-admin').classList.remove('hidden');
-        document.getElementById('tab-content-users-admin').classList.add('hidden');
-    });
+    const switchAdminTab = (activeTabId) => {
+        const tabs = [
+            { btnId: 'tab-users-admin', contentId: 'tab-content-users-admin' },
+            { btnId: 'tab-master-admin', contentId: 'tab-content-master-admin' },
+            { btnId: 'tab-logs-admin', contentId: 'tab-content-logs-admin' }
+        ];
+
+        tabs.forEach(t => {
+            const btn = document.getElementById(t.btnId);
+            const content = document.getElementById(t.contentId);
+            if (!btn || !content) return;
+
+            if (t.btnId === activeTabId) {
+                btn.className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
+                content.classList.remove('hidden');
+                if (activeTabId === 'tab-logs-admin') loadLogs();
+            } else {
+                btn.className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
+                content.classList.add('hidden');
+            }
+        });
+    };
+
+    document.getElementById('tab-users-admin')?.addEventListener('click', () => switchAdminTab('tab-users-admin'));
+    document.getElementById('tab-master-admin')?.addEventListener('click', () => switchAdminTab('tab-master-admin'));
+    document.getElementById('tab-logs-admin')?.addEventListener('click', () => switchAdminTab('tab-logs-admin'));
+    document.getElementById('btn-load-logs')?.addEventListener('click', loadLogs);
 
     // アプリメニューイベント
     document.getElementById('btn-app-dispatch')?.addEventListener('click', () => {
@@ -2238,6 +2295,18 @@ function hideDispatchMessage() { document.getElementById('dispatch-message').cla
 // View: Master ロジック
 // ==========================================
 function setupMasterEventListeners() {
+    // 配車調整マスター画面に「配車調整に戻る」導線を新設
+    const viewMasterHeader = document.querySelector('#view-master h2');
+    if (viewMasterHeader && !document.getElementById('btn-back-to-dispatch-master')) {
+        const backBtn = document.createElement('button');
+        backBtn.id = 'btn-back-to-dispatch-master';
+        backBtn.className = 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-4 py-2 rounded shadow font-bold text-sm mb-4 flex items-center w-fit';
+        backBtn.innerHTML = '<span class="mr-1">◀</span> 配車調整に戻る';
+        backBtn.addEventListener('click', () => document.getElementById('nav-dispatch')?.click());
+        
+        viewMasterHeader.parentElement.insertBefore(backBtn, viewMasterHeader);
+    }
+
     document.getElementById('add-family-button')?.addEventListener('click', handleAddFamily_master);
     familyListMasterEl?.addEventListener('click', handleFamilyAction_master);
     familyListMasterEl?.addEventListener('input', handleMemberInput_master);
