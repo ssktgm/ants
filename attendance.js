@@ -289,21 +289,30 @@ function renderCalendar() {
             const evEl = document.createElement('div');
             
             const myAtt = attendances.find(a => a.event_id === e.id);
-            let iconHtml = '';
+            let iconText = '';
+            let statusClass = 'text-gray-800'; // 出欠なしのデフォルト
             if (e.requires_attendance) {
                 const status = myAtt ? myAtt.status : '未入力';
-                if (status === '出席') iconHtml = '<span class="text-green-700 mr-0.5 font-bold leading-none">[出]</span>';
-                else if (status === '欠席') iconHtml = '<span class="text-red-500 mr-0.5 font-bold leading-none">[欠]</span>';
-                else if (status === '保留' || status === '未定') iconHtml = '<span class="text-orange-500 mr-0.5 font-bold leading-none">[保]</span>';
-                else iconHtml = '<span class="text-gray-500 mr-0.5 font-bold leading-none">[未]</span>';
+                if (status === '出席') {
+                    iconText = '出:';
+                    statusClass = 'text-blue-700 font-bold';
+                } else if (status === '欠席') {
+                    iconText = '欠:';
+                    statusClass = 'text-gray-800 line-through opacity-70'; // 少し薄くする
+                } else if (status === '保留' || status === '未定') {
+                    iconText = '保:';
+                    statusClass = 'text-gray-800';
+                } else {
+                    iconText = '未:';
+                    statusClass = 'text-red-600 font-bold';
+                }
             }
             
             const categoryObj = categories.find(c => c.name === e.category);
             const categoryColor = categoryObj?.color || '#bfdbfe';
-            evEl.className = 'text-[10px] text-gray-800 rounded px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight';
-            evEl.className = 'text-[10px] text-gray-800 rounded-none border-b border-white px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight';
+            evEl.className = `text-[10px] rounded-none border-b border-white px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight ${statusClass}`;
             evEl.style.backgroundColor = categoryColor;
-            evEl.innerHTML = `${iconHtml}${e.title}`;
+            evEl.innerHTML = `${iconText ? `<span class="mr-0.5 leading-none">${iconText}</span>` : ''}${e.title}`;
             evEl.title = e.title;
             evEl.onclick = (ev) => {
                 ev.stopPropagation();
