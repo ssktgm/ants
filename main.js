@@ -359,8 +359,8 @@ if (supabaseClient) {
         }
 
         if (session) {
-            // もしURLハッシュで明示的にログイン画面を開こうとしている場合は、現在のセッションを切断して再ログインを促す
-            if (window.location.hash === '#auth-view') {
+            // ページ初期ロード時(INITIAL_SESSION)かつ、URLハッシュで明示的にログイン画面を開こうとしている場合のみ、現在のセッションを切断
+            if (event === 'INITIAL_SESSION' && window.location.hash === '#auth-view') {
                 hideLoading();
                 await supabaseClient.auth.signOut().catch(() => {});
                 return;
