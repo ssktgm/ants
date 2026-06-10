@@ -25,7 +25,6 @@ let currentUserRole = 'user'; // 'admin' or 'user'
 // --- ローディング表示のカウント管理 ---
 let loadingCount = 0;
 let loadingDetailEl = null;
-let loadingTimeoutId = null; // 安全装置用のタイマーID
 
 function updateLoadingText(msg) {
     const overlay = document.getElementById('loading-overlay');
@@ -48,18 +47,6 @@ function showLoading(msg = '通信中...') {
     const overlay = document.getElementById('loading-overlay');
     if (overlay && loadingCount === 1) overlay.classList.remove('hidden');
     updateLoadingText(msg);
-
-    // すでに設定されているタイマーがあればクリア
-    if (loadingTimeoutId) {
-        clearTimeout(loadingTimeoutId);
-    }
-    // 10秒経ってもローディングが解除されない場合は強制解除する安全装置
-    loadingTimeoutId = setTimeout(() => {
-        if (loadingCount > 0) {
-            console.warn("Loading spinner timed out. Forcing hide.");
-            forceHideLoading();
-        }
-    }, 10000);
 }
 
 function hideLoading() {
@@ -68,10 +55,6 @@ function hideLoading() {
         loadingCount = 0;
         document.getElementById('loading-overlay')?.classList.add('hidden');
         if (loadingDetailEl) loadingDetailEl.style.opacity = '0';
-        if (loadingTimeoutId) {
-            clearTimeout(loadingTimeoutId);
-            loadingTimeoutId = null;
-        }
     }
 }
 
@@ -80,10 +63,6 @@ function forceHideLoading() {
     loadingCount = 0;
     document.getElementById('loading-overlay')?.classList.add('hidden');
     if (loadingDetailEl) loadingDetailEl.style.opacity = '0';
-    if (loadingTimeoutId) {
-        clearTimeout(loadingTimeoutId);
-        loadingTimeoutId = null;
-    }
 }
 
 // --- ローディングラッパー ---
@@ -284,18 +263,6 @@ document.addEventListener('DOMContentLoaded', () => {
         switchAuthScreen('app-menu-view');
     });
 
-    // ページ（タブ）が再びアクティブになった際に、まれにローディングが残る問題を解消するための安全装置
-    window.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && loadingCount > 0) {
-            // 一定時間経過後に強制解除
-            setTimeout(() => {
-                if (loadingCount > 0) {
-                    forceHideLoading();
-                }
-            }, 1000);
-        }
-    });
-
     document.getElementById('btn-back-to-menu-att')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
     document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
 
@@ -389,13 +356,6 @@ if (supabaseClient) {
         // DOM操作を安全に行うための内部非同期関数
         const handleAuthUI = async () => {
             if (session) {
-                // ページ初期ロード時(INITIAL_SESSION)かつ、URLハッシュで明示的にログイン画面を開こうとしている場合のみ、現在のセッションを切断
-                if (event === 'INITIAL_SESSION' && window.location.hash === '#auth-view') {
-                    hideLoading();
-                    await supabaseClient.auth.signOut().catch(() => {});
-                    return;
-                }
-
                 showLoading('ユーザー権限確認中...');
                 try {
                     const isNewLogin = !currentUser || currentUser.id !== session.user.id;
@@ -411,9 +371,7 @@ if (supabaseClient) {
                     let canUseAttendance = true;
 
                     try {
-                        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 15000));
-                        const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
-                        const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
+                        const { data: userData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
                         
                         if (userData) {
                             currentUserRole = userData.role;
@@ -606,12 +564,7 @@ async function handleClearCache(e) {
     
     showLoading('キャッシュクリア中...');
     try {
-        // 通信環境が悪くサインアウト処理がフリーズするのを防ぐため、3秒でタイムアウトさせる
-        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
-        await Promise.race([
-            supabaseClient.auth.signOut().catch(() => {}),
-            timeoutPromise
-        ]);
+        await supabaseClient.auth.signOut().catch(() => {});
         
         // LocalStorage内のSupabase関連キーを強制削除
         const keysToRemove = [];
@@ -649,14 +602,7 @@ async function handleLogin(e) {
     isAuthenticating = true;
     showLoading('ログイン認証中...');
     try {
-        // 30秒でタイムアウトするPromiseを作成（Supabaseのスリープ復帰を考慮）
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("通信がタイムアウトしました。しばらくアクセスがなかったため、サーバーの起動に時間がかかっている可能性があります。もう一度ログインをお試しください。")), 30000)
-        );
-        
-        // Supabaseのログイン処理とタイムアウトを競争させる
-        const authPromise = supabaseClient.auth.signInWithPassword({ email, password });
-        const { error } = await Promise.race([authPromise, timeoutPromise]);
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
         
         if (error) {
             if (msg) {
@@ -668,7 +614,6 @@ async function handleLogin(e) {
             }
         }
     } catch (err) {
-        forceHideLoading();
         console.error("Login Error:", err);
         const errDetail = err.message + "\n" + JSON.stringify(err, Object.getOwnPropertyNames(err));
         if (msg) {
@@ -677,21 +622,6 @@ async function handleLogin(e) {
             msg.classList.add('text-red-500');
         } else {
             alert("通信エラー詳細:\n" + errDetail);
-        }
-        
-        // パスワード間違い等の通常の認証エラー以外の場合（タイムアウトや古いセッションの不整合など）、
-        // フリーズの原因となるゴミデータを強制的にクリアする
-        if (!err.message || !err.message.toLowerCase().includes("invalid login credentials")) {
-            supabaseClient.auth.signOut().catch(() => {});
-            // LocalStorage内のSupabase関連キーを強制削除
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('sb-')) {
-                    keysToRemove.push(key);
-                }
-            }
-            keysToRemove.forEach(k => localStorage.removeItem(k));
         }
     } finally {
         hideLoading();
@@ -909,11 +839,7 @@ async function handleLogout(e) {
     if (currentUser) await logAction('LOGOUT', 'ログアウトしました');
     showLoading('ログアウト処理中...');
     try {
-        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
-        await Promise.race([
-            supabaseClient.auth.signOut().catch(() => {}),
-            timeoutPromise
-        ]);
+        await supabaseClient.auth.signOut().catch(() => {});
     } finally {
         hideLoading();
         isAppInitialized = false; // 再ログイン時にデータを再読込させる
