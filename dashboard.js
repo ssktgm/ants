@@ -5,7 +5,7 @@ let allGames = [];
 let allBatterStats = [];
 let allPitcherStats = [];
 let allPlayers = [];
-let dashboardSettings = { homeTeamNames: ['ありんこアントス', 'アントス'], defaultFilterDate: { from: '', to: '' } };
+let dashboardSettings = { homeTeamNames: ['ありんこアントス@A軍'], defaultFilterDate: { from: '', to: '', teamRegex: '', category: '' } };
 let isFilterInitialized = false;
 let charts = {};
 let personalCharts = {};
@@ -370,23 +370,32 @@ function setupDashboardUI() {
             const teamRegex = document.getElementById('setting-default-team-regex').value.trim();
             const category = document.getElementById('setting-default-category').value.trim();
             
-            showLoading('デフォルトのフィルタ設定を保存中...');
-            try {
-                const updatedFilter = { from, to, teamRegex, category };
-                const { error } = await supabaseClient.from('dashboard_settings').upsert(
-                    { key: 'defaultFilterDate', value: updatedFilter },
-                    { onConflict: 'key' }
-                );
-                if (error) throw error;
-                
-                dashboardSettings.defaultFilterDate = updatedFilter;
-                alert('デフォルトのフィルタ設定を保存しました。');
-            } catch (e) {
-                console.error(e);
-                alert('フィルタ設定の保存に失敗しました: ' + e.message);
-            } finally {
-                hideLoading();
+            const updatedFilter = { from, to, teamRegex, category };
+            
+            // localStorage に保存
+            localStorage.setItem('ants_defaultFilterDate', JSON.stringify(updatedFilter));
+            
+            // 管理者であればSupabaseにも保存して共有する
+            if (currentUserRole === 'admin') {
+                showLoading('デフォルトのフィルタ設定を保存中 (DB同期)...');
+                try {
+                    const { error } = await supabaseClient.from('dashboard_settings').upsert(
+                        { key: 'defaultFilterDate', value: updatedFilter },
+                        { onConflict: 'key' }
+                    );
+                    if (error) throw error;
+                    alert('デフォルトのフィルタ設定を保存し、DBと同期しました。');
+                } catch (e) {
+                    console.error('Supabase sync failed', e);
+                    alert('DBへの同期に失敗しましたが、このブラウザには保存されました: ' + e.message);
+                } finally {
+                    hideLoading();
+                }
+            } else {
+                alert('デフォルトのフィルタ設定をこのブラウザに保存しました。');
             }
+            
+            dashboardSettings.defaultFilterDate = updatedFilter;
         });
     }
 }
@@ -418,14 +427,19 @@ async function loadDashboardData() {
         allPitcherStats = pStatsData || [];
         allPlayers = plData || [];
         
+        // デフォルト初期値の定義
+        let homeTeamNames = ['ありんこアントス@A軍'];
+        let defaultFilterDate = { from: '', to: '', teamRegex: '', category: '' };
+
+        // 1. DB (Supabase) からの共通デフォルト設定を読み込み
         if (settingsData) {
             const homeTeamsObj = settingsData.find(s => s.key === 'homeTeamNames');
             if (homeTeamsObj && homeTeamsObj.value !== null && homeTeamsObj.value !== undefined) {
-                dashboardSettings.homeTeamNames = homeTeamsObj.value;
+                homeTeamNames = homeTeamsObj.value;
             }
             const defaultFilterObj = settingsData.find(s => s.key === 'defaultFilterDate');
             if (defaultFilterObj && defaultFilterObj.value) {
-                dashboardSettings.defaultFilterDate = {
+                defaultFilterDate = {
                     from: defaultFilterObj.value.from || '',
                     to: defaultFilterObj.value.to || '',
                     teamRegex: defaultFilterObj.value.teamRegex || '',
@@ -433,6 +447,27 @@ async function loadDashboardData() {
                 };
             }
         }
+
+        // 2. localStorage からの個人別設定を読み込み (あれば上書き)
+        const localHomeTeams = localStorage.getItem('ants_homeTeamNames');
+        if (localHomeTeams) {
+            try {
+                homeTeamNames = JSON.parse(localHomeTeams);
+            } catch (e) {
+                console.error('Failed to parse local homeTeamNames', e);
+            }
+        }
+        const localDefaultFilter = localStorage.getItem('ants_defaultFilterDate');
+        if (localDefaultFilter) {
+            try {
+                defaultFilterDate = JSON.parse(localDefaultFilter);
+            } catch (e) {
+                console.error('Failed to parse local defaultFilterDate', e);
+            }
+        }
+
+        dashboardSettings.homeTeamNames = homeTeamNames;
+        dashboardSettings.defaultFilterDate = defaultFilterDate;
 
         renderHomeTeamList();
         document.getElementById('setting-default-date-from').value = dashboardSettings.defaultFilterDate.from || '';
@@ -968,48 +1003,63 @@ async function handleAddHomeTeam() {
     const newName = input.value.trim();
     if (!newName || dashboardSettings.homeTeamNames.includes(newName)) return;
 
-    showLoading('自チーム名を追加中...');
-    try {
-        const updatedTeams = [...dashboardSettings.homeTeamNames, newName];
-        const { error } = await supabaseClient.from('dashboard_settings').upsert(
-            { key: 'homeTeamNames', value: updatedTeams },
-            { onConflict: 'key' }
-        );
-        if (error) throw error;
-        
-        dashboardSettings.homeTeamNames = updatedTeams;
-        renderHomeTeamList();
-        input.value = '';
-    } catch (e) {
-        console.error(e);
-        alert('自チーム名の追加に失敗しました: ' + e.message);
-    } finally {
-        hideLoading();
+    const updatedTeams = [...dashboardSettings.homeTeamNames, newName];
+
+    // localStorage に保存
+    localStorage.setItem('ants_homeTeamNames', JSON.stringify(updatedTeams));
+
+    // 管理者であればSupabaseにも保存して共有する
+    if (currentUserRole === 'admin') {
+        showLoading('自チーム名を追加中 (DB同期)...');
+        try {
+            const { error } = await supabaseClient.from('dashboard_settings').upsert(
+                { key: 'homeTeamNames', value: updatedTeams },
+                { onConflict: 'key' }
+            );
+            if (error) throw error;
+        } catch (e) {
+            console.error('Supabase sync failed', e);
+            console.warn('DBへの同期に失敗しましたが、このブラウザには保存されました: ' + e.message);
+        } finally {
+            hideLoading();
+        }
     }
+
+    dashboardSettings.homeTeamNames = updatedTeams;
+    renderHomeTeamList();
+    input.value = '';
+    // フィルタを再適用して描画
+    applyFiltersAndRender();
 }
 
 window.dashboard_removeHomeTeam = async function(nameToRemove) {
     if (!confirm(`「${nameToRemove}」を自チームから削除しますか？`)) return;
     
-    showLoading('自チーム名を削除中...');
-    try {
-        const updatedTeams = dashboardSettings.homeTeamNames.filter(name => name !== nameToRemove);
-        const { error } = await supabaseClient.from('dashboard_settings').upsert(
-            { key: 'homeTeamNames', value: updatedTeams },
-            { onConflict: 'key' }
-        );
-        if (error) throw error;
-        
-        dashboardSettings.homeTeamNames = updatedTeams;
-        renderHomeTeamList();
-        // 削除後に再描画
-        applyFiltersAndRender();
-    } catch (e) {
-        console.error(e);
-        alert('自チーム名の削除に失敗しました: ' + e.message);
-    } finally {
-        hideLoading();
+    const updatedTeams = dashboardSettings.homeTeamNames.filter(name => name !== nameToRemove);
+
+    // localStorage に保存
+    localStorage.setItem('ants_homeTeamNames', JSON.stringify(updatedTeams));
+
+    // 管理者であればSupabaseにも保存して共有する
+    if (currentUserRole === 'admin') {
+        showLoading('自チーム名を削除中 (DB同期)...');
+        try {
+            const { error } = await supabaseClient.from('dashboard_settings').upsert(
+                { key: 'homeTeamNames', value: updatedTeams },
+                { onConflict: 'key' }
+            );
+            if (error) throw error;
+        } catch (e) {
+            console.error('Supabase sync failed', e);
+            console.warn('DBへの同期に失敗しましたが、このブラウザからは削除されました: ' + e.message);
+        } finally {
+            hideLoading();
+        }
     }
+
+    dashboardSettings.homeTeamNames = updatedTeams;
+    renderHomeTeamList();
+    applyFiltersAndRender();
 }
 
 async function handleCsvImport() {
