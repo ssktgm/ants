@@ -538,6 +538,7 @@ if (supabaseClient) {
             }
         } else {
             currentUser = null;
+            forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
             if (document.getElementById('password-update-view').classList.contains('hidden')) {
                 switchAuthScreen('auth-view');
             }
