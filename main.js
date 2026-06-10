@@ -363,7 +363,7 @@ if (supabaseClient) {
                 let canUseAttendance = true;
 
                 try {
-                    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 8000));
+                    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 15000));
                     const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
                     const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
                     
@@ -567,9 +567,9 @@ async function handleLogin(e) {
     isAuthenticating = true;
     showLoading('ログイン認証中...');
     try {
-        // 15秒でタイムアウトするPromiseを作成
+        // 30秒でタイムアウトするPromiseを作成（Supabaseのスリープ復帰を考慮）
         const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error("通信がタイムアウトしました。ネットワーク環境を確認するか、時間をおいて再度お試しください。")), 15000)
+            setTimeout(() => reject(new Error("通信がタイムアウトしました。しばらくアクセスがなかったため、サーバーの起動に時間がかかっている可能性があります。もう一度ログインをお試しください。")), 30000)
         );
         
         // Supabaseのログイン処理とタイムアウトを競争させる

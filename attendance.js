@@ -162,7 +162,7 @@ async function loadData() {
     showLoading('イベント・出欠データ読み込み中...');
     
     const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Timeout: 通信に時間がかかりすぎています')), 15000)
+        setTimeout(() => reject(new Error('Timeout: 通信に時間がかかりすぎています。サーバーの起動待ちなどの可能性がありますので、再度お試しください。')), 30000)
     );
 
     try {
