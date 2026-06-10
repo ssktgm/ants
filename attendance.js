@@ -604,53 +604,74 @@ async function saveEvent(editEventId = null) {
     }
     const target_group_id = target_group_ids.length > 0 ? target_group_ids[0] : null;
 
-    showLoading('イベント保存中...');
-    try {
-        const startTime = `${date}T${time || '00:00'}:00`;
-        let endTime = null;
-        if (endTimeStr) endTime = `${date}T${endTimeStr}:00`;
+    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    const MAX_RETRIES = 3;
+    let attempt = 0;
 
-        const payload = {
-            title, category: category,
-            description: description,
-            location: location,
-            start_time: startTime,
-            end_time: endTime,
-            is_all_day: isAllDay,
-            requires_attendance: requires_attendance,
-            require_detailed_attendance: require_detailed_attendance,
-            attendance_deadline: attendanceDeadline,
-            target_group_id: target_group_id,
-            target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
-        };
-        
-        if (!editEventId) payload.created_by = currentUser?.email;
-        
-        if (editEventId) {
-            const { error } = await supabaseClient.from('events').update(payload).eq('id', editEventId);
-            if (error) throw error;
-            await logAction('UPDATE_EVENT', `イベント「${title}」を更新しました`);
+    while (attempt < MAX_RETRIES) {
+        attempt++;
+        if (attempt > 1) {
+            showLoading(`通信リトライ中 (${attempt - 1}/${MAX_RETRIES - 1}回目)...`);
+            await sleep(1500);
         } else {
-            const { error } = await supabaseClient.from('events').insert(payload);
-            if (error) throw error;
-            await logAction('CREATE_EVENT', `イベント「${title}」を作成しました`);
+            showLoading('イベント保存中...');
         }
-        
-        await loadData();
-        renderCalendar();
-        if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
-        
-        window.att_closeModal();
-    } catch (e) {
-        console.error('Save Event Error:', e);
-        let errMsg = e.message || String(e);
-        if (e.details) errMsg += '\nDetails: ' + e.details;
-        if (e.hint) errMsg += '\nHint: ' + e.hint;
-        if (e.code) errMsg += '\nCode: ' + e.code;
-        alert('保存エラー: ' + errMsg);
-    } finally {
-        hideLoading();
+
+        try {
+            const startTime = `${date}T${time || '00:00'}:00`;
+            let endTime = null;
+            if (endTimeStr) endTime = `${date}T${endTimeStr}:00`;
+
+            const payload = {
+                title, category: category,
+                description: description,
+                location: location,
+                start_time: startTime,
+                end_time: endTime,
+                is_all_day: isAllDay,
+                requires_attendance: requires_attendance,
+                require_detailed_attendance: require_detailed_attendance,
+                attendance_deadline: attendanceDeadline,
+                target_group_id: target_group_id,
+                target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
+            };
+            
+            if (!editEventId) payload.created_by = currentUser?.email;
+            
+            if (editEventId) {
+                const { error } = await supabaseClient.from('events').update(payload).eq('id', editEventId);
+                if (error) throw error;
+                await logAction('UPDATE_EVENT', `イベント「${title}」を更新しました`);
+            } else {
+                const { error } = await supabaseClient.from('events').insert(payload);
+                if (error) throw error;
+                await logAction('CREATE_EVENT', `イベント「${title}」を作成しました`);
+            }
+            
+            await loadData();
+            renderCalendar();
+            if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
+            
+            window.att_closeModal();
+            break;
+        } catch (e) {
+            console.error(`Save Event Attempt ${attempt} Error:`, e);
+            
+            const isNetworkError = e.message === 'Load failed' || e.message === 'Failed to fetch' || !e.code;
+            
+            if (attempt < MAX_RETRIES && isNetworkError) {
+                continue;
+            } else {
+                let errMsg = e.message || String(e);
+                if (e.details) errMsg += '\nDetails: ' + e.details;
+                if (e.hint) errMsg += '\nHint: ' + e.hint;
+                if (e.code) errMsg += '\nCode: ' + e.code;
+                alert('保存エラー: ' + errMsg + '\n（ネットワーク接続をご確認のうえ、再度お試しください）');
+                break;
+            }
+        }
     }
+    hideLoading();
 }
 
 async function deleteEvent(id) {
