@@ -370,9 +370,23 @@ function setupDashboardUI() {
             const teamRegex = document.getElementById('setting-default-team-regex').value.trim();
             const category = document.getElementById('setting-default-category').value.trim();
             
-            dashboardSettings.defaultFilterDate = { from, to, teamRegex, category };
-            await supabaseClient.from('dashboard_settings').upsert({ key: 'defaultFilterDate', value: dashboardSettings.defaultFilterDate });
-            alert('デフォルトのフィルタ設定を保存しました。');
+            showLoading('デフォルトのフィルタ設定を保存中...');
+            try {
+                const updatedFilter = { from, to, teamRegex, category };
+                const { error } = await supabaseClient.from('dashboard_settings').upsert(
+                    { key: 'defaultFilterDate', value: updatedFilter },
+                    { onConflict: 'key' }
+                );
+                if (error) throw error;
+                
+                dashboardSettings.defaultFilterDate = updatedFilter;
+                alert('デフォルトのフィルタ設定を保存しました。');
+            } catch (e) {
+                console.error(e);
+                alert('フィルタ設定の保存に失敗しました: ' + e.message);
+            } finally {
+                hideLoading();
+            }
         });
     }
 }
@@ -954,18 +968,48 @@ async function handleAddHomeTeam() {
     const newName = input.value.trim();
     if (!newName || dashboardSettings.homeTeamNames.includes(newName)) return;
 
-    dashboardSettings.homeTeamNames.push(newName);
-    await supabaseClient.from('dashboard_settings').upsert({ key: 'homeTeamNames', value: dashboardSettings.homeTeamNames });
-    renderHomeTeamList();
-    input.value = '';
+    showLoading('自チーム名を追加中...');
+    try {
+        const updatedTeams = [...dashboardSettings.homeTeamNames, newName];
+        const { error } = await supabaseClient.from('dashboard_settings').upsert(
+            { key: 'homeTeamNames', value: updatedTeams },
+            { onConflict: 'key' }
+        );
+        if (error) throw error;
+        
+        dashboardSettings.homeTeamNames = updatedTeams;
+        renderHomeTeamList();
+        input.value = '';
+    } catch (e) {
+        console.error(e);
+        alert('自チーム名の追加に失敗しました: ' + e.message);
+    } finally {
+        hideLoading();
+    }
 }
 
 window.dashboard_removeHomeTeam = async function(nameToRemove) {
-    dashboardSettings.homeTeamNames = dashboardSettings.homeTeamNames.filter(name => name !== nameToRemove);
-    await supabaseClient.from('dashboard_settings').upsert({ key: 'homeTeamNames', value: dashboardSettings.homeTeamNames });
-    renderHomeTeamList();
-    // 削除後に再描画
-    applyFiltersAndRender();
+    if (!confirm(`「${nameToRemove}」を自チームから削除しますか？`)) return;
+    
+    showLoading('自チーム名を削除中...');
+    try {
+        const updatedTeams = dashboardSettings.homeTeamNames.filter(name => name !== nameToRemove);
+        const { error } = await supabaseClient.from('dashboard_settings').upsert(
+            { key: 'homeTeamNames', value: updatedTeams },
+            { onConflict: 'key' }
+        );
+        if (error) throw error;
+        
+        dashboardSettings.homeTeamNames = updatedTeams;
+        renderHomeTeamList();
+        // 削除後に再描画
+        applyFiltersAndRender();
+    } catch (e) {
+        console.error(e);
+        alert('自チーム名の削除に失敗しました: ' + e.message);
+    } finally {
+        hideLoading();
+    }
 }
 
 async function handleCsvImport() {
