@@ -159,6 +159,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
     document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
 
+    // 管理画面にダミーユーザー追加ボタンを動的に挿入
+    const btnAdminAddUser = document.getElementById('btn-admin-add-user');
+    if (btnAdminAddUser && !document.getElementById('btn-admin-add-dummy-user')) {
+        const dummyBtn = document.createElement('button');
+        dummyBtn.id = 'btn-admin-add-dummy-user';
+        dummyBtn.className = 'ml-2 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded shadow font-bold text-sm';
+        dummyBtn.textContent = '代行専用メンバー追加';
+        dummyBtn.onclick = adminAddDummyUser;
+        btnAdminAddUser.parentNode.appendChild(dummyBtn);
+    }
+
     // 配車調整マスター画面からログUIを削除 (管理者メニューへ移動するため)
     const oldLoadLogsBtn = document.querySelector('#view-master #btn-load-logs');
     if (oldLoadLogsBtn) oldLoadLogsBtn.remove();
@@ -995,6 +1006,8 @@ async function loadAdminUsersData() {
     
         // --- ユーザー一覧ブロック ---
         const usersHtml = (usersData || []).map((u, i) => {
+            const isDummy = u.email.endsWith('@local.dummy');
+
             const groupCheckboxes = groupsData.map(g => {
                 const isMember = userGroupsData.some(ug => ug.user_email === u.email && ug.group_id === g.id);
                 return `<label class="inline-flex items-center mr-3 mb-1 cursor-pointer"><input type="checkbox" id="edit-group-${i}-${g.id}" value="${g.id}" class="mr-1" ${isMember ? 'checked' : ''}> <span class="text-sm font-medium">${g.name}</span></label>`;
@@ -1012,7 +1025,7 @@ async function loadAdminUsersData() {
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
                     <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
                     <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
-                    <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email ? 'disabled' : ''}>
+                    <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email || isDummy ? 'disabled' : ''}>
                     <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
                         <option value="">属性なし</option>
                         ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
@@ -1029,7 +1042,7 @@ async function loadAdminUsersData() {
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 shrink-0">
-                    <button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>
+                    ${!isDummy ? `<button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>` : ''}
                     ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
                 </div>
             </div>
@@ -1182,6 +1195,24 @@ window.adminAddUser = async function() {
         await supabaseClient.from('app_users').insert([{ email, role }]);
         await logAction('ADD_USER', `ユーザー「${email}」を追加しました`);
         document.getElementById('admin-add-email').value = '';
+        await loadAdminUsersData();
+    } catch (err) {
+        console.error(err);
+        alert('追加エラー: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
+    } finally {
+        hideLoading();
+    }
+};
+
+window.adminAddDummyUser = async function() {
+    const name = prompt('追加する代行専用メンバーの「氏名」を入力してください。\n（※ログインはできず、他のメンバーからの代行入力専用アカウントとなります）');
+    if (!name || name.trim() === '') return;
+    
+    const dummyEmail = `dummy_${Date.now()}@local.dummy`;
+    showLoading('代行専用メンバー追加処理中...');
+    try {
+        await supabaseClient.from('app_users').insert([{ email: dummyEmail, name: name.trim(), role: 'user' }]);
+        await logAction('ADD_DUMMY_USER', `代行専用メンバー「${name.trim()}」を追加しました`);
         await loadAdminUsersData();
     } catch (err) {
         console.error(err);

@@ -450,6 +450,11 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
     const endTimeH = endTimeVal ? endTimeVal.split(':')[0] : '';
     const endTimeM = endTimeVal ? endTimeVal.split(':')[1] : '';
 
+    const dlDate = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[0] : '';
+    const dlTime = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[1].substring(0,5) : '';
+    const dlTimeH = dlTime ? dlTime.split(':')[0] : '';
+    const dlTimeM = dlTime ? dlTime.split(':')[1] : '';
+
     const hoursOptions = (selectedVal) => '<option value="">--</option>' + Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === selectedVal ? 'selected' : ''}>${h}</option>`).join('');
     const minutesOptions = (selectedVal) => '<option value="">--</option>' + Array.from({length: 60}, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${m === selectedVal ? 'selected' : ''}>${m}</option>`).join('');
 
@@ -498,10 +503,31 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                         </div>
                     </div>
                 </div>
-                <div class="flex items-center space-x-2 mt-1 mb-2">
+                <div class="flex items-center space-x-2 mt-1 mb-2 border-b pb-2">
                     <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" ${isAllDay ? 'checked' : ''} onchange="['ev-time-h','ev-time-m','ev-end-time-h','ev-end-time-m'].forEach(id=>{const el=document.getElementById(id); el.disabled=this.checked; if(this.checked)el.value='';}); document.getElementById('ev-time-container').classList.toggle('opacity-50', this.checked); document.getElementById('ev-end-time-container').classList.toggle('opacity-50', this.checked);">
                     <label for="ev-all-day" class="font-bold text-gray-700 text-sm cursor-pointer">終日イベントにする</label>
                 </div>
+                
+                <div class="flex space-x-2 pb-2 mb-2 border-b">
+                    <div class="w-1/2">
+                        <label class="text-xs font-bold text-gray-600">出欠設定</label>
+                        <select id="ev-attendance-type" class="w-full border p-2 rounded font-bold" onchange="document.getElementById('ev-deadline-container').style.display = this.value === 'none' ? 'none' : 'block';">
+                            <option value="none" ${!reqAtt ? 'selected' : ''}>なし</option>
+                            <option value="simple" ${reqAtt && !reqDetAtt ? 'selected' : ''}>簡易</option>
+                            <option value="detailed" ${reqAtt && reqDetAtt ? 'selected' : ''}>詳細 (車・同伴者)</option>
+                        </select>
+                    </div>
+                    <div class="w-1/2" id="ev-deadline-container" style="display: ${!reqAtt ? 'none' : 'block'}">
+                        <label class="text-xs font-bold text-gray-600">回答期限</label>
+                        <div class="flex items-center space-x-0.5">
+                            <input type="date" id="ev-deadline-date" value="${dlDate}" class="w-[50%] border p-2 rounded text-sm px-1" onchange="this.blur()">
+                            <select id="ev-deadline-time-h" class="w-[25%] border p-2 rounded text-sm px-1">${hoursOptions(dlTimeH)}</select>
+                            <span class="font-bold text-gray-500">:</span>
+                            <select id="ev-deadline-time-m" class="w-[25%] border p-2 rounded text-sm px-1">${minutesOptions(dlTimeM)}</select>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex space-x-2">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">カテゴリ</label>
@@ -516,15 +542,6 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                 </div>
                 <div><label class="text-xs font-bold text-gray-600">場所</label><input type="text" id="ev-location" value="${locationVal}" placeholder="場所" class="w-full border p-2 rounded"></div>
                 <div><label class="text-xs font-bold text-gray-600">説明</label><textarea id="ev-description" placeholder="説明" class="w-full border p-2 rounded" rows="3">${descVal}</textarea></div>
-                
-                <div class="pt-2">
-                    <label class="text-xs font-bold text-gray-600">出欠設定</label>
-                    <select id="ev-attendance-type" class="w-full border p-2 rounded font-bold">
-                        <option value="none" ${!reqAtt ? 'selected' : ''}>出欠をとらない</option>
-                        <option value="simple" ${reqAtt && !reqDetAtt ? 'selected' : ''}>簡易出欠をとる (ステータス・コメントのみ)</option>
-                        <option value="detailed" ${reqAtt && reqDetAtt ? 'selected' : ''}>詳細出欠をとる (車出し・同伴者も確認)</option>
-                    </select>
-                </div>
             </div>
             <div class="flex justify-end space-x-3 mt-4 pt-4 border-t shrink-0">
                 <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded font-bold">キャンセル</button>
@@ -582,6 +599,14 @@ async function saveEvent(editEventId = null) {
     const requires_attendance = attType !== 'none';
     const require_detailed_attendance = attType === 'detailed';
     
+    const dlDate = document.getElementById('ev-deadline-date')?.value;
+    const dlH = document.getElementById('ev-deadline-time-h')?.value;
+    const dlM = document.getElementById('ev-deadline-time-m')?.value;
+    let attendanceDeadline = null;
+    if (requires_attendance && dlDate && dlH && dlM) {
+        attendanceDeadline = `${dlDate}T${dlH}:${dlM}:00`;
+    }
+
     const isAll = document.getElementById('ev-group-all').checked;
     let target_group_ids = [];
     if (!isAll) {
@@ -604,6 +629,7 @@ async function saveEvent(editEventId = null) {
             is_all_day: isAllDay,
             requires_attendance: requires_attendance,
             require_detailed_attendance: require_detailed_attendance,
+            attendance_deadline: attendanceDeadline,
             target_group_id: target_group_id,
             target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
         };
@@ -653,7 +679,7 @@ async function deleteEvent(id) {
 }
 
 // 出欠フォームを生成する共通ヘルパー（代行分も含む）
-function generateAttendanceFormsHtml(ev, groupInfo) {
+function generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline = false) {
     const canAttend = groupInfo.ids.length === 0 || userGroups.some(ug => groupInfo.ids.includes(ug.group_id));
     const targets = [{ email: currentUser.email, name: '自分 ( ' + (currentUser?.name || currentUser.email.split('@')[0]) + ' )', canAttend: canAttend }];
     
@@ -684,7 +710,7 @@ function generateAttendanceFormsHtml(ev, groupInfo) {
             <h4 class="font-bold text-blue-800 mb-2 border-b border-blue-200 pb-1">${target.name}</h4>
             <div>
                 <label class="block text-xs font-bold text-gray-700 mb-1">ステータス*</label>
-                <select id="att-status-${idx}" class="w-full border p-1.5 rounded text-sm font-bold">
+                <select id="att-status-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" ${isPastDeadline ? 'disabled' : ''}>
                     <option value="未回答" ${tStatus==='未回答'?'selected':''}>未回答</option>
                     <option value="出席" ${tStatus==='出席'?'selected':''}>出席</option>
                     <option value="欠席" ${tStatus==='欠席'?'selected':''}>欠席</option>
@@ -694,24 +720,24 @@ function generateAttendanceFormsHtml(ev, groupInfo) {
             ${ev.require_detailed_attendance ? `
                 <div class="mt-2">
                     <label class="block text-xs font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
-                    <input type="text" id="att-acc-${idx}" value="${tAtt.accompanying_persons||''}" class="w-full border p-1.5 rounded text-sm">
+                    <input type="text" id="att-acc-${idx}" value="${tAtt.accompanying_persons||''}" class="w-full border p-1.5 rounded text-sm" ${isPastDeadline ? 'disabled' : ''}>
                 </div>
                 <div class="flex items-center space-x-2 mt-2">
                     <div class="w-1/3">
                         <label class="block text-xs font-bold text-gray-700 mb-1">車出し可否</label>
-                        <select id="att-car-flag-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap-${idx}').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap-${idx}').value == 0) document.getElementById('att-car-cap-${idx}').value = 1;">
+                        <select id="att-car-flag-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap-${idx}').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap-${idx}').value == 0) document.getElementById('att-car-cap-${idx}').value = 1;" ${isPastDeadline ? 'disabled' : ''}>
                             <option value="否" ${!tAtt.car_capacity || tAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
                             <option value="可" ${tAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
                         </select>
                     </div>
                     <div class="w-2/3">
                         <label class="block text-xs font-bold text-gray-700 mb-1">乗車可能人数</label>
-                        <input type="number" id="att-car-cap-${idx}" value="${tAtt.car_capacity||0}" min="0" class="w-full border p-1.5 rounded text-sm" ${!tAtt.car_capacity || tAtt.car_capacity === 0 ? 'disabled' : ''}>
+                        <input type="number" id="att-car-cap-${idx}" value="${tAtt.car_capacity||0}" min="0" class="w-full border p-1.5 rounded text-sm" ${isPastDeadline || !tAtt.car_capacity || tAtt.car_capacity === 0 ? 'disabled' : ''}>
                     </div>
                 </div>
             ` : ''}
             <div class="mt-2">
-                <label class="block text-xs font-bold text-gray-700 mb-1">コメント</label>
+                <label class="block text-xs font-bold text-gray-700 mb-1">コメント ${isPastDeadline ? '<span class="text-red-500 font-normal">(期限後も修正可)</span>' : ''}</label>
                 <textarea id="att-comment-${idx}" class="w-full border p-1.5 rounded text-sm" rows="1">${tAtt.comment||''}</textarea>
             </div>
         </div>`;
@@ -740,6 +766,9 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     const myAtt = attendances.find(a => a.event_id === ev.id) || {};
     let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
     if (statusStr === '未定') statusStr = '保留';
+
+    const isPastDeadline = ev.attendance_deadline ? new Date() > new Date(ev.attendance_deadline) : false;
+    let deadlineStr = ev.attendance_deadline ? ev.attendance_deadline.replace('T', ' ').substring(0, 16) : '設定なし';
 
     // 所属グループ判定 (全体 or 所属しているか)
     const canAttend = groupInfo.ids.length === 0 || userGroups.some(ug => groupInfo.ids.includes(ug.group_id));
@@ -830,9 +859,11 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                     <div class="space-y-4">
                         <div class="text-sm border-b pb-2 mb-2">
                             現在のステータス: <span class="font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':'text-gray-800'}">${statusStr}</span>
+                            <br><span class="text-xs text-gray-500">回答期限: ${deadlineStr}</span>
+                            ${isPastDeadline ? `<span class="ml-2 text-red-500 font-bold text-xs bg-red-100 px-2 py-0.5 rounded shadow-sm">期限切れ</span>` : ''}
                         </div>
                         ${(() => {
-                            const { formsHtml, hasAnyForm } = generateAttendanceFormsHtml(ev, groupInfo);
+                            const { formsHtml, hasAnyForm } = generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline);
                             return formsHtml + (hasAnyForm ? `
                                 <div class="mt-4 text-right">
                                     <button onclick="window.att_saveAttendance('${ev.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow">出欠を一括保存</button>
@@ -855,7 +886,8 @@ function openAttendanceFormModal(eventId) {
     if (!ev) return;
     const groupInfo = getEventTargetGroupsInfo(ev);
     
-    const { formsHtml, hasAnyForm } = generateAttendanceFormsHtml(ev, groupInfo);
+    const isPastDeadline = ev.attendance_deadline ? new Date() > new Date(ev.attendance_deadline) : false;
+    const { formsHtml, hasAnyForm } = generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline);
     
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]">
@@ -927,7 +959,7 @@ async function saveAttendance(eventId) {
 // CSV インポート・エクスポート
 // =====================================
 function exportCsv() {
-    const header = ['タイトル', '日付', '開始時刻', '終了時刻', '終日', 'カテゴリ', '対象グループ', '場所', '出欠管理', '詳細出欠', '説明'];
+    const header = ['タイトル', '日付', '開始時刻', '終了時刻', '終日', 'カテゴリ', '対象グループ', '場所', '出欠管理', '詳細出欠', '説明', '回答期限'];
     const rows = [header.join(',')];
     
     events.forEach(e => {
@@ -955,7 +987,8 @@ function exportCsv() {
             escapeCsv(e.location),
             e.requires_attendance ? 'TRUE' : 'FALSE',
             e.require_detailed_attendance ? 'TRUE' : 'FALSE',
-            escapeCsv(e.description)
+            escapeCsv(e.description),
+            escapeCsv(e.attendance_deadline)
         ].join(','));
     });
     
@@ -1021,6 +1054,7 @@ window.att_importCsv = async function(event) {
             const reqAtt = (row[8] || '').toUpperCase() === 'TRUE' || (row[8] || '').trim() === '';
             const reqDetAtt = (row[9] || '').toUpperCase() === 'TRUE';
             const description = row[10];
+            const attendanceDeadline = row[11] || null;
             
             const startDt = `${date}T${startTime || '00:00'}:00`;
             let endDt = null;
@@ -1041,6 +1075,7 @@ window.att_importCsv = async function(event) {
                 is_all_day: isAllDay,
                 requires_attendance: reqAtt,
                 require_detailed_attendance: reqDetAtt,
+                attendance_deadline: attendanceDeadline,
                 target_group_id: target_group_id,
                 target_group_ids: target_group_ids,
                 created_by: currentUser?.email
