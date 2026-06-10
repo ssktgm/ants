@@ -643,11 +643,11 @@ async function saveEvent(editEventId = null) {
         window.att_closeModal();
     } catch (e) {
         console.error('Save Event Error:', e);
-        if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
-            alert('保存エラー: 通信に失敗しました。ネットワーク接続を確認するか、データベース(Supabase)が一時停止されていないか確認してください。');
-        } else {
-            alert('保存エラー: ' + e.message);
-        }
+        let errMsg = e.message || String(e);
+        if (e.details) errMsg += '\nDetails: ' + e.details;
+        if (e.hint) errMsg += '\nHint: ' + e.hint;
+        if (e.code) errMsg += '\nCode: ' + e.code;
+        alert('保存エラー: ' + errMsg);
     } finally {
         hideLoading();
     }
