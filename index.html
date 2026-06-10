@@ -11,6 +11,19 @@
     
     <!-- カスタムCSS -->
     <link rel="stylesheet" href="./style.css">
+    
+    <!-- 起動障害対策のセーフティネット -->
+    <script>
+        setTimeout(() => {
+            const overlay = document.getElementById('loading-overlay');
+            const authView = document.getElementById('auth-view');
+            if (overlay && !overlay.classList.contains('hidden') && authView && authView.classList.contains('hidden')) {
+                console.warn("Safety net triggered: Force hiding loading overlay due to initialization timeout.");
+                overlay.classList.add('hidden');
+                authView.classList.remove('hidden');
+            }
+        }, 5000);
+    </script>
 </head>
 <body class="bg-gray-100 font-sans">
 

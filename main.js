@@ -386,200 +386,213 @@ if (supabaseClient) {
             return;
         }
 
-        if (session) {
-            // ページ初期ロード時(INITIAL_SESSION)かつ、URLハッシュで明示的にログイン画面を開こうとしている場合のみ、現在のセッションを切断
-            if (event === 'INITIAL_SESSION' && window.location.hash === '#auth-view') {
-                hideLoading();
-                await supabaseClient.auth.signOut().catch(() => {});
-                return;
-            }
-
-            showLoading('ユーザー権限確認中...');
-            try {
-                const isNewLogin = !currentUser || currentUser.id !== session.user.id;
-                currentUser = { ...session.user };
-                
-                if (isNewLogin) {
-                    await logAction('LOGIN', 'ログインしました');
+        // DOM操作を安全に行うための内部非同期関数
+        const handleAuthUI = async () => {
+            if (session) {
+                // ページ初期ロード時(INITIAL_SESSION)かつ、URLハッシュで明示的にログイン画面を開こうとしている場合のみ、現在のセッションを切断
+                if (event === 'INITIAL_SESSION' && window.location.hash === '#auth-view') {
+                    hideLoading();
+                    await supabaseClient.auth.signOut().catch(() => {});
+                    return;
                 }
-                
-                // 管理者権限のチェック
-                let canUseDispatch = true;
-                let canUseDashboard = true;
-                let canUseAttendance = true;
 
+                showLoading('ユーザー権限確認中...');
                 try {
-                    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 15000));
-                    const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
-                    const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
+                    const isNewLogin = !currentUser || currentUser.id !== session.user.id;
+                    currentUser = { ...session.user };
                     
-                    if (userData) {
-                        currentUserRole = userData.role;
-                        currentUser.name = userData.name; // 取得したメンバー名を保持
-                        if (userData.can_use_dispatch === false) canUseDispatch = false;
-                        if (userData.can_use_dashboard === false) canUseDashboard = false;
-                        if (userData.can_use_attendance === false) canUseAttendance = false;
-                    } else {
+                    if (isNewLogin) {
+                        await logAction('LOGIN', 'ログインしました');
+                    }
+                    
+                    // 管理者権限のチェック
+                    let canUseDispatch = true;
+                    let canUseDashboard = true;
+                    let canUseAttendance = true;
+
+                    try {
+                        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve({ data: null }), 15000));
+                        const queryPromise = supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
+                        const { data: userData } = await Promise.race([queryPromise, timeoutPromise]);
+                        
+                        if (userData) {
+                            currentUserRole = userData.role;
+                            currentUser.name = userData.name; // 取得したメンバー名を保持
+                            if (userData.can_use_dispatch === false) canUseDispatch = false;
+                            if (userData.can_use_dashboard === false) canUseDashboard = false;
+                            if (userData.can_use_attendance === false) canUseAttendance = false;
+                        } else {
+                            currentUserRole = 'user';
+                        }
+                    } catch (e) {
                         currentUserRole = 'user';
                     }
-                } catch (e) {
-                    currentUserRole = 'user';
-                }
 
-                // 初期セットアップ・ロックアウト防止用: 特定のアドレスを強制的に管理者として扱う
-                if (currentUser.email === 'hishinumak@gmail.com') {
-                    currentUserRole = 'admin';
-                }
-                
-                // 管理者は無条件に全機能を利用可能とする
-                if (currentUserRole === 'admin') {
-                    canUseDispatch = true;
-                    canUseDashboard = true;
-                    canUseAttendance = true;
-                }
-
-                // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
-                let dashMenuBtn = document.getElementById('btn-app-dashboard');
-                if (canUseDashboard) {
-                    if (!dashMenuBtn) {
-                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.grid') || document.getElementById('app-menu-view')?.querySelector('.space-y-4');
-                        if (menuContainer) {
-                            dashMenuBtn = document.createElement('button');
-                            dashMenuBtn.id = 'btn-app-dashboard';
-                            dashMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-indigo-600 hover:bg-indigo-700 text-white';
-                            dashMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📊</span><span class="text-xs sm:text-sm leading-tight mt-1 block">分析</span>';
-                            dashMenuBtn.onclick = async () => { 
-                                await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
-                                switchAuthScreen('dashboard-view'); 
-                            };
-                            menuContainer.appendChild(dashMenuBtn);
-                        }
-                    } else {
-                        dashMenuBtn.classList.remove('hidden');
+                    // 初期セットアップ・ロックアウト防止用: 特定のアドレスを強制的に管理者として扱う
+                    if (currentUser.email === 'hishinumak@gmail.com') {
+                        currentUserRole = 'admin';
                     }
-                } else {
-                    if (dashMenuBtn) dashMenuBtn.classList.add('hidden');
-                }
-
-                // ロールに基づくUI制御
-                const navUsers = document.getElementById('nav-users');
-                const navMaster = document.getElementById('nav-master');
-                const navDispatch = document.getElementById('nav-dispatch');
-                const btnAppDispatch = document.getElementById('btn-app-dispatch');
-                const btnGotoMaster = document.getElementById('btn-goto-master');
-                const clearDbBtn = document.getElementById('clear-db-button');
-                
-                let adminMenuBtn = document.getElementById('btn-app-users-admin');
-
-                navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除 (全員共通)
-
-                // 上部バーの配車調整・マスタ導線の制御をロール別に復元
-                if (currentUserRole === 'admin') {
-                    navDispatch?.classList.remove('hidden');
-                    navMaster?.classList.remove('hidden');
-                } else if (currentUserRole === 'leader') {
-                    navDispatch?.classList.remove('hidden');
-                    navMaster?.classList.add('hidden');
-                } else {
-                    navDispatch?.classList.add('hidden');
-                    navMaster?.classList.add('hidden');
-                }
-
-                if (currentUserRole === 'admin') {
-                    btnGotoMaster?.classList.remove('hidden');
-                    clearDbBtn?.classList.remove('hidden');
                     
-                    // メインメニューに「ユーザー・グループ管理」ボタンを追加
-                    if (!adminMenuBtn) {
-                        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.grid') || document.getElementById('app-menu-view')?.querySelector('.space-y-4');
-                        if (menuContainer) {
-                            adminMenuBtn = document.createElement('button');
-                            adminMenuBtn.id = 'btn-app-users-admin';
-                            adminMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-purple-600 hover:bg-purple-700 text-white order-last';
-                            adminMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">⚙️</span><span class="text-[10px] sm:text-sm leading-tight mt-1 block">管理者<br>メニュー</span>';
-                            adminMenuBtn.onclick = () => goToUsersAdmin();
-                            menuContainer.appendChild(adminMenuBtn);
+                    // 管理者は無条件に全機能を利用可能とする
+                    if (currentUserRole === 'admin') {
+                        canUseDispatch = true;
+                        canUseDashboard = true;
+                        canUseAttendance = true;
+                    }
+
+                    // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
+                    let dashMenuBtn = document.getElementById('btn-app-dashboard');
+                    if (canUseDashboard) {
+                        if (!dashMenuBtn) {
+                            const menuContainer = document.getElementById('app-menu-view')?.querySelector('.grid') || document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                            if (menuContainer) {
+                                dashMenuBtn = document.createElement('button');
+                                dashMenuBtn.id = 'btn-app-dashboard';
+                                dashMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-indigo-600 hover:bg-indigo-700 text-white';
+                                dashMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📊</span><span class="text-xs sm:text-sm leading-tight mt-1 block">分析</span>';
+                                dashMenuBtn.onclick = async () => { 
+                                    await withLoading(initDashboardApp, 'ダッシュボードを準備中...'); 
+                                    switchAuthScreen('dashboard-view'); 
+                                };
+                                menuContainer.appendChild(dashMenuBtn);
+                            }
+                        } else {
+                            dashMenuBtn.classList.remove('hidden');
                         }
                     } else {
-                        adminMenuBtn.classList.remove('hidden');
+                        if (dashMenuBtn) dashMenuBtn.classList.add('hidden');
                     }
-                } else {
-                    btnGotoMaster?.classList.add('hidden');
-                    clearDbBtn?.classList.add('hidden');
-                    if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
-                }
-                
-                // 配車調整メニューの表示制御
-                if (canUseDispatch) {
-                    btnAppDispatch?.classList.remove('hidden');
-                } else {
-                    btnAppDispatch?.classList.add('hidden');
-                }
 
-                // 出欠管理メニューの表示制御
-                const btnAppAttendance = document.getElementById('btn-app-attendance');
-                if (canUseAttendance) {
-                    btnAppAttendance?.classList.remove('hidden');
-                } else {
-                    btnAppAttendance?.classList.add('hidden');
-                }
+                    // ロールに基づくUI制御
+                    const navUsers = document.getElementById('nav-users');
+                    const navMaster = document.getElementById('nav-master');
+                    const navDispatch = document.getElementById('nav-dispatch');
+                    const btnAppDispatch = document.getElementById('btn-app-dispatch');
+                    const btnGotoMaster = document.getElementById('btn-goto-master');
+                    const clearDbBtn = document.getElementById('clear-db-button');
+                    
+                    let adminMenuBtn = document.getElementById('btn-app-users-admin');
 
-                const emailDisplay = document.getElementById('user-email-display');
-                if (emailDisplay) emailDisplay.textContent = currentUser.name || currentUser.email; // 名前があれば名前を表示
+                    navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除 (全員共通)
 
-                // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
-                const hash = window.location.hash;
-                if (hash && hash !== '#app-menu-view') {
-                    const validScreens = ['app-view', 'attendance-view', 'dashboard-view'];
-                    let restored = false;
-                    for (const sId of validScreens) {
-                        if (hash.startsWith('#' + sId)) {
-                            const subView = hash.length > sId.length + 1 ? hash.substring(sId.length + 2) : null;
-                            if (sId === 'app-view') {
-                                switchAuthScreen('app-view', subView);
-                                if (!isAppInitialized) {
-                                    initApp().then(() => {
-                                        if (subView === 'users') handleNavUsers();
-                                        else if (subView === 'master') document.getElementById('nav-master')?.click();
-                                        else document.getElementById('nav-dispatch')?.click();
-                                    }).catch(err => {
-                                        console.error("App init error:", err);
+                    // 上部バーの配車調整・マスタ導線の制御をロール別に復元
+                    if (currentUserRole === 'admin') {
+                        navDispatch?.classList.remove('hidden');
+                        navMaster?.classList.remove('hidden');
+                    } else if (currentUserRole === 'leader') {
+                        navDispatch?.classList.remove('hidden');
+                        navMaster?.classList.add('hidden');
+                    } else {
+                        navDispatch?.classList.add('hidden');
+                        navMaster?.classList.add('hidden');
+                    }
+
+                    if (currentUserRole === 'admin') {
+                        btnGotoMaster?.classList.remove('hidden');
+                        clearDbBtn?.classList.remove('hidden');
+                        
+                        // メインメニューに「ユーザー・グループ管理」ボタンを追加
+                        if (!adminMenuBtn) {
+                            const menuContainer = document.getElementById('app-menu-view')?.querySelector('.grid') || document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+                            if (menuContainer) {
+                                adminMenuBtn = document.createElement('button');
+                                adminMenuBtn.id = 'btn-app-users-admin';
+                                adminMenuBtn.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-purple-600 hover:bg-purple-700 text-white order-last';
+                                adminMenuBtn.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">⚙️</span><span class="text-[10px] sm:text-sm leading-tight mt-1 block">管理者<br>メニュー</span>';
+                                adminMenuBtn.onclick = () => goToUsersAdmin();
+                                menuContainer.appendChild(adminMenuBtn);
+                            }
+                        } else {
+                            adminMenuBtn.classList.remove('hidden');
+                        }
+                    } else {
+                        btnGotoMaster?.classList.add('hidden');
+                        clearDbBtn?.classList.add('hidden');
+                        if (adminMenuBtn) adminMenuBtn.classList.add('hidden');
+                    }
+                    
+                    // 配車調整メニューの表示制御 (安全なオプショナルチェーニングに変更)
+                    if (canUseDispatch) {
+                        btnAppDispatch?.classList.remove('hidden');
+                    } else {
+                        btnAppDispatch?.classList.add('hidden');
+                    }
+
+                    // 出欠管理メニューの表示制御
+                    const btnAppAttendance = document.getElementById('btn-app-attendance');
+                    if (canUseAttendance) {
+                        btnAppAttendance?.classList.remove('hidden');
+                    } else {
+                        btnAppAttendance?.classList.add('hidden');
+                    }
+
+                    const emailDisplay = document.getElementById('user-email-display');
+                    if (emailDisplay) emailDisplay.textContent = currentUser.name || currentUser.email; // 名前があれば名前を表示
+
+                    // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
+                    const hash = window.location.hash;
+                    if (hash && hash !== '#app-menu-view') {
+                        const validScreens = ['app-view', 'attendance-view', 'dashboard-view'];
+                        let restored = false;
+                        for (const sId of validScreens) {
+                            if (hash.startsWith('#' + sId)) {
+                                const subView = hash.length > sId.length + 1 ? hash.substring(sId.length + 2) : null;
+                                if (sId === 'app-view') {
+                                    switchAuthScreen('app-view', subView);
+                                    if (!isAppInitialized) {
+                                        initApp().then(() => {
+                                            if (subView === 'users') handleNavUsers();
+                                            else if (subView === 'master') document.getElementById('nav-master')?.click();
+                                            else document.getElementById('nav-dispatch')?.click();
+                                        }).catch(err => {
+                                            console.error("App init error:", err);
+                                            forceHideLoading();
+                                        });
+                                    }
+                                } else if (sId === 'attendance-view') {
+                                    switchAuthScreen('attendance-view');
+                                    initAttendanceApp().catch(err => {
+                                        console.error("Attendance init error:", err);
+                                        forceHideLoading();
+                                    });
+                                } else if (sId === 'dashboard-view') {
+                                    switchAuthScreen('dashboard-view');
+                                    initDashboardApp().catch(err => {
+                                        console.error("Dashboard init error:", err);
                                         forceHideLoading();
                                     });
                                 }
-                            } else if (sId === 'attendance-view') {
-                                switchAuthScreen('attendance-view');
-                                initAttendanceApp().catch(err => {
-                                    console.error("Attendance init error:", err);
-                                    forceHideLoading();
-                                });
-                            } else if (sId === 'dashboard-view') {
-                                switchAuthScreen('dashboard-view');
-                                initDashboardApp().catch(err => {
-                                    console.error("Dashboard init error:", err);
-                                    forceHideLoading();
-                                });
+                                restored = true;
+                                break;
                             }
-                            restored = true;
-                            break;
                         }
+                        if (!restored) switchAuthScreen('app-menu-view');
+                    } else {
+                        switchAuthScreen('app-menu-view');
                     }
-                    if (!restored) switchAuthScreen('app-menu-view');
-                } else {
-                    switchAuthScreen('app-menu-view');
+                } catch (err) {
+                    console.error("Auth state handling error:", err);
+                    forceHideLoading();
+                } finally {
+                    hideLoading();
                 }
-            } catch (err) {
-                console.error("Auth state handling error:", err);
-                forceHideLoading();
-            } finally {
-                hideLoading();
+            } else {
+                currentUser = null;
+                forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
+                // 安全なオプショナルチェーニング（?.）に変更
+                if (document.getElementById('password-update-view')?.classList.contains('hidden')) {
+                    switchAuthScreen('auth-view');
+                }
             }
+        };
+
+        // DOMパースの完了状況に応じて実行タイミングを調整
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                handleAuthUI().catch(console.error);
+            });
         } else {
-            currentUser = null;
-            forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
-            if (document.getElementById('password-update-view').classList.contains('hidden')) {
-                switchAuthScreen('auth-view');
-            }
+            await handleAuthUI();
         }
     });
 }
