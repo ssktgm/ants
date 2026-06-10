@@ -508,10 +508,7 @@ if (supabaseClient) {
 
                     // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
                     const hash = window.location.hash;
-                    if (hash === '#auth-view') {
-                        // ログイン済みであっても、明示的にログイン画面URLが叩かれた場合はログイン画面を表示する
-                        switchAuthScreen('auth-view');
-                    } else if (hash && hash !== '#app-menu-view') {
+                    if (hash && hash !== '#app-menu-view' && hash !== '#auth-view') {
                         const validScreens = ['app-view', 'attendance-view', 'dashboard-view'];
                         let restored = false;
                         for (const sId of validScreens) {
