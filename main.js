@@ -302,7 +302,7 @@ function initAppDOM() {
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initAppDOM);
 } else {
-    initAppDOM();
+    setTimeout(initAppDOM, 0);
 }
 
 let isPopStateNavigating = false;
@@ -572,7 +572,10 @@ if (supabaseClient) {
                 handleAuthUI().catch(console.error);
             });
         } else {
-            await handleAuthUI();
+            // スクリプト全体のパース・定数評価が完了するのを待つため、非同期で実行する
+            setTimeout(() => {
+                handleAuthUI().catch(console.error);
+            }, 0);
         }
     });
 }
