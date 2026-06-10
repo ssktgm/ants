@@ -397,7 +397,7 @@ if (supabaseClient) {
             showLoading('ユーザー権限確認中...');
             try {
                 const isNewLogin = !currentUser || currentUser.id !== session.user.id;
-                currentUser = session.user;
+                currentUser = { ...session.user };
                 
                 if (isNewLogin) {
                     await logAction('LOGIN', 'ログインしました');
