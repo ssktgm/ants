@@ -25,6 +25,7 @@ let currentUserRole = 'user'; // 'admin' or 'user'
 // --- ローディング表示のカウント管理 ---
 let loadingCount = 0;
 let loadingDetailEl = null;
+let loadingTimeoutId = null; // 安全装置用のタイマーID
 
 function updateLoadingText(msg) {
     const overlay = document.getElementById('loading-overlay');
@@ -47,13 +48,30 @@ function showLoading(msg = '通信中...') {
     const overlay = document.getElementById('loading-overlay');
     if (overlay && loadingCount === 1) overlay.classList.remove('hidden');
     updateLoadingText(msg);
+
+    // すでに設定されているタイマーがあればクリア
+    if (loadingTimeoutId) {
+        clearTimeout(loadingTimeoutId);
+    }
+    // 10秒経ってもローディングが解除されない場合は強制解除する安全装置
+    loadingTimeoutId = setTimeout(() => {
+        if (loadingCount > 0) {
+            console.warn("Loading spinner timed out. Forcing hide.");
+            forceHideLoading();
+        }
+    }, 10000);
 }
+
 function hideLoading() {
     loadingCount--;
     if (loadingCount <= 0) {
         loadingCount = 0;
         document.getElementById('loading-overlay')?.classList.add('hidden');
         if (loadingDetailEl) loadingDetailEl.style.opacity = '0';
+        if (loadingTimeoutId) {
+            clearTimeout(loadingTimeoutId);
+            loadingTimeoutId = null;
+        }
     }
 }
 
@@ -62,6 +80,10 @@ function forceHideLoading() {
     loadingCount = 0;
     document.getElementById('loading-overlay')?.classList.add('hidden');
     if (loadingDetailEl) loadingDetailEl.style.opacity = '0';
+    if (loadingTimeoutId) {
+        clearTimeout(loadingTimeoutId);
+        loadingTimeoutId = null;
+    }
 }
 
 // --- ローディングラッパー ---
@@ -355,6 +377,12 @@ if (supabaseClient) {
         // パスワードリセット用リンクを踏んで戻ってきた時
         if (event === 'PASSWORD_RECOVERY') {
             switchAuthScreen('password-update-view');
+            return;
+        }
+
+        // アプリ起動済みで同じユーザーのままのトークン更新等のバックグラウンドイベントは処理をスキップ
+        if (session && isAppInitialized && currentUser && (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED')) {
+            console.log(`Bypassing auth state change handling for event: ${event}`);
             return;
         }
 
