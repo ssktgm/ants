@@ -424,9 +424,10 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
         titleVal = sourceEvent.title.replace(/"/g, '&quot;');
         if (!isEdit) titleVal += ' (コピー)';
     }
+    const isNew = !sourceEvent && !isEdit;
     const dateVal = sourceEvent && sourceEvent.start_time ? sourceEvent.start_time.split('T')[0] : dateStr;
-    const timeVal = sourceEvent && sourceEvent.start_time && !sourceEvent.is_all_day ? sourceEvent.start_time.split('T')[1].substring(0,5) : '';
-    const endTimeVal = sourceEvent && sourceEvent.end_time && !sourceEvent.is_all_day ? sourceEvent.end_time.split('T')[1].substring(0,5) : '';
+    const timeVal = sourceEvent && sourceEvent.start_time && !sourceEvent.is_all_day ? sourceEvent.start_time.split('T')[1].substring(0,5) : (isNew ? '12:30' : '');
+    const endTimeVal = sourceEvent && sourceEvent.end_time && !sourceEvent.is_all_day ? sourceEvent.end_time.split('T')[1].substring(0,5) : (isNew ? '17:00' : '');
     const isAllDay = sourceEvent ? sourceEvent.is_all_day : false;
     const categoryVal = sourceEvent ? sourceEvent.category : '';
     const locationVal = sourceEvent ? (sourceEvent.location || '').replace(/"/g, '&quot;') : '';
@@ -439,8 +440,8 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
     const endTimeH = endTimeVal ? endTimeVal.split(':')[0] : '';
     const endTimeM = endTimeVal ? endTimeVal.split(':')[1] : '';
 
-    const dlDate = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[0] : '';
-    const dlTime = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[1].substring(0,5) : '';
+    const dlDate = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[0] : (isNew ? dateVal : '');
+    const dlTime = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[1].substring(0,5) : (isNew ? '12:00' : '');
     const dlTimeH = dlTime ? dlTime.split(':')[0] : '';
     const dlTimeM = dlTime ? dlTime.split(':')[1] : '';
 
@@ -455,52 +456,52 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
         <div class="border p-2 rounded max-h-32 overflow-y-auto space-y-1 bg-white">
             <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" id="ev-group-all" value="all" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${(copyGroupIds.length === 0) ? 'checked' : ''}>
-                <span class="text-sm font-medium">全体</span>
+                <span class="text-xs font-medium">全体</span>
             </label>
             ${groups.map(g => `
                 <label class="flex items-center space-x-2 cursor-pointer">
                     <input type="checkbox" name="ev-group-cb" value="${g.id}" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${copyGroupIds.includes(g.id) ? 'checked' : ''}>
-                    <span class="text-sm">${g.name}</span>
+                    <span class="text-xs">${g.name}</span>
                 </label>
             `).join('')}
         </div>
     `;
 
     const modalHtml = `
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <h3 class="text-xl font-bold mb-4 shrink-0">${modalTitle}</h3>
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col text-sm text-gray-800">
+            <h3 class="text-lg font-bold mb-3 shrink-0">${modalTitle}</h3>
             <div class="space-y-3 overflow-y-auto pr-1 flex-1">
                 <div><label class="text-xs font-bold text-gray-600">イベント名*</label>
-                <input type="text" id="ev-title" value="${titleVal}" placeholder="イベント名" class="w-full border p-2 rounded"></div>
+                <input type="text" id="ev-title" value="${titleVal}" placeholder="イベント名" class="w-full border p-1.5 rounded text-xs"></div>
                 <div class="flex space-x-2">
-                    <div class="w-[34%]"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateVal}" class="w-full border p-2 rounded text-sm px-1" onchange="this.blur()"></div>
+                    <div class="w-[34%]"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateVal}" class="w-full border p-1.5 rounded text-xs px-1" onchange="this.blur()"></div>
                     <div id="ev-time-container" class="w-[33%] ${isAllDay ? 'opacity-50' : ''}">
                         <label class="text-xs font-bold text-gray-600">開始</label>
                         <div class="flex items-center space-x-0.5">
-                            <select id="ev-time-h" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${hoursOptions(timeH)}</select>
+                            <select id="ev-time-h" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${hoursOptions(timeH)}</select>
                             <span class="font-bold text-gray-500">:</span>
-                            <select id="ev-time-m" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${minutesOptions(timeM)}</select>
+                            <select id="ev-time-m" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${minutesOptions(timeM)}</select>
                         </div>
                     </div>
                     <div id="ev-end-time-container" class="w-[33%] ${isAllDay ? 'opacity-50' : ''}">
                         <label class="text-xs font-bold text-gray-600">終了</label>
                         <div class="flex items-center space-x-0.5">
-                            <select id="ev-end-time-h" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${hoursOptions(endTimeH)}</select>
+                            <select id="ev-end-time-h" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${hoursOptions(endTimeH)}</select>
                             <span class="font-bold text-gray-500">:</span>
-                            <select id="ev-end-time-m" class="w-full border p-2 rounded text-sm px-1" ${isAllDay ? 'disabled' : ''}>${minutesOptions(endTimeM)}</select>
+                            <select id="ev-end-time-m" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${minutesOptions(endTimeM)}</select>
                         </div>
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 mt-1 mb-2 border-b pb-2">
                     <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" ${isAllDay ? 'checked' : ''} onchange="['ev-time-h','ev-time-m','ev-end-time-h','ev-end-time-m'].forEach(id=>{const el=document.getElementById(id); el.disabled=this.checked; if(this.checked)el.value='';}); document.getElementById('ev-time-container').classList.toggle('opacity-50', this.checked); document.getElementById('ev-end-time-container').classList.toggle('opacity-50', this.checked);">
-                    <label for="ev-all-day" class="font-bold text-gray-700 text-sm cursor-pointer">終日イベントにする</label>
+                    <label for="ev-all-day" class="font-bold text-gray-700 text-xs cursor-pointer">終日イベントにする</label>
                 </div>
                 
                 <div class="flex space-x-2 pb-2 mb-2 border-b">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">出欠設定</label>
-                        <select id="ev-attendance-type" class="w-full border p-2 rounded font-bold" onchange="document.getElementById('ev-deadline-container').style.display = this.value === 'none' ? 'none' : 'block';">
+                        <select id="ev-attendance-type" class="w-full border p-1.5 rounded font-bold text-xs" onchange="document.getElementById('ev-deadline-container').style.display = this.value === 'none' ? 'none' : 'block';">
                             <option value="none" ${!reqAtt ? 'selected' : ''}>なし</option>
                             <option value="simple" ${reqAtt && !reqDetAtt ? 'selected' : ''}>簡易</option>
                             <option value="detailed" ${reqAtt && reqDetAtt ? 'selected' : ''}>詳細 (車・同伴者)</option>
@@ -509,10 +510,10 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                     <div class="w-1/2" id="ev-deadline-container" style="display: ${!reqAtt ? 'none' : 'block'}">
                         <label class="text-xs font-bold text-gray-600">回答期限</label>
                         <div class="flex items-center space-x-0.5">
-                            <input type="date" id="ev-deadline-date" value="${dlDate}" class="w-[50%] border p-2 rounded text-sm px-1" onchange="this.blur()">
-                            <select id="ev-deadline-time-h" class="w-[25%] border p-2 rounded text-sm px-1">${hoursOptions(dlTimeH)}</select>
+                            <input type="date" id="ev-deadline-date" value="${dlDate}" class="w-[50%] border p-1.5 rounded text-xs px-1" onchange="this.blur()">
+                            <select id="ev-deadline-time-h" class="w-[25%] border py-1.5 px-1 rounded text-xs">${hoursOptions(dlTimeH)}</select>
                             <span class="font-bold text-gray-500">:</span>
-                            <select id="ev-deadline-time-m" class="w-[25%] border p-2 rounded text-sm px-1">${minutesOptions(dlTimeM)}</select>
+                            <select id="ev-deadline-time-m" class="w-[25%] border py-1.5 px-1 rounded text-xs">${minutesOptions(dlTimeM)}</select>
                         </div>
                     </div>
                 </div>
@@ -520,7 +521,7 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                 <div class="flex space-x-2">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">カテゴリ</label>
-                        <select id="ev-category" class="w-full border p-2 rounded">
+                        <select id="ev-category" class="w-full border p-1.5 rounded text-xs">
                             ${categories.map(c => `<option value="${c.name}" ${c.name === categoryVal ? 'selected' : ''}>${c.name}</option>`).join('')}
                         </select>
                     </div>
@@ -529,12 +530,12 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                         ${groupCheckboxes}
                     </div>
                 </div>
-                <div><label class="text-xs font-bold text-gray-600">場所</label><input type="text" id="ev-location" value="${locationVal}" placeholder="場所" class="w-full border p-2 rounded"></div>
-                <div><label class="text-xs font-bold text-gray-600">説明</label><textarea id="ev-description" placeholder="説明" class="w-full border p-2 rounded" rows="3">${descVal}</textarea></div>
+                <div><label class="text-xs font-bold text-gray-600">場所</label><input type="text" id="ev-location" value="${locationVal}" placeholder="場所" class="w-full border p-1.5 rounded text-xs"></div>
+                <div><label class="text-xs font-bold text-gray-600">説明</label><textarea id="ev-description" placeholder="説明" class="w-full border p-1.5 rounded text-xs" rows="3">${descVal}</textarea></div>
             </div>
             <div class="flex justify-end space-x-3 mt-4 pt-4 border-t shrink-0">
-                <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded font-bold">キャンセル</button>
-                <button onclick="window.att_saveEvent(${isEdit ? `'${sourceEvent.id}'` : 'null'})" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">${isEdit ? '更新' : '保存'}</button>
+                <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-1.5 rounded font-bold text-xs">キャンセル</button>
+                <button onclick="window.att_saveEvent(${isEdit ? `'${sourceEvent.id}'` : 'null'})" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded font-bold text-xs shadow">${isEdit ? '更新' : '保存'}</button>
             </div>
         </div>
     </div>`;
