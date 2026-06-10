@@ -248,14 +248,25 @@ function setupDashboardUI() {
                             </div>
                         </div>
                         <div class="mt-6 border-t pt-4">
-                            <label class="block text-sm font-bold text-gray-700 mb-2">デフォルトのフィルタ期間</label>
-                            <div class="flex items-center space-x-2 mb-2">
-                                <input type="date" id="setting-default-date-from" class="border p-2 rounded w-full md:w-auto">
-                                <span class="text-gray-500">〜</span>
-                                <input type="date" id="setting-default-date-to" class="border p-2 rounded w-full md:w-auto">
+                            <label class="block text-sm font-bold text-gray-700 mb-2">デフォルトのフィルタ設定</label>
+                            <div class="space-y-3 max-w-md">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-semibold text-gray-600 w-24">期間:</span>
+                                    <input type="date" id="setting-default-date-from" class="border p-1.5 rounded text-sm w-full">
+                                    <span class="text-gray-500">〜</span>
+                                    <input type="date" id="setting-default-date-to" class="border p-1.5 rounded text-sm w-full">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-semibold text-gray-600 w-24">相手チーム:</span>
+                                    <input type="text" id="setting-default-team-regex" placeholder="例: イーグルス|シャークス" class="border p-1.5 rounded text-sm w-full">
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-semibold text-gray-600 w-24">カテゴリ:</span>
+                                    <input type="text" id="setting-default-category" placeholder="例: 練習試合" class="border p-1.5 rounded text-sm w-full">
+                                </div>
                             </div>
-                            <p class="text-xs text-gray-500 mb-2">※ダッシュボードを開いた時や、フィルタをクリアした時に適用される期間です。</p>
-                            <button id="btn-save-default-date" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm">保存</button>
+                            <p class="text-xs text-gray-500 mt-2 mb-3">※ダッシュボードを開いた時や、フィルタをクリアした時に適用される初期設定値です。</p>
+                            <button id="btn-save-default-date" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm">設定を保存</button>
                         </div>
                     </div>
                 </div>
@@ -337,8 +348,8 @@ function setupDashboardUI() {
         document.getElementById('btn-clear-filter').addEventListener('click', () => {
             document.getElementById('filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
             document.getElementById('filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
-            document.getElementById('filter-team-regex').value = '';
-            document.getElementById('filter-category').value = '';
+            document.getElementById('filter-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
+            document.getElementById('filter-category').value = dashboardSettings.defaultFilterDate.category || '';
             applyFiltersAndRender();
         });
 
@@ -356,9 +367,12 @@ function setupDashboardUI() {
         document.getElementById('btn-save-default-date')?.addEventListener('click', async () => {
             const from = document.getElementById('setting-default-date-from').value;
             const to = document.getElementById('setting-default-date-to').value;
-            dashboardSettings.defaultFilterDate = { from, to };
+            const teamRegex = document.getElementById('setting-default-team-regex').value.trim();
+            const category = document.getElementById('setting-default-category').value.trim();
+            
+            dashboardSettings.defaultFilterDate = { from, to, teamRegex, category };
             await supabaseClient.from('dashboard_settings').upsert({ key: 'defaultFilterDate', value: dashboardSettings.defaultFilterDate });
-            alert('デフォルトのフィルタ期間を保存しました。');
+            alert('デフォルトのフィルタ設定を保存しました。');
         });
     }
 }
@@ -397,13 +411,20 @@ async function loadDashboardData() {
             }
             const defaultFilterObj = settingsData.find(s => s.key === 'defaultFilterDate');
             if (defaultFilterObj && defaultFilterObj.value) {
-                dashboardSettings.defaultFilterDate = defaultFilterObj.value;
+                dashboardSettings.defaultFilterDate = {
+                    from: defaultFilterObj.value.from || '',
+                    to: defaultFilterObj.value.to || '',
+                    teamRegex: defaultFilterObj.value.teamRegex || '',
+                    category: defaultFilterObj.value.category || '',
+                };
             }
         }
 
         renderHomeTeamList();
         document.getElementById('setting-default-date-from').value = dashboardSettings.defaultFilterDate.from || '';
         document.getElementById('setting-default-date-to').value = dashboardSettings.defaultFilterDate.to || '';
+        document.getElementById('setting-default-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
+        document.getElementById('setting-default-category').value = dashboardSettings.defaultFilterDate.category || '';
         if (!isFilterInitialized) {
             document.getElementById('btn-clear-filter').click(); // 初回ロード時にデフォルト期間を適用
             isFilterInitialized = true;
