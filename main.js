@@ -104,7 +104,10 @@ async function logAction(actionType, details) {
 }
 
 // --- 認証 (Auth) ロジック ---
-document.addEventListener('DOMContentLoaded', () => {
+function initAppDOM() {
+    if (window.isDomInitialized) return;
+    window.isDomInitialized = true;
+
     // ページタイトルと画面内のテキストを「bb-sys for arinko ants.」に変更
     document.title = "bb-sys for arinko ants.";
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
@@ -284,7 +287,13 @@ document.addEventListener('DOMContentLoaded', () => {
         btnAttendance.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-green-600 hover:bg-green-700 text-white';
         btnAttendance.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📅</span><span class="text-xs sm:text-sm leading-tight mt-1 block">出欠管理</span>';
     }
-});
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initAppDOM);
+} else {
+    initAppDOM();
+}
 
 let isPopStateNavigating = false;
 
@@ -489,7 +498,10 @@ if (supabaseClient) {
 
                     // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
                     const hash = window.location.hash;
-                    if (hash && hash !== '#app-menu-view') {
+                    if (hash === '#auth-view') {
+                        // ログイン済みであっても、明示的にログイン画面URLが叩かれた場合はログイン画面を表示する
+                        switchAuthScreen('auth-view');
+                    } else if (hash && hash !== '#app-menu-view') {
                         const validScreens = ['app-view', 'attendance-view', 'dashboard-view'];
                         let restored = false;
                         for (const sId of validScreens) {
