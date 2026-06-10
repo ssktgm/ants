@@ -359,6 +359,13 @@ if (supabaseClient) {
         }
 
         if (session) {
+            // もしURLハッシュで明示的にログイン画面を開こうとしている場合は、現在のセッションを切断して再ログインを促す
+            if (window.location.hash === '#auth-view') {
+                hideLoading();
+                await supabaseClient.auth.signOut().catch(() => {});
+                return;
+            }
+
             showLoading('ユーザー権限確認中...');
             try {
                 const isNewLogin = !currentUser || currentUser.id !== session.user.id;
@@ -497,14 +504,23 @@ if (supabaseClient) {
                                         if (subView === 'users') handleNavUsers();
                                         else if (subView === 'master') document.getElementById('nav-master')?.click();
                                         else document.getElementById('nav-dispatch')?.click();
+                                    }).catch(err => {
+                                        console.error("App init error:", err);
+                                        forceHideLoading();
                                     });
                                 }
                             } else if (sId === 'attendance-view') {
                                 switchAuthScreen('attendance-view');
-                                initAttendanceApp();
+                                initAttendanceApp().catch(err => {
+                                    console.error("Attendance init error:", err);
+                                    forceHideLoading();
+                                });
                             } else if (sId === 'dashboard-view') {
                                 switchAuthScreen('dashboard-view');
-                                initDashboardApp();
+                                initDashboardApp().catch(err => {
+                                    console.error("Dashboard init error:", err);
+                                    forceHideLoading();
+                                });
                             }
                             restored = true;
                             break;
@@ -514,6 +530,9 @@ if (supabaseClient) {
                 } else {
                     switchAuthScreen('app-menu-view');
                 }
+            } catch (err) {
+                console.error("Auth state handling error:", err);
+                forceHideLoading();
             } finally {
                 hideLoading();
             }
