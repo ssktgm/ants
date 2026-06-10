@@ -589,7 +589,6 @@ async function saveEvent(editEventId = null) {
     }
     const target_group_id = target_group_ids.length > 0 ? target_group_ids[0] : null;
 
-    window.att_closeModal();
     showLoading('イベント保存中...');
     try {
         const startTime = `${date}T${time || '00:00'}:00`;
@@ -624,6 +623,8 @@ async function saveEvent(editEventId = null) {
         await loadData();
         renderCalendar();
         if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
+        
+        window.att_closeModal();
     } catch (e) {
         console.error('Save Event Error:', e);
         if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
@@ -638,7 +639,6 @@ async function saveEvent(editEventId = null) {
 
 async function deleteEvent(id) {
     if(!confirm("このイベントを削除しますか？")) return;
-    window.att_closeModal();
     showLoading('イベント削除中...');
     try {
         await supabaseClient.from('events').delete().eq('id', id);
@@ -646,6 +646,7 @@ async function deleteEvent(id) {
         await loadData();
         renderCalendar();
         renderList();
+        window.att_closeModal();
     } catch (e) {
         console.error(e);
     } finally { hideLoading(); }
@@ -900,8 +901,6 @@ async function saveAttendance(eventId) {
         }
     });
 
-    window.att_closeModal(); // モーダルを閉じる
-    
     showLoading('出欠保存中...');
     try {
         const { error } = await supabaseClient.from('attendances').upsert(payloads, { onConflict: 'event_id, user_email' });
@@ -912,7 +911,8 @@ async function saveAttendance(eventId) {
         await loadData(); // 再取得
         renderCalendar(); // カレンダーの表示を更新
         renderList();     // リストの表示を更新
-        window.att_openEventDetail(eventId); // 詳細画面に戻る
+        
+        window.att_openEventDetail(eventId); // 保存成功後に詳細画面に切り替える
     } catch (e) {
         console.error('Save Attendance Error:', e);
         if (e.message === 'Load failed' || e.message === 'Failed to fetch') {
