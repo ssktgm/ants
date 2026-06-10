@@ -106,186 +106,196 @@ async function logAction(actionType, details) {
 // --- 認証 (Auth) ロジック ---
 function initAppDOM() {
     if (window.isDomInitialized) return;
-    window.isDomInitialized = true;
-
-    // ページタイトルと画面内のテキストを「bb-sys for arinko ants.」に変更
-    document.title = "bb-sys for arinko ants.";
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    let node;
-    while ((node = walker.nextNode())) {
-        if (node.nodeValue.includes('配車調整アプリ')) {
-            node.nodeValue = node.nodeValue.replace(/配車調整アプリ/g, 'bb-sys for arinko ants.');
-        }
-        if (node.nodeValue.includes('少年野球に役立つツール for arinko ants.')) {
-            node.nodeValue = node.nodeValue.replace(/少年野球に役立つツール for arinko ants./g, 'bb-sys for arinko ants.');
-        }
-    }
-
-    // UI表示の初期化
-    document.documentElement.style.setProperty('--layout-columns', LAYOUT_COLUMNS);
-    window.addEventListener('resize', updateLayouts);
-    updateLayouts();
-
-    // ログインボタン等のイベント
-    document.getElementById('btn-login')?.addEventListener('click', handleLogin);
-    // フォームのsubmitイベントでログイン処理を発火（オートフィル対応）
-    document.getElementById('auth-form')?.addEventListener('submit', handleLogin);
-    document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
-    document.getElementById('btn-logout-menu')?.addEventListener('click', handleLogout);
-    document.getElementById('btn-clear-cache')?.addEventListener('click', handleClearCache);
-
-    // ビュー切り替えイベント
-    document.getElementById('link-to-signup')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('signup-view'); });
-    document.getElementById('link-to-reset')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('password-reset-view'); });
-    document.querySelectorAll('.link-back-to-login').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('auth-view'); }));
-
-    document.getElementById('btn-submit-signup')?.addEventListener('click', handleSignupRequest);
-    document.getElementById('btn-send-reset')?.addEventListener('click', handlePasswordResetRequest);
-    document.getElementById('btn-update-password')?.addEventListener('click', handlePasswordUpdate);
-
-    // パスワード変更モーダル
-    document.getElementById('btn-change-password')?.addEventListener('click', () => {
-        document.getElementById('change-password-modal')?.classList.remove('hidden');
-    });
-    document.getElementById('btn-close-change-password')?.addEventListener('click', () => {
-        document.getElementById('change-password-modal')?.classList.add('hidden');
-    });
-    document.getElementById('btn-submit-change-password')?.addEventListener('click', handlePasswordChangeInApp);
     
-    // アカウント設定等の文言を「パスワード変更」に統一
-    const btnChangePw = document.getElementById('btn-change-password');
-    if (btnChangePw) {
-        btnChangePw.textContent = 'パスワード変更';
-    }
+    try {
+        window.isDomInitialized = true;
 
-    // ユーザー管理イベント
-    document.getElementById('nav-users')?.addEventListener('click', handleNavUsers);
-    document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
-    document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
-
-    // 管理画面にダミーユーザー追加ボタンを動的に挿入
-    const btnAdminAddUser = document.getElementById('btn-admin-add-user');
-    if (btnAdminAddUser && !document.getElementById('btn-admin-add-dummy-user')) {
-        const dummyBtn = document.createElement('button');
-        dummyBtn.id = 'btn-admin-add-dummy-user';
-        dummyBtn.className = 'ml-2 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded shadow font-bold text-sm';
-        dummyBtn.textContent = '代行専用メンバー追加';
-        dummyBtn.onclick = adminAddDummyUser;
-        btnAdminAddUser.parentNode.appendChild(dummyBtn);
-    }
-
-    // 配車調整マスター画面からログUIを削除 (管理者メニューへ移動するため)
-    const oldLoadLogsBtn = document.querySelector('#view-master #btn-load-logs');
-    if (oldLoadLogsBtn) oldLoadLogsBtn.remove();
-    const oldLogList = document.querySelector('#view-master #log-list');
-    if (oldLogList) {
-        const parentBlock = oldLogList.closest('.bg-white');
-        if (parentBlock) parentBlock.remove();
-        else oldLogList.remove();
-    }
-    document.querySelectorAll('#view-master h2').forEach(h2 => {
-        if (h2.textContent.includes('操作ログ')) h2.remove();
-    });
-
-    // 管理者メニューに「操作ログ」タブを動的に追加
-    const tabMasterAdminBtn = document.getElementById('tab-master-admin');
-    if (tabMasterAdminBtn && !document.getElementById('tab-logs-admin')) {
-        const tabsContainer = tabMasterAdminBtn.parentElement;
-        const tabLogsAdmin = document.createElement('button');
-        tabLogsAdmin.id = 'tab-logs-admin';
-        tabLogsAdmin.className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
-        tabLogsAdmin.textContent = '操作ログ';
-        tabsContainer.appendChild(tabLogsAdmin);
-
-        const tabContentLogsAdmin = document.createElement('div');
-        tabContentLogsAdmin.id = 'tab-content-logs-admin';
-        tabContentLogsAdmin.className = 'hidden';
-        tabContentLogsAdmin.innerHTML = `
-            <div class="mb-4 flex space-x-2 mt-4">
-                <button id="btn-load-logs" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow font-bold">最新を読み込み</button>
-            </div>
-            <div class="bg-white p-4 rounded-lg shadow-md overflow-x-auto">
-                <div id="log-list" class="min-w-[600px] text-sm flex flex-col">
-                    <p class="text-gray-500 py-4 text-center">「最新を読み込み」ボタンを押してください</p>
-                </div>
-            </div>
-        `;
-        const tabContentMasterAdmin = document.getElementById('tab-content-master-admin');
-        if (tabContentMasterAdmin && tabContentMasterAdmin.parentElement) {
-            tabContentMasterAdmin.parentElement.appendChild(tabContentLogsAdmin);
+        // ページタイトルと画面内のテキストを「bb-sys for arinko ants.」に変更
+        document.title = "bb-sys for arinko ants.";
+        
+        if (document.body) {
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+            let node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeValue.includes('配車調整アプリ')) {
+                    node.nodeValue = node.nodeValue.replace(/配車調整アプリ/g, 'bb-sys for arinko ants.');
+                }
+                if (node.nodeValue.includes('少年野球に役立つツール for arinko ants.')) {
+                    node.nodeValue = node.nodeValue.replace(/少年野球に役立つツール for arinko ants./g, 'bb-sys for arinko ants.');
+                }
+            }
         }
-    }
 
-    // ユーザー管理画面のタブ切り替え
-    const switchAdminTab = (activeTabId) => {
-        const tabs = [
-            { btnId: 'tab-users-admin', contentId: 'tab-content-users-admin' },
-            { btnId: 'tab-master-admin', contentId: 'tab-content-master-admin' },
-            { btnId: 'tab-logs-admin', contentId: 'tab-content-logs-admin' }
-        ];
+        // UI表示の初期化
+        document.documentElement.style.setProperty('--layout-columns', LAYOUT_COLUMNS);
+        window.addEventListener('resize', updateLayouts);
+        updateLayouts();
 
-        tabs.forEach(t => {
-            const btn = document.getElementById(t.btnId);
-            const content = document.getElementById(t.contentId);
-            if (!btn || !content) return;
+        // ログインボタン等のイベント
+        document.getElementById('btn-login')?.addEventListener('click', handleLogin);
+        // フォームのsubmitイベントでログイン処理を発火（オートフィル対応）
+        document.getElementById('auth-form')?.addEventListener('submit', handleLogin);
+        document.getElementById('btn-logout')?.addEventListener('click', handleLogout);
+        document.getElementById('btn-logout-menu')?.addEventListener('click', handleLogout);
+        document.getElementById('btn-clear-cache')?.addEventListener('click', handleClearCache);
 
-            if (t.btnId === activeTabId) {
-                btn.className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
-                content.classList.remove('hidden');
-                if (activeTabId === 'tab-logs-admin') loadLogs();
+        // ビュー切り替えイベント
+        document.getElementById('link-to-signup')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('signup-view'); });
+        document.getElementById('link-to-reset')?.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('password-reset-view'); });
+        document.querySelectorAll('.link-back-to-login').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); switchAuthScreen('auth-view'); }));
+
+        document.getElementById('btn-submit-signup')?.addEventListener('click', handleSignupRequest);
+        document.getElementById('btn-send-reset')?.addEventListener('click', handlePasswordResetRequest);
+        document.getElementById('btn-update-password')?.addEventListener('click', handlePasswordUpdate);
+
+        // パスワード変更モーダル
+        document.getElementById('btn-change-password')?.addEventListener('click', () => {
+            document.getElementById('change-password-modal')?.classList.remove('hidden');
+        });
+        document.getElementById('btn-close-change-password')?.addEventListener('click', () => {
+            document.getElementById('change-password-modal')?.classList.add('hidden');
+        });
+        document.getElementById('btn-submit-change-password')?.addEventListener('click', handlePasswordChangeInApp);
+        
+        // アカウント設定等の文言を「パスワード変更」に統一
+        const btnChangePw = document.getElementById('btn-change-password');
+        if (btnChangePw) {
+            btnChangePw.textContent = 'パスワード変更';
+        }
+
+        // ユーザー管理イベント
+        document.getElementById('nav-users')?.addEventListener('click', handleNavUsers);
+        document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
+        document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
+
+        // 管理画面にダミーユーザー追加ボタンを動的に挿入
+        const btnAdminAddUser = document.getElementById('btn-admin-add-user');
+        if (btnAdminAddUser && !document.getElementById('btn-admin-add-dummy-user')) {
+            const dummyBtn = document.createElement('button');
+            dummyBtn.id = 'btn-admin-add-dummy-user';
+            dummyBtn.className = 'ml-2 bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded shadow font-bold text-sm';
+            dummyBtn.textContent = '代行専用メンバー追加';
+            dummyBtn.onclick = adminAddDummyUser;
+            btnAdminAddUser.parentNode?.appendChild(dummyBtn);
+        }
+
+        // 配車調整マスター画面からログUIを削除 (管理者メニューへ移動するため)
+        const oldLoadLogsBtn = document.querySelector('#view-master #btn-load-logs');
+        if (oldLoadLogsBtn) oldLoadLogsBtn.remove();
+        const oldLogList = document.querySelector('#view-master #log-list');
+        if (oldLogList) {
+            const parentBlock = oldLogList.closest('.bg-white');
+            if (parentBlock) parentBlock.remove();
+            else oldLogList.remove();
+        }
+        document.querySelectorAll('#view-master h2').forEach(h2 => {
+            if (h2.textContent.includes('操作ログ')) h2.remove();
+        });
+
+        // 管理者メニューに「操作ログ」タブを動的に追加
+        const tabMasterAdminBtn = document.getElementById('tab-master-admin');
+        if (tabMasterAdminBtn && !document.getElementById('tab-logs-admin')) {
+            const tabsContainer = tabMasterAdminBtn.parentElement;
+            const tabLogsAdmin = document.createElement('button');
+            tabLogsAdmin.id = 'tab-logs-admin';
+            tabLogsAdmin.className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
+            tabLogsAdmin.textContent = '操作ログ';
+            tabsContainer?.appendChild(tabLogsAdmin);
+
+            const tabContentLogsAdmin = document.createElement('div');
+            tabContentLogsAdmin.id = 'tab-content-logs-admin';
+            tabContentLogsAdmin.className = 'hidden';
+            tabContentLogsAdmin.innerHTML = `
+                <div class="mb-4 flex space-x-2 mt-4">
+                    <button id="btn-load-logs" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow font-bold">最新を読み込み</button>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-md overflow-x-auto">
+                    <div id="log-list" class="min-w-[600px] text-sm flex flex-col">
+                        <p class="text-gray-500 py-4 text-center">「最新を読み込み」ボタンを押してください</p>
+                    </div>
+                </div>
+            `;
+            const tabContentMasterAdmin = document.getElementById('tab-content-master-admin');
+            if (tabContentMasterAdmin && tabContentMasterAdmin.parentElement) {
+                tabContentMasterAdmin.parentElement.appendChild(tabContentLogsAdmin);
+            }
+        }
+
+        // ユーザー管理画面のタブ切り替え
+        const switchAdminTab = (activeTabId) => {
+            const tabs = [
+                { btnId: 'tab-users-admin', contentId: 'tab-content-users-admin' },
+                { btnId: 'tab-master-admin', contentId: 'tab-content-master-admin' },
+                { btnId: 'tab-logs-admin', contentId: 'tab-content-logs-admin' }
+            ];
+
+            tabs.forEach(t => {
+                const btn = document.getElementById(t.btnId);
+                const content = document.getElementById(t.contentId);
+                if (!btn || !content) return;
+
+                if (t.btnId === activeTabId) {
+                    btn.className = 'px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 transition-colors';
+                    content.classList.remove('hidden');
+                    if (activeTabId === 'tab-logs-admin') loadLogs();
+                } else {
+                    btn.className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
+                    content.classList.add('hidden');
+                }
+            });
+        };
+
+        document.getElementById('tab-users-admin')?.addEventListener('click', () => switchAdminTab('tab-users-admin'));
+        document.getElementById('tab-master-admin')?.addEventListener('click', () => switchAdminTab('tab-master-admin'));
+        document.getElementById('tab-logs-admin')?.addEventListener('click', () => switchAdminTab('tab-logs-admin'));
+        document.getElementById('btn-load-logs')?.addEventListener('click', loadLogs);
+
+        // アプリメニューイベント
+        document.getElementById('btn-app-dispatch')?.addEventListener('click', () => {
+            switchAuthScreen('app-view', 'dispatch');
+            if (!isAppInitialized) {
+                initApp();
             } else {
-                btn.className = 'px-4 py-2 font-bold text-gray-500 hover:text-gray-700 border-b-2 border-transparent transition-colors';
-                content.classList.add('hidden');
+                document.getElementById('nav-dispatch')?.click();
             }
         });
-    };
+        document.getElementById('btn-app-attendance')?.addEventListener('click', async () => {
+            switchAuthScreen('attendance-view');
+            await withLoading(initAttendanceApp, '出欠管理画面を準備中...');
+        });
+        document.getElementById('btn-app-dashboard')?.addEventListener('click', async () => {
+            await withLoading(initDashboardApp, 'ダッシュボードを準備中...');
+            switchAuthScreen('dashboard-view');
+        });
+        document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
+            switchAuthScreen('app-menu-view');
+        });
 
-    document.getElementById('tab-users-admin')?.addEventListener('click', () => switchAdminTab('tab-users-admin'));
-    document.getElementById('tab-master-admin')?.addEventListener('click', () => switchAdminTab('tab-master-admin'));
-    document.getElementById('tab-logs-admin')?.addEventListener('click', () => switchAdminTab('tab-logs-admin'));
-    document.getElementById('btn-load-logs')?.addEventListener('click', loadLogs);
+        document.getElementById('btn-back-to-menu-att')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
+        document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
 
-    // アプリメニューイベント
-    document.getElementById('btn-app-dispatch')?.addEventListener('click', () => {
-        switchAuthScreen('app-view', 'dispatch');
-        if (!isAppInitialized) {
-            initApp();
-        } else {
-            document.getElementById('nav-dispatch')?.click();
+        // 既存メニューのレイアウトを正方形のグリッドに変更
+        const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
+        if (menuContainer) {
+            menuContainer.classList.remove('space-y-4');
+            menuContainer.classList.add('grid', 'grid-cols-2', 'md:grid-cols-3', 'gap-4');
         }
-    });
-    document.getElementById('btn-app-attendance')?.addEventListener('click', async () => {
-        switchAuthScreen('attendance-view');
-        await withLoading(initAttendanceApp, '出欠管理画面を準備中...');
-    });
-    document.getElementById('btn-app-dashboard')?.addEventListener('click', async () => {
-        await withLoading(initDashboardApp, 'ダッシュボードを準備中...');
-        switchAuthScreen('dashboard-view');
-    });
-    document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
-        switchAuthScreen('app-menu-view');
-    });
 
-    document.getElementById('btn-back-to-menu-att')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
-    document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
+        const btnDispatch = document.getElementById('btn-app-dispatch');
+        if (btnDispatch) {
+            btnDispatch.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-blue-600 hover:bg-blue-700 text-white';
+            btnDispatch.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">🚗</span><span class="text-xs sm:text-sm leading-tight mt-1 block">配車調整</span>';
+        }
 
-    // 既存メニューのレイアウトを正方形のグリッドに変更
-    const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
-    if (menuContainer) {
-        menuContainer.classList.remove('space-y-4');
-        menuContainer.classList.add('grid', 'grid-cols-2', 'md:grid-cols-3', 'gap-4');
-    }
-
-    const btnDispatch = document.getElementById('btn-app-dispatch');
-    if (btnDispatch) {
-        btnDispatch.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-blue-600 hover:bg-blue-700 text-white';
-        btnDispatch.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">🚗</span><span class="text-xs sm:text-sm leading-tight mt-1 block">配車調整</span>';
-    }
-
-    const btnAttendance = document.getElementById('btn-app-attendance');
-    if (btnAttendance) {
-        btnAttendance.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-green-600 hover:bg-green-700 text-white';
-        btnAttendance.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📅</span><span class="text-xs sm:text-sm leading-tight mt-1 block">出欠管理</span>';
+        const btnAttendance = document.getElementById('btn-app-attendance');
+        if (btnAttendance) {
+            btnAttendance.className = 'flex flex-col items-center justify-center aspect-square overflow-hidden rounded-xl shadow-md transition duration-200 font-bold p-2 sm:p-4 text-center bg-green-600 hover:bg-green-700 text-white';
+            btnAttendance.innerHTML = '<span class="text-3xl sm:text-4xl mb-1 sm:mb-2 block">📅</span><span class="text-xs sm:text-sm leading-tight mt-1 block">出欠管理</span>';
+        }
+    } catch (e) {
+        console.error("DOM Initialization failed:", e);
+        forceHideLoading();
+        switchAuthScreen('auth-view');
     }
 }
 
@@ -549,8 +559,8 @@ if (supabaseClient) {
             } else {
                 currentUser = null;
                 forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
-                // 安全なオプショナルチェーニング（?.）に変更
-                if (document.getElementById('password-update-view')?.classList.contains('hidden')) {
+                const pwUpdateEl = document.getElementById('password-update-view');
+                if (!pwUpdateEl || pwUpdateEl.classList.contains('hidden')) {
                     switchAuthScreen('auth-view');
                 }
             }
