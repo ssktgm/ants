@@ -716,6 +716,17 @@ function generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline = false) {
         let tStatus = tAtt.status || '未回答';
         if (tStatus === '未定') tStatus = '保留';
         
+        // 荷物車対応のパース
+        let luggageCarInit = '否';
+        let displayComment = tAtt.comment || '';
+        if (displayComment.startsWith('[荷物車:可]')) {
+            luggageCarInit = '可';
+            displayComment = displayComment.substring(8);
+        } else if (displayComment.startsWith('[荷物車:否]')) {
+            luggageCarInit = '否';
+            displayComment = displayComment.substring(8);
+        }
+        
         return `
         <div class="p-3 bg-blue-50 border border-blue-100 rounded mb-3" data-target-email="${target.email}">
             <h4 class="font-bold text-blue-800 mb-2 border-b border-blue-200 pb-1">${target.name}</h4>
@@ -736,20 +747,27 @@ function generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline = false) {
                 <div class="flex items-center space-x-2 mt-2">
                     <div class="w-1/3">
                         <label class="block text-xs font-bold text-gray-700 mb-1">車出し可否</label>
-                        <select id="att-car-flag-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap-${idx}').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap-${idx}').value == 0) document.getElementById('att-car-cap-${idx}').value = 1;" ${isPastDeadline ? 'disabled' : ''}>
+                        <select id="att-car-flag-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" onchange="const isCar = this.value === '可'; document.getElementById('att-car-cap-${idx}').disabled = !isCar; document.getElementById('att-luggage-flag-${idx}').disabled = !isCar; if(isCar && document.getElementById('att-car-cap-${idx}').value == 0) document.getElementById('att-car-cap-${idx}').value = 1;" ${isPastDeadline ? 'disabled' : ''}>
                             <option value="否" ${!tAtt.car_capacity || tAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
                             <option value="可" ${tAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
                         </select>
                     </div>
-                    <div class="w-2/3">
+                    <div class="w-1/3">
                         <label class="block text-xs font-bold text-gray-700 mb-1">乗車可能人数</label>
                         <input type="number" id="att-car-cap-${idx}" value="${tAtt.car_capacity||0}" min="0" class="w-full border p-1.5 rounded text-sm" ${isPastDeadline || !tAtt.car_capacity || tAtt.car_capacity === 0 ? 'disabled' : ''}>
+                    </div>
+                    <div class="w-1/3">
+                        <label class="block text-xs font-bold text-gray-700 mb-1">荷物車対応</label>
+                        <select id="att-luggage-flag-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" ${isPastDeadline || !tAtt.car_capacity || tAtt.car_capacity === 0 ? 'disabled' : ''}>
+                            <option value="否" ${luggageCarInit === '否' ? 'selected' : ''}>否</option>
+                            <option value="可" ${luggageCarInit === '可' ? 'selected' : ''}>可</option>
+                        </select>
                     </div>
                 </div>
             ` : ''}
             <div class="mt-2">
                 <label class="block text-xs font-bold text-gray-700 mb-1">コメント ${isPastDeadline ? '<span class="text-red-500 font-normal">(期限後も修正可)</span>' : ''}</label>
-                <textarea id="att-comment-${idx}" class="w-full border p-1.5 rounded text-sm" rows="1">${tAtt.comment||''}</textarea>
+                <textarea id="att-comment-${idx}" class="w-full border p-1.5 rounded text-sm" rows="1">${displayComment}</textarea>
             </div>
         </div>`;
     }).join('');
@@ -804,31 +822,72 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
         targetUsers.forEach(u => {
             const att = evAtts.find(a => a.user_email === u.email);
             const userName = u.name || u.email.split('@')[0];
-            if (!att || att.status === '未回答' || !att.status) unassigned.push(userName);
-            else if (att.status === '出席') attending.push(userName);
-            else if (att.status === '欠席') absent.push(userName);
-            else pending.push(userName); // 保留
+            if (!att || att.status === '未回答' || !att.status) {
+                unassigned.push(userName);
+                return;
+            }
+
+            // コメントから荷物車プレフィックスをパース
+            let displayComment = att.comment || '';
+            let luggageCar = '否';
+            if (displayComment.startsWith('[荷物車:可]')) {
+                luggageCar = '可';
+                displayComment = displayComment.substring(8);
+            } else if (displayComment.startsWith('[荷物車:否]')) {
+                luggageCar = '否';
+                displayComment = displayComment.substring(8);
+            }
+
+            // 表示用詳細情報の組み立て
+            let details = [];
+            
+            if (ev.require_detailed_attendance) {
+                // 詳細出欠の場合
+                // 同伴者
+                if (att.accompanying_persons) {
+                    details.push(`同伴: ${att.accompanying_persons}`);
+                }
+                // 車出し
+                if (att.car_capacity && att.car_capacity > 0) {
+                    details.push(`車出: 可[${att.car_capacity}人]`);
+                    details.push(`荷物車: ${luggageCar}`);
+                } else {
+                    details.push(`車出: 否`);
+                }
+            }
+            
+            // メモ（コメント）
+            if (displayComment.trim()) {
+                details.push(`メモ: ${displayComment.trim()}`);
+            }
+
+            const detailStr = details.length > 0 ? ` <span class="text-[10px] text-gray-500 font-normal">(${details.join(', ')})</span>` : '';
+            const itemHtml = `<div class="py-1 border-b border-gray-100 last:border-0"><span class="font-semibold text-gray-800">${userName}</span>${detailStr}</div>`;
+
+            if (att.status === '出席') attending.push(itemHtml);
+            else if (att.status === '欠席') absent.push(itemHtml);
+            else pending.push(itemHtml); // 保留
         });
         
         attendanceSummaryHtml = `
             <div class="mt-4 border-t pt-4">
                 <h4 class="font-bold text-gray-700 mb-2">メンバーの出欠状況</h4>
-                <div class="grid grid-cols-2 gap-2 text-sm">
-                    <div class="bg-green-50 p-2 rounded border border-green-100">
-                        <div class="font-bold text-green-700 mb-1 flex justify-between items-center"><span>出席</span><span class="bg-green-200 text-green-800 px-1.5 py-0.5 rounded-full text-xs">${attending.length}</span></div>
-                        <div class="text-xs text-gray-600 break-words">${attending.join(', ') || 'なし'}</div>
+                <div class="grid grid-cols-1 gap-3 text-sm">
+                    <div class="bg-green-50 p-2.5 rounded border border-green-100">
+                        <div class="font-bold text-green-700 mb-1.5 flex justify-between items-center"><span>出席</span><span class="bg-green-200 text-green-800 px-1.5 py-0.5 rounded-full text-xs">${attending.length}</span></div>
+                        <div class="text-xs text-gray-600 break-all space-y-0.5 max-h-40 overflow-y-auto">${attending.join('') || 'なし'}</div>
                     </div>
-                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
-                        <div class="font-bold text-gray-700 mb-1 flex justify-between items-center"><span>欠席</span><span class="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs">${absent.length}</span></div>
-                        <div class="text-xs text-gray-600 break-words">${absent.join(', ') || 'なし'}</div>
+                    <div class="bg-gray-50 p-2.5 rounded border border-gray-200">
+                        <div class="font-bold text-gray-700 mb-1.5 flex justify-between items-center"><span>欠席</span><span class="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs">${absent.length}</span></div>
+                        <div class="text-xs text-gray-600 break-all space-y-0.5 max-h-40 overflow-y-auto">${absent.join('') || 'なし'}</div>
                     </div>
-                    <div class="bg-orange-50 p-2 rounded border border-orange-100">
-                        <div class="font-bold text-orange-700 mb-1 flex justify-between items-center"><span>保留</span><span class="bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full text-xs">${pending.length}</span></div>
-                        <div class="text-xs text-gray-600 break-words">${pending.join(', ') || 'なし'}</div>
+                    <div class="bg-orange-50 p-2.5 rounded border border-orange-100">
+                        <div class="font-bold text-orange-700 mb-1.5 flex justify-between items-center"><span>保留</span><span class="bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full text-xs">${pending.length}</span></div>
+                        <div class="text-xs text-gray-600 break-all space-y-0.5 max-h-40 overflow-y-auto">${pending.join('') || 'なし'}</div>
                     </div>
-                    <div class="bg-blue-50 p-2 rounded border border-blue-100">
-                        <div class="font-bold text-blue-700 mb-1 flex justify-between items-center"><span>未回答</span><span class="bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full text-xs">${unassigned.length}</span></div>
-                        <div class="text-xs text-gray-600 break-words">${unassigned.join(', ') || 'なし'}</div>
+                    <div class="bg-blue-50 p-2.5 rounded border border-blue-100">
+                        <div class="font-bold text-blue-700 mb-1.5 flex justify-between items-center"><span>未回答</span><span class="bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full text-xs">${unassigned.length}</span></div>
+                        <div class="text-xs text-gray-600 break-all max-h-24 overflow-y-auto">${unassigned.join(', ') || 'なし'}</div>
                     </div>
                 </div>
             </div>
@@ -919,6 +978,9 @@ function openAttendanceFormModal(eventId) {
 async function saveAttendance(eventId) {
     const containers = document.querySelectorAll('[data-target-email]');
     if (containers.length === 0) return window.att_closeModal();
+
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
     
     const payloads = [];
     containers.forEach((container) => {
@@ -928,17 +990,28 @@ async function saveAttendance(eventId) {
             const accEl = container.querySelector('input[id^="att-acc-"]');
             const carFlagEl = container.querySelector('select[id^="att-car-flag-"]');
             const carCapEl = container.querySelector('input[id^="att-car-cap-"]');
+            const luggageFlagEl = container.querySelector('select[id^="att-luggage-flag-"]');
             const commentEl = container.querySelector('textarea[id^="att-comment-"]');
             
             const carFlag = carFlagEl ? carFlagEl.value : '否';
+            const carCapacity = carFlag === '可' && carCapEl ? (parseInt(carCapEl.value) || 0) : 0;
+            
+            let finalComment = commentEl ? commentEl.value.trim() : '';
+            
+            // 詳細出欠かつ車出し「可」の場合、荷物車フラグをコメントのプレフィックスに埋め込む
+            if (ev.require_detailed_attendance && carFlag === '可') {
+                const luggageCar = luggageFlagEl ? luggageFlagEl.value : '否';
+                finalComment = `[荷物車:${luggageCar}]` + finalComment;
+            }
+            
             payloads.push({
                 event_id: eventId,
                 user_email: targetEmail,
                 status: statusEl.value,
                 accompanying_persons: accEl ? accEl.value : '',
-                car_capacity: carFlag === '可' && carCapEl ? (parseInt(carCapEl.value) || 0) : 0,
+                car_capacity: carCapacity,
                 separate_action: null,
-                comment: commentEl ? commentEl.value : '',
+                comment: finalComment,
                 updated_at: new Date().toISOString()
             });
         }
