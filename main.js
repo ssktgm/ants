@@ -472,8 +472,18 @@ if (supabaseClient) {
                 let adminMenuBtn = document.getElementById('btn-app-users-admin');
 
                 navUsers?.classList.add('hidden'); // 配車調整内のユーザー管理への導線を削除 (全員共通)
-                navDispatch?.classList.add('hidden'); // 上部バーの配車調整導線を削除
-                navMaster?.classList.add('hidden'); // 上部バーの配車マスタ導線を削除
+
+                // 上部バーの配車調整・マスタ導線の制御をロール別に復元
+                if (currentUserRole === 'admin') {
+                    navDispatch?.classList.remove('hidden');
+                    navMaster?.classList.remove('hidden');
+                } else if (currentUserRole === 'leader') {
+                    navDispatch?.classList.remove('hidden');
+                    navMaster?.classList.add('hidden');
+                } else {
+                    navDispatch?.classList.add('hidden');
+                    navMaster?.classList.add('hidden');
+                }
 
                 if (currentUserRole === 'admin') {
                     btnGotoMaster?.classList.remove('hidden');
