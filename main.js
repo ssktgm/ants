@@ -1863,8 +1863,25 @@ function handleExclusionChange(e) { const t=e.target; if(t.dataset.action==='exc
 
 function handleAssignment() {
     if (selectedCarIds.size === 0) return showDispatchMessage('車を選択してください', 'error');
-    eventInfo = { date: document.getElementById('event-date').value, name: document.getElementById('event-name').value, timeline: document.getElementById('event-timeline').value, notes: document.getElementById('event-notes').value };
-    parkingInfo = { groundName: document.getElementById('ground-name').value, designated: { name: document.getElementById('parking-designated-name').value||'指定駐車場', limit: parseInt(document.getElementById('parking-designated-limit').value)||999, memo: document.getElementById('parking-designated-memo').value }, other: { name: document.getElementById('parking-other-name').value||'指定以外', memo: document.getElementById('parking-other-memo').value } };
+    
+    eventInfo = { 
+        date: document.getElementById('event-date')?.value || '', 
+        name: document.getElementById('event-name')?.value || '', 
+        timeline: document.getElementById('event-timeline')?.value || '', 
+        notes: document.getElementById('event-notes')?.value || '' 
+    };
+    parkingInfo = { 
+        groundName: document.getElementById('ground-name')?.value || '', 
+        designated: { 
+            name: document.getElementById('parking-designated-name')?.value || '指定駐車場', 
+            limit: parseInt(document.getElementById('parking-designated-limit')?.value) || 999, 
+            memo: document.getElementById('parking-designated-memo')?.value || '' 
+        }, 
+        other: { 
+            name: document.getElementById('parking-other-name')?.value || '指定以外', 
+            memo: document.getElementById('parking-other-memo')?.value || '' 
+        } 
+    };
     
     let isKeep = false;
     if (currentAssignments && currentAssignments.length > 0 && currentAssignments.some(c => c.id !== 'excluded-car')) {
@@ -1879,7 +1896,7 @@ function handleAssignment() {
 
     let errs=[], dMap=new Map(), cData=[];
     const parts = ALL_PARTICIPANTS_FLAT.filter(p=>selectedParticipantIds.has(p.id)).map(p=>{
-        const f=FAMILIES.find(f=>f.members.some(m=>m.id===p.id)), cd=participantData.get(p.id);
+        const f=FAMILIES.find(f=>f.members.some(m=>m.id===p.id)), cd=participantData.get(p.id) || {};
         return {...p, grade:cd.grade, school:cd.school, other:cd.other, memo:cd.memo, familyName:f?f.familyName:null};
     });
     
@@ -1996,13 +2013,15 @@ function handleAssignment() {
 }
 
 function renderResults() {
+    const resultsEl = document.getElementById('results');
+    if (!resultsEl) return;
     resultsEl.innerHTML = ''; selectedSwapItems = {car:null, seat:null};
     if(currentAssignments.length===0) return resultsEl.innerHTML='<p class="text-gray-500 bg-white p-4 rounded shadow">結果なし</p>';
     
     if(eventInfo.name||eventInfo.date) resultsEl.innerHTML+=`<h2 class="text-2xl font-bold mb-2">${eventInfo.date} ${eventInfo.name} ${parkingInfo.groundName?`@${parkingInfo.groundName}`:''}</h2>`;
     
     const dc=currentAssignments.filter(c=>c.assignedParking==='designated'), oc=currentAssignments.filter(c=>c.assignedParking==='other'), ec=currentAssignments.filter(c=>c.id==='excluded-car');
-    const sec=(type, info, cars) => `<div class="bg-white rounded shadow p-4"><h3 class="font-bold text-lg mb-2">◆${info.name||'別便'} ${type==='designated'&&info.limit<999?`(${info.limit}台)`:''}</h3><p class="text-sm text-gray-600 mb-4 whitespace-pre-line">${info.memo}</p><div class="results-grid-layout">${cars.map(createCarCardHtml).join('')}</div></div>`;
+    const sec=(type, info, cars) => `<div class="bg-white rounded shadow p-4"><h3 class="font-bold text-lg mb-2">◆${info.name||'別便'} ${type==='designated'&&info.limit<999?`(${info.limit}台)`:''}</h3><p class="text-sm text-gray-600 mb-4 whitespace-pre-line">${info.memo}</p><div class="grid grid-cols-1 md:grid-cols-3 gap-4">${cars.map(createCarCardHtml).join('')}</div></div>`;
     
     resultsEl.innerHTML += sec('designated', parkingInfo.designated, dc);
     resultsEl.innerHTML += sec('other', parkingInfo.other, oc);
@@ -2148,7 +2167,9 @@ function handleSwapCheckboxChange(e) {
 }
 
 function updateTextOutput() {
-    if(currentAssignments.length===0) return textOutputEl.value='';
+    const textOutputEl = document.getElementById('text-output');
+    if (!textOutputEl) return;
+    if(currentAssignments.length===0) { textOutputEl.value=''; return; }
     const gn = parkingInfo.groundName?`@${parkingInfo.groundName}`:'';
     let out = [`${eventInfo.date} ${eventInfo.name}${gn}\n`];
     if(eventInfo.timeline) out.push(eventInfo.timeline+'\n');
@@ -2167,7 +2188,12 @@ function updateTextOutput() {
     textOutputEl.value = out.join('\n');
 }
 
-function handleCopyTextOutput() { navigator.clipboard.writeText(textOutputEl.value); showDispatchMessage('コピーしました','success'); }
+function handleCopyTextOutput() { 
+    const textOutputEl = document.getElementById('text-output');
+    if (!textOutputEl) return;
+    navigator.clipboard.writeText(textOutputEl.value); 
+    showDispatchMessage('コピーしました','success'); 
+}
 function handleToggleDetails() { const b=document.getElementById('toggle-details-button'), op=b.textContent==='すべて開く'; participantListEl.querySelectorAll('details').forEach(d=>d.open=op); b.textContent=op?'すべて閉じる':'すべて開く'; }
 
 // --- Data Save / Load ---
@@ -2176,9 +2202,21 @@ function getCurrentState() {
 }
 function restoreState(s) {
     selectedParticipantIds=new Set(s.selectedParticipantIds||[]); selectedCarIds=new Set(s.selectedCarIds||[]); selectedDrivers=new Map(s.selectedDrivers||[]); selectedLuggage=new Set(s.selectedLuggage||[]); excludedParticipantIds=new Set(s.excludedParticipantIds||[]); participantData=new Map(s.participantData||[]);
-    parkingInfo=s.parkingInfo; eventInfo=s.eventInfo;
-    document.getElementById('event-date').value=eventInfo.date; document.getElementById('event-name').value=eventInfo.name; document.getElementById('event-timeline').value=eventInfo.timeline; document.getElementById('event-notes').value=eventInfo.notes;
-    document.getElementById('ground-name').value=parkingInfo.groundName; document.getElementById('parking-designated-name').value=parkingInfo.designated.name; document.getElementById('parking-designated-limit').value=parkingInfo.designated.limit; document.getElementById('parking-designated-memo').value=parkingInfo.designated.memo; document.getElementById('parking-other-name').value=parkingInfo.other.name; document.getElementById('parking-other-memo').value=parkingInfo.other.memo;
+    parkingInfo=s.parkingInfo || {groundName:'', designated:{name:'',limit:0,memo:''}, other:{name:'',memo:''}}; 
+    eventInfo=s.eventInfo || {date:'', name:'', timeline:'', notes:''};
+    
+    if (document.getElementById('event-date')) document.getElementById('event-date').value = eventInfo.date || '';
+    if (document.getElementById('event-name')) document.getElementById('event-name').value = eventInfo.name || '';
+    if (document.getElementById('event-timeline')) document.getElementById('event-timeline').value = eventInfo.timeline || '';
+    if (document.getElementById('event-notes')) document.getElementById('event-notes').value = eventInfo.notes || '';
+    
+    if (document.getElementById('ground-name')) document.getElementById('ground-name').value = parkingInfo.groundName || '';
+    if (document.getElementById('parking-designated-name')) document.getElementById('parking-designated-name').value = parkingInfo.designated?.name || '';
+    if (document.getElementById('parking-designated-limit')) document.getElementById('parking-designated-limit').value = parkingInfo.designated?.limit || '';
+    if (document.getElementById('parking-designated-memo')) document.getElementById('parking-designated-memo').value = parkingInfo.designated?.memo || '';
+    if (document.getElementById('parking-other-name')) document.getElementById('parking-other-name').value = parkingInfo.other?.name || '';
+    if (document.getElementById('parking-other-memo')) document.getElementById('parking-other-memo').value = parkingInfo.other?.memo || '';
+    
     currentAssignments = s.currentAssignments||[]; renderResults(); updateTextOutput();
 }
 
