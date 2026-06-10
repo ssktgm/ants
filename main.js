@@ -354,7 +354,7 @@ if (supabaseClient) {
                 currentUser = session.user;
                 
                 if (isNewLogin) {
-                    logAction('LOGIN', 'ログインしました');
+                    await logAction('LOGIN', 'ログインしました');
                 }
                 
                 // 管理者権限のチェック
@@ -824,7 +824,7 @@ async function handlePasswordChangeInApp(e) {
 
 async function handleLogout(e) {
     if (e && e.preventDefault) e.preventDefault();
-    if (currentUser) logAction('LOGOUT', 'ログアウトしました');
+    if (currentUser) await logAction('LOGOUT', 'ログアウトしました');
     showLoading('ログアウト処理中...');
     try {
         const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
@@ -937,6 +937,11 @@ async function loadAdminUsersData() {
             if (catData) categoriesData = catData;
             const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
             if (attrData) userAttributesData = attrData;
+            
+            // 代行権限の取得
+            const { data: mdData } = await supabaseClient.from('master_data').select('*').eq('key', 'ATTENDANCE_DELEGATIONS').single();
+            if (mdData && mdData.data) window.adminDelegations = mdData.data;
+            else window.adminDelegations = {};
         } catch (e) { console.error("Groups DB Error:", e); }
     
         const allowedListEl = document.getElementById('allowed-users-list');
@@ -995,6 +1000,13 @@ async function loadAdminUsersData() {
                 return `<label class="inline-flex items-center mr-3 mb-1 cursor-pointer"><input type="checkbox" id="edit-group-${i}-${g.id}" value="${g.id}" class="mr-1" ${isMember ? 'checked' : ''}> <span class="text-sm font-medium">${g.name}</span></label>`;
             }).join('');
     
+            const delegationCheckboxes = (usersData || []).filter(other => other.email !== u.email).map(other => `
+                <label class="inline-flex items-center text-xs mr-3 mb-1 w-32 truncate" title="${other.email}">
+                    <input type="checkbox" name="edit-delegation-${i}" value="${other.email}" ${window.adminDelegations[u.email] && window.adminDelegations[u.email].includes(other.email) ? 'checked' : ''} class="mr-1 rounded text-blue-600">
+                    <span class="truncate">${other.name || other.email}</span>
+                </label>
+            `).join('');
+
             return `
             <div class="flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
@@ -1025,6 +1037,13 @@ async function loadAdminUsersData() {
                     <div class="flex-grow">
                         <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
                         <div class="flex flex-wrap" id="group-container-${i}">${groupCheckboxes || '<span class="text-xs text-gray-400">グループがありません</span>'}</div>
+                    </div>
+                    <div class="flex-grow mt-2 md:mt-0 border-t md:border-t-0 md:border-l border-gray-200 pt-2 md:pt-0 md:pl-4">
+                        <div class="text-xs font-bold text-gray-500 mb-1">代行権限 (他メンバーの出欠を代理で入力できる権限):</div>
+                        <details class="text-xs border p-2 bg-gray-50 rounded shadow-inner">
+                            <summary class="cursor-pointer text-gray-700 font-bold">代行入力できるメンバーを選択 (複数可)</summary>
+                            <div class="flex flex-wrap mt-2 max-h-32 overflow-y-auto border-t border-gray-200 pt-2">${delegationCheckboxes || '<span class="text-gray-400">他のメンバーがいません</span>'}</div>
+                        </details>
                     </div>
                     <div class="shrink-0 mt-2 md:mt-0 flex items-end">
                         <button onclick="updateAdminUser('${u.email}', ${i}, '${u.role}')" class="text-sm bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded shadow font-bold">設定を保存</button>
@@ -1118,7 +1137,18 @@ window.updateAdminUser = async function(oldEmail, index, oldRole) {
             if (insErr) throw insErr;
         }
         
-        logAction('UPDATE_USER', `ユーザー「${oldEmail}」の設定を更新しました`);
+        // 3. 代行権限の更新
+        const delegationCbs = document.querySelectorAll(`input[name="edit-delegation-${index}"]:checked`);
+        const newDelegations = Array.from(delegationCbs).map(cb => cb.value);
+        if (oldEmail !== newEmail && window.adminDelegations[oldEmail]) {
+            delete window.adminDelegations[oldEmail];
+        }
+        window.adminDelegations[newEmail] = newDelegations;
+        
+        const { error: delgErr } = await supabaseClient.from('master_data').upsert({ key: 'ATTENDANCE_DELEGATIONS', data: window.adminDelegations });
+        if (delgErr) throw delgErr;
+
+        await logAction('UPDATE_USER', `ユーザー「${oldEmail}」の設定を更新しました`);
         alert('設定を保存しました');
         await loadAdminUsersData();
     } catch (err) {
@@ -1150,7 +1180,7 @@ window.adminAddUser = async function() {
     showLoading('ユーザー追加処理中...');
     try {
         await supabaseClient.from('app_users').insert([{ email, role }]);
-        logAction('ADD_USER', `ユーザー「${email}」を追加しました`);
+        await logAction('ADD_USER', `ユーザー「${email}」を追加しました`);
         document.getElementById('admin-add-email').value = '';
         await loadAdminUsersData();
     } catch (err) {
@@ -1166,7 +1196,7 @@ window.deleteAdminUser = async function(email) {
     showLoading('ユーザー削除処理中...');
     try {
         await supabaseClient.from('app_users').delete().eq('email', email);
-        logAction('DELETE_USER', `ユーザー「${email}」を削除しました`);
+        await logAction('DELETE_USER', `ユーザー「${email}」を削除しました`);
         await loadAdminUsersData();
     } catch (err) {
         console.error(err);
@@ -1372,7 +1402,7 @@ const db = {
                 { key: 'CARS', data: localCars }
             ]);
             if (error) throw error;
-            logAction('UPDATE_MASTER', '初期データ(または強制)のマスター保存を実行しました');
+            await logAction('UPDATE_MASTER', '初期データ(または強制)のマスター保存を実行しました');
         }, 'マスターデータ同期中...');
     },
 
@@ -1386,7 +1416,7 @@ const db = {
                 state_data: state
             });
             if (error) throw error;
-            logAction('SAVE_DISPATCH', `配車データ「${name}」を保存しました`);
+            await logAction('SAVE_DISPATCH', `配車データ「${name}」を保存しました`);
             return true;
         }, '配車状態を保存中...');
     },
@@ -1408,7 +1438,7 @@ const db = {
         return withLoading(async () => {
             const { error } = await supabaseClient.from('states').delete().eq('id', id);
             if (error) throw error;
-            logAction('DELETE_DISPATCH', `配車データ(ID:${id})を削除しました`);
+            await logAction('DELETE_DISPATCH', `配車データ(ID:${id})を削除しました`);
             return true;
         }, '配車状態を削除中...');
     },
@@ -1423,7 +1453,7 @@ const db = {
                 parking_data: parking
             });
             if (error) throw error;
-            logAction('SAVE_PARKING', `駐車場データ「${name}」を保存しました`);
+            await logAction('SAVE_PARKING', `駐車場データ「${name}」を保存しました`);
             return true;
         }, '駐車場データを保存中...');
     },
@@ -1455,7 +1485,7 @@ const db = {
         return withLoading(async () => {
             const { error } = await supabaseClient.from('parkings').delete().eq('id', id);
             if (error) throw error;
-            logAction('DELETE_PARKING', `駐車場データ(ID:${id})を削除しました`);
+            await logAction('DELETE_PARKING', `駐車場データ(ID:${id})を削除しました`);
             return true;
         }, '駐車場データを削除中...');
     },
@@ -1503,7 +1533,7 @@ const db = {
                 }
             }
             
-            logAction('UPDATE_MASTER', 'マスターデータ(家族・車・駐車場)を一括保存しました');
+            await logAction('UPDATE_MASTER', 'マスターデータ(家族・車・駐車場)を一括保存しました');
         }, 'マスターデータ一括同期中...');
     },
 
@@ -1513,7 +1543,7 @@ const db = {
             await supabaseClient.from('master_data').delete().neq('key', '');
             await supabaseClient.from('states').delete().neq('id', '');
             await supabaseClient.from('parkings').delete().neq('id', '');
-            logAction('CLEAR_DB', 'データベースの全リセットを実行しました');
+            await logAction('CLEAR_DB', 'データベースの全リセットを実行しました');
         }, 'データベース初期化中...');
     }
 };

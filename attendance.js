@@ -10,6 +10,7 @@ let allUserGroups = [];
 let allAttendances = [];
 let appUsers = [];
 let isAttendanceInitialized = false;
+let myDelegations = [];
 
 // イベントの対象グループ情報を取得するヘルパー
 function getEventTargetGroupsInfo(ev) {
@@ -199,6 +200,14 @@ async function loadData() {
                 allAttendances = aData;
                 if (currentUser) attendances = aData.filter(a => a.user_email === currentUser.email);
             }
+            
+            // 代行権限情報の読み込み
+            try {
+                const { data: mdData } = await supabaseClient.from('master_data').select('data').eq('key', 'ATTENDANCE_DELEGATIONS').single();
+                if (mdData && mdData.data && currentUser) {
+                    myDelegations = mdData.data[currentUser.email] || [];
+                }
+            } catch (err) { myDelegations = []; }
         };
 
         await Promise.race([loadProcess(), timeoutPromise]);
@@ -605,11 +614,11 @@ async function saveEvent(editEventId = null) {
         if (editEventId) {
             const { error } = await supabaseClient.from('events').update(payload).eq('id', editEventId);
             if (error) throw error;
-            logAction('UPDATE_EVENT', `イベント「${title}」を更新しました`);
+            await logAction('UPDATE_EVENT', `イベント「${title}」を更新しました`);
         } else {
             const { error } = await supabaseClient.from('events').insert(payload);
             if (error) throw error;
-            logAction('CREATE_EVENT', `イベント「${title}」を作成しました`);
+            await logAction('CREATE_EVENT', `イベント「${title}」を作成しました`);
         }
         
         await loadData();
@@ -633,13 +642,81 @@ async function deleteEvent(id) {
     showLoading('イベント削除中...');
     try {
         await supabaseClient.from('events').delete().eq('id', id);
-        logAction('DELETE_EVENT', `イベント(ID:${id})を削除しました`);
+        await logAction('DELETE_EVENT', `イベント(ID:${id})を削除しました`);
         await loadData();
         renderCalendar();
         renderList();
     } catch (e) {
         console.error(e);
     } finally { hideLoading(); }
+}
+
+// 出欠フォームを生成する共通ヘルパー（代行分も含む）
+function generateAttendanceFormsHtml(ev, groupInfo) {
+    const canAttend = groupInfo.ids.length === 0 || userGroups.some(ug => groupInfo.ids.includes(ug.group_id));
+    const targets = [{ email: currentUser.email, name: '自分 ( ' + (currentUser?.name || currentUser.email.split('@')[0]) + ' )', canAttend: canAttend }];
+    
+    myDelegations.forEach(targetEmail => {
+        const targetUser = appUsers.find(u => u.email === targetEmail);
+        if (targetUser) {
+            const canAttendTarget = groupInfo.ids.length === 0 || allUserGroups.some(ug => groupInfo.ids.includes(ug.group_id) && ug.user_email === targetEmail);
+            targets.push({ email: targetEmail, name: targetUser.name || targetEmail.split('@')[0], canAttend: canAttendTarget });
+        }
+    });
+
+    let hasAnyForm = false;
+
+    const formsHtml = targets.map((target, idx) => {
+        if (!target.canAttend) {
+            return `<div class="p-3 bg-gray-50 border rounded mb-2">
+                <h4 class="font-bold text-gray-700 mb-1">${target.name}</h4>
+                <p class="text-xs text-red-500">※対象グループに所属していないため入力できません</p>
+            </div>`;
+        }
+        hasAnyForm = true;
+        const tAtt = allAttendances.find(a => a.event_id === ev.id && a.user_email === target.email) || {};
+        let tStatus = tAtt.status || '未回答';
+        if (tStatus === '未定') tStatus = '保留';
+        
+        return `
+        <div class="p-3 bg-blue-50 border border-blue-100 rounded mb-3" data-target-email="${target.email}">
+            <h4 class="font-bold text-blue-800 mb-2 border-b border-blue-200 pb-1">${target.name}</h4>
+            <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">ステータス*</label>
+                <select id="att-status-${idx}" class="w-full border p-1.5 rounded text-sm font-bold">
+                    <option value="未回答" ${tStatus==='未回答'?'selected':''}>未回答</option>
+                    <option value="出席" ${tStatus==='出席'?'selected':''}>出席</option>
+                    <option value="欠席" ${tStatus==='欠席'?'selected':''}>欠席</option>
+                    <option value="保留" ${tStatus==='保留'?'selected':''}>保留</option>
+                </select>
+            </div>
+            ${ev.require_detailed_attendance ? `
+                <div class="mt-2">
+                    <label class="block text-xs font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
+                    <input type="text" id="att-acc-${idx}" value="${tAtt.accompanying_persons||''}" class="w-full border p-1.5 rounded text-sm">
+                </div>
+                <div class="flex items-center space-x-2 mt-2">
+                    <div class="w-1/3">
+                        <label class="block text-xs font-bold text-gray-700 mb-1">車出し可否</label>
+                        <select id="att-car-flag-${idx}" class="w-full border p-1.5 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap-${idx}').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap-${idx}').value == 0) document.getElementById('att-car-cap-${idx}').value = 1;">
+                            <option value="否" ${!tAtt.car_capacity || tAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
+                            <option value="可" ${tAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
+                        </select>
+                    </div>
+                    <div class="w-2/3">
+                        <label class="block text-xs font-bold text-gray-700 mb-1">乗車可能人数</label>
+                        <input type="number" id="att-car-cap-${idx}" value="${tAtt.car_capacity||0}" min="0" class="w-full border p-1.5 rounded text-sm" ${!tAtt.car_capacity || tAtt.car_capacity === 0 ? 'disabled' : ''}>
+                    </div>
+                </div>
+            ` : ''}
+            <div class="mt-2">
+                <label class="block text-xs font-bold text-gray-700 mb-1">コメント</label>
+                <textarea id="att-comment-${idx}" class="w-full border p-1.5 rounded text-sm" rows="1">${tAtt.comment||''}</textarea>
+            </div>
+        </div>`;
+    }).join('');
+
+    return { formsHtml, hasAnyForm };
 }
 
 window.att_openEventDetail = window.openEventDetailModal = function(eventId, activeTab = 'basic') {
@@ -752,45 +829,15 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                     <div class="space-y-4">
                         <div class="text-sm border-b pb-2 mb-2">
                             現在のステータス: <span class="font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':'text-gray-800'}">${statusStr}</span>
-                            ${!canAttend ? '<p class="text-xs text-red-500 mt-1">※対象グループに所属していないため入力できません</p>' : ''}
                         </div>
-                        ${canAttend ? `
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">ステータス*</label>
-                                <select id="att-status" class="w-full border p-2 rounded font-bold text-sm">
-                                    <option value="未回答" ${statusStr==='未回答'?'selected':''}>未回答</option>
-                                    <option value="出席" ${myAtt.status==='出席'?'selected':''}>出席</option>
-                                    <option value="欠席" ${myAtt.status==='欠席'?'selected':''}>欠席</option>
-                                    <option value="保留" ${statusStr==='保留'?'selected':''}>保留</option>
-                                </select>
-                            </div>
-                            ${ev.require_detailed_attendance ? `
-                                <div>
-                                    <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
-                                    <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
+                        ${(() => {
+                            const { formsHtml, hasAnyForm } = generateAttendanceFormsHtml(ev, groupInfo);
+                            return formsHtml + (hasAnyForm ? `
+                                <div class="mt-4 text-right">
+                                    <button onclick="window.att_saveAttendance('${ev.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow">出欠を一括保存</button>
                                 </div>
-                                <div class="flex items-center space-x-2">
-                                    <div class="w-1/3">
-                                        <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否</label>
-                                        <select id="att-car-flag" class="w-full border p-2 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap').value == 0) document.getElementById('att-car-cap').value = 1;">
-                                            <option value="否" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
-                                            <option value="可" ${myAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
-                                        </select>
-                                    </div>
-                                    <div class="w-2/3">
-                                        <label class="block text-sm font-bold text-gray-700 mb-1">乗車可能人数 (運転手除く)</label>
-                                        <input type="number" id="att-car-cap" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'disabled' : ''}>
-                                    </div>
-                                </div>
-                            ` : ''}
-                            <div>
-                                <label class="block text-sm font-bold text-gray-700 mb-1">コメント</label>
-                                <textarea id="att-comment" class="w-full border p-2 rounded text-sm" rows="2">${myAtt.comment||''}</textarea>
-                            </div>
-                            <div class="mt-4 text-right">
-                                <button onclick="window.att_saveAttendance('${ev.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold shadow">出欠を保存</button>
-                            </div>
-                        ` : ''}
+                            ` : '');
+                        })()}
                     </div>
                 `}
             </div>
@@ -805,51 +852,20 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
 function openAttendanceFormModal(eventId) {
     const ev = events.find(e => e.id === eventId);
     if (!ev) return;
-    const myAtt = attendances.find(a => a.event_id === eventId) || {};
-    let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
-    if (statusStr === '未定') statusStr = '保留';
+    const groupInfo = getEventTargetGroupsInfo(ev);
+    
+    const { formsHtml, hasAnyForm } = generateAttendanceFormsHtml(ev, groupInfo);
     
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[110]">
-        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+        <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
             <h3 class="text-lg font-bold mb-4">出欠入力</h3>
             <div class="space-y-4">
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">ステータス*</label>
-                    <select id="att-status" class="w-full border p-2 rounded font-bold">
-                        <option value="未回答" ${statusStr==='未回答'?'selected':''}>未回答</option>
-                        <option value="出席" ${statusStr==='出席'?'selected':''}>出席</option>
-                        <option value="欠席" ${statusStr==='欠席'?'selected':''}>欠席</option>
-                        <option value="保留" ${statusStr==='保留'?'selected':''}>保留</option>
-                    </select>
-                </div>
-                ${ev.require_detailed_attendance ? `
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
-                        <input type="text" id="att-acc" value="${myAtt.accompanying_persons||''}" class="w-full border p-2 rounded text-sm">
-                    </div>
-                    <div class="flex space-x-2">
-                        <div class="w-1/3">
-                            <label class="block text-sm font-bold text-gray-700 mb-1">車出し可否</label>
-                            <select id="att-car-flag" class="w-full border p-2 rounded text-sm font-bold" onchange="document.getElementById('att-car-cap').disabled = this.value !== '可'; if(this.value === '可' && document.getElementById('att-car-cap').value == 0) document.getElementById('att-car-cap').value = 1;">
-                                <option value="否" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'selected' : ''}>否</option>
-                                <option value="可" ${myAtt.car_capacity > 0 ? 'selected' : ''}>可</option>
-                            </select>
-                        </div>
-                        <div class="w-2/3">
-                            <label class="block text-sm font-bold text-gray-700 mb-1">乗車可能人数 (運転手除く)</label>
-                            <input type="number" id="att-car-cap" value="${myAtt.car_capacity||0}" min="0" class="w-full border p-2 rounded text-sm" ${!myAtt.car_capacity || myAtt.car_capacity === 0 ? 'disabled' : ''}>
-                        </div>
-                    </div>
-                ` : ''}
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">コメント</label>
-                    <textarea id="att-comment" class="w-full border p-2 rounded text-sm" rows="2">${myAtt.comment||''}</textarea>
-                </div>
+                ${formsHtml}
             </div>
             <div class="flex justify-end space-x-3 mt-6">
                 <button onclick="window.att_openEventDetail('${eventId}')" class="bg-gray-300 hover:bg-gray-400 px-4 py-2 rounded font-bold">戻る</button>
-                <button onclick="window.att_saveAttendance('${eventId}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">登録</button>
+                ${hasAnyForm ? `<button onclick="window.att_saveAttendance('${eventId}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow">一括保存</button>` : ''}
             </div>
         </div>
     </div>`;
@@ -857,32 +873,41 @@ function openAttendanceFormModal(eventId) {
 }
 
 async function saveAttendance(eventId) {
-    // DOMを削除する前に各入力値を取得する
-    const status = document.getElementById('att-status').value;
-    const accompanyingPersons = document.getElementById('att-acc') ? document.getElementById('att-acc').value : '';
-    const carFlag = document.getElementById('att-car-flag') ? document.getElementById('att-car-flag').value : '否';
-    const carCapacity = carFlag === '可' ? (parseInt(document.getElementById('att-car-cap').value) || 0) : 0;
-    const comment = document.getElementById('att-comment').value;
-    const separateAction = null; // 別行動は廃止されたためnull
+    const containers = document.querySelectorAll('[data-target-email]');
+    if (containers.length === 0) return window.att_closeModal();
+    
+    const payloads = [];
+    containers.forEach((container) => {
+        const targetEmail = container.getAttribute('data-target-email');
+        const statusEl = container.querySelector('select[id^="att-status-"]');
+        if (statusEl) {
+            const accEl = container.querySelector('input[id^="att-acc-"]');
+            const carFlagEl = container.querySelector('select[id^="att-car-flag-"]');
+            const carCapEl = container.querySelector('input[id^="att-car-cap-"]');
+            const commentEl = container.querySelector('textarea[id^="att-comment-"]');
+            
+            const carFlag = carFlagEl ? carFlagEl.value : '否';
+            payloads.push({
+                event_id: eventId,
+                user_email: targetEmail,
+                status: statusEl.value,
+                accompanying_persons: accEl ? accEl.value : '',
+                car_capacity: carFlag === '可' && carCapEl ? (parseInt(carCapEl.value) || 0) : 0,
+                separate_action: null,
+                comment: commentEl ? commentEl.value : '',
+                updated_at: new Date().toISOString()
+            });
+        }
+    });
 
     window.att_closeModal(); // モーダルを閉じる
     
     showLoading('出欠保存中...');
     try {
-        const payload = {
-            event_id: eventId,
-            user_email: currentUser.email,
-            status: status,
-            accompanying_persons: accompanyingPersons,
-            car_capacity: carCapacity,
-            separate_action: separateAction,
-            comment: comment,
-            updated_at: new Date().toISOString()
-        };
-
-        const { error } = await supabaseClient.from('attendances').upsert(payload, { onConflict: 'event_id, user_email' });
+        const { error } = await supabaseClient.from('attendances').upsert(payloads, { onConflict: 'event_id, user_email' });
         if (error) throw error;
-        logAction('UPDATE_ATTENDANCE', `イベント(ID:${eventId})の出欠を「${status}」で更新しました`);
+        
+        await logAction('UPDATE_ATTENDANCE', `イベント(ID:${eventId})の出欠を ${payloads.length}件更新しました`);
         
         await loadData(); // 再取得
         renderCalendar(); // カレンダーの表示を更新
@@ -1061,7 +1086,7 @@ window.att_importCsv = async function(event) {
             try {
                 const { error } = await supabaseClient.from('events').insert(newEvents);
                 if (error) throw error;
-                logAction('IMPORT_EVENTS', `イベントデータを${newEvents.length}件インポートしました`);
+                await logAction('IMPORT_EVENTS', `イベントデータを${newEvents.length}件インポートしました`);
                 alert(`${newEvents.length}件のインポートが完了しました。`);
                 await loadData();
                 renderCalendar();
