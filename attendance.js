@@ -330,9 +330,12 @@ function renderCalendar() {
             
             const categoryObj = categories.find(c => c.name === e.category);
             const categoryColor = categoryObj?.color || '#bfdbfe';
-            evEl.className = `text-[10px] rounded-none border-b border-white px-1 py-[1px] truncate w-full text-left cursor-pointer hover:opacity-80 leading-tight ${statusClass}`;
+            // タイトル内の改行コードを半角スペースに置換して表示崩れを防ぐ
+            const cleanTitle = (e.title || '').replace(/[\r\n]+/g, ' ');
+            
+            evEl.className = `text-[11px] rounded px-1 py-0.5 truncate whitespace-nowrap overflow-hidden text-ellipsis w-full text-left cursor-pointer hover:opacity-80 leading-normal mb-0.5 ${statusClass}`;
             evEl.style.backgroundColor = categoryColor;
-            evEl.innerHTML = `${iconText ? `<span class="mr-0.5 leading-none">${iconText}</span>` : ''}${e.title}`;
+            evEl.innerHTML = `${iconText ? `<span class="mr-0.5 leading-none">${iconText}</span>` : ''}${cleanTitle}`;
             evEl.title = e.title;
             evEl.onclick = (ev) => {
                 ev.stopPropagation();
@@ -357,6 +360,52 @@ function renderCalendar() {
     }
 }
 
+const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+
+function formatEventHeaderDate(dateStr) {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    const dateNum = d.getDate();
+    const day = WEEKDAYS[d.getDay()];
+    return `${dateNum}日(${day})`;
+}
+
+function formatEventDateTime(startStr, endStr, isAllDay) {
+    const start = new Date(startStr);
+    if (isNaN(start.getTime())) return '日時未定';
+    
+    const month = start.getMonth() + 1;
+    const date = start.getDate();
+    const day = WEEKDAYS[start.getDay()];
+    const datePart = `${month}/${date}(${day})`;
+    
+    if (isAllDay) {
+        return `${datePart} 終日`;
+    }
+    
+    const timePart = startStr.substring(11, 16);
+    let endPart = '';
+    if (endStr) {
+        const end = new Date(endStr);
+        if (!isNaN(end.getTime())) {
+            endPart = ` - ${endStr.substring(11, 16)}`;
+        }
+    }
+    return `${datePart}${timePart}${endPart}`;
+}
+
+function formatCreatedAt(createdStr) {
+    if (!createdStr) return '';
+    const d = new Date(createdStr);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const date = d.getDate();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${year}/${month}/${date} ${hours}:${minutes}`;
+}
+
 function renderList() {
     const filtered = getFilteredEvents();
 
@@ -366,53 +415,165 @@ function renderList() {
         return;
     }
 
-    container.innerHTML = filtered.map(e => {
-        let dt = '日時未定';
-        if (e.is_all_day && e.start_time) {
-            dt = e.start_time.substring(0, 10) + ' (終日)';
-        } else if (e.start_time) {
-            dt = e.start_time.substring(0, 16).replace('T', ' ');
-            if (e.end_time) dt += ' 〜 ' + e.end_time.substring(11, 16);
+    // 1. 日付順にソート (start_time 昇順)
+    const sorted = [...filtered].sort((a, b) => {
+        if (!a.start_time) return 1;
+        if (!b.start_time) return -1;
+        return a.start_time.localeCompare(b.start_time);
+    });
+
+    // 2. 日付ごとにグループ化
+    const groupsMap = {};
+    sorted.forEach(e => {
+        const dateKey = e.start_time ? e.start_time.split('T')[0] : '未定';
+        if (!groupsMap[dateKey]) {
+            groupsMap[dateKey] = [];
         }
+        groupsMap[dateKey].push(e);
+    });
+
+    // 今日の日付文字列 (JST対応でローカル時間を基準にする)
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    // 3. HTMLを構築
+    let html = '';
+    
+    Object.keys(groupsMap).forEach(dateStr => {
+        const dateEvents = groupsMap[dateStr];
         
-        const groupInfo = getEventTargetGroupsInfo(e);
-        const groupName = groupInfo.name;
-        const groupColor = groupInfo.color;
-        const categoryObj = categories.find(c => c.name === e.category);
-        const categoryColor = categoryObj?.color || '#bfdbfe';
-        const myAtt = attendances.find(a => a.event_id === e.id);
-        let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
-        if (statusStr === '未定') statusStr = '保留';
+        // 日付ヘッダーのフォーマット
+        let headerText = '日時未定';
+        let todayBadgeHtml = '';
         
-        let iconHtml = '';
-        if (e.requires_attendance) {
-            if (statusStr === '出席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-green-100 text-green-700 rounded-md mr-3 font-bold text-sm shrink-0" title="出席">出</div>';
-            else if (statusStr === '欠席') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-red-100 text-red-600 rounded-md mr-3 font-bold text-sm shrink-0" title="欠席">欠</div>';
-            else if (statusStr === '保留') iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-orange-100 text-orange-500 rounded-md mr-3 font-bold text-sm shrink-0" title="保留">保</div>';
-            else iconHtml = '<div class="flex items-center justify-center w-8 h-8 bg-gray-100 text-gray-500 rounded-md mr-3 font-bold text-sm shrink-0" title="未回答">未</div>';
+        if (dateStr !== '未定') {
+            headerText = formatEventHeaderDate(dateStr);
+            if (dateStr === todayStr) {
+                const d = new Date(dateStr);
+                todayBadgeHtml = `<span class="ml-2 bg-green-600 text-white text-xs px-2.5 py-0.5 rounded-full font-bold shadow-sm">${d.getDate()}日(今日)</span>`;
+            }
         }
-        
-        return `
-        <div class="p-4 border-l-4 rounded-lg hover:shadow-md transition bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 cursor-pointer border-gray-200" style="border-left-color: ${categoryColor}" onclick="window.att_openEventDetail('${e.id}')">
-            <div class="flex items-center">
-                ${iconHtml}
-                <div>
-                    <div class="flex items-center space-x-2 mb-1">
-                        <span class="text-xs text-gray-800 px-2 py-0.5 rounded shadow-sm" style="background-color: ${categoryColor}">${e.category || 'イベント'}</span>
-                        <span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded" style="background-color: ${groupColor}">${groupName}</span>
-                    </div>
-                    <h3 class="font-bold text-lg text-gray-800">${e.title}</h3>
-                    <p class="text-sm text-gray-600">${dt} @ ${e.location || '未定'}</p>
-                </div>
+
+        html += `
+        <div class="space-y-3 mb-6">
+            <div class="flex items-center text-sm font-bold text-gray-700 border-b border-gray-200 pb-1.5 px-1">
+                <span>${headerText}</span>
+                ${todayBadgeHtml}
             </div>
-            <div class="flex items-center space-x-3 shrink-0">
-                ${e.requires_attendance ? 
-                    `<span class="text-sm font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':statusStr==='保留'?'text-orange-500':'text-gray-500'}">出欠: ${statusStr}</span>` 
-                    : '<span class="text-xs text-gray-400">出欠なし</span>'}
-            </div>
-        </div>
         `;
-    }).join('');
+
+        dateEvents.forEach(e => {
+            const groupInfo = getEventTargetGroupsInfo(e);
+            const groupName = groupInfo.name;
+            const groupColor = groupInfo.color;
+            const categoryObj = categories.find(c => c.name === e.category);
+            const categoryColor = categoryObj?.color || '#bfdbfe';
+            
+            // 出欠状況
+            const myAtt = attendances.find(a => a.event_id === e.id);
+            let statusStr = myAtt && myAtt.status ? myAtt.status : '未回答';
+            if (statusStr === '未定') statusStr = '保留';
+            
+            // 日時フォーマット
+            const dt = formatEventDateTime(e.start_time, e.end_time, e.is_all_day);
+
+            // 登録者名と作成日時のフォーマット
+            let creatorName = '不明';
+            if (e.created_by) {
+                const userObj = appUsers.find(u => u.email === e.created_by);
+                creatorName = userObj ? (userObj.name || e.created_by.split('@')[0]) : e.created_by.split('@')[0];
+            }
+            const createdAtStr = formatCreatedAt(e.created_at);
+            const creatorHtml = e.created_by ? `
+                <div class="flex items-center text-gray-400 text-xs mt-2 space-x-1">
+                    <span class="w-4 h-4 rounded-full bg-green-50 flex items-center justify-center text-[10px] text-green-700 font-bold">👤</span>
+                    <span>${creatorName} ${createdAtStr}</span>
+                </div>
+            ` : '';
+
+            // 右上のバッジ（回答期限と出欠マーク）
+            let rightHeaderHtml = '';
+            if (e.requires_attendance) {
+                const isPastDeadline = e.attendance_deadline ? new Date() > new Date(e.attendance_deadline) : false;
+                let deadlineBadgeClass = 'bg-gray-100 text-gray-600';
+                let deadlineText = '';
+                
+                if (isPastDeadline) {
+                    deadlineText = '回答期限切れ';
+                    deadlineBadgeClass = 'bg-gray-200 text-gray-500';
+                } else if (e.attendance_deadline) {
+                    const dl = new Date(e.attendance_deadline);
+                    const dlMonth = dl.getMonth() + 1;
+                    const dlDate = dl.getDate();
+                    const dlHours = String(dl.getHours()).padStart(2, '0');
+                    const dlMinutes = String(dl.getMinutes()).padStart(2, '0');
+                    deadlineText = `回答期限: ${dlMonth}/${dlDate} ${dlHours}:${dlMinutes}`;
+                }
+
+                const deadlineHtml = deadlineText ? `<span class="text-[10px] px-1.5 py-0.5 rounded ${deadlineBadgeClass} font-semibold">${deadlineText}</span>` : '';
+
+                // 出欠アイコン (画像に近いスタイル)
+                let statusIconHtml = '';
+                if (statusStr === '出席') {
+                    statusIconHtml = `<div class="flex items-center justify-center w-5 h-5 bg-green-600 text-white rounded-full text-[10px] font-bold shadow-sm" title="出席">O</div>`;
+                } else if (statusStr === '欠席') {
+                    statusIconHtml = `<div class="flex items-center justify-center w-5 h-5 bg-black text-white rounded text-[10px] font-bold shadow-sm" title="欠席">X</div>`;
+                } else if (statusStr === '保留') {
+                    statusIconHtml = `<div class="flex items-center justify-center w-5 h-5 bg-yellow-600 text-white rounded-full text-[10px] font-bold shadow-sm" title="保留">-</div>`;
+                } else {
+                    statusIconHtml = `<div class="flex items-center justify-center w-5 h-5 bg-red-600 text-white rounded-full text-[10px] font-bold shadow-sm animate-pulse" title="未回答">?</div>`;
+                }
+
+                rightHeaderHtml = `
+                    <div class="flex items-center space-x-2 shrink-0">
+                        ${deadlineHtml}
+                        ${statusIconHtml}
+                    </div>
+                `;
+            }
+
+            html += `
+            <div class="p-4 border border-gray-200/60 rounded-xl hover:shadow-md transition bg-white flex flex-col justify-between cursor-pointer relative shadow-sm" onclick="window.att_openEventDetail('${e.id}')">
+                
+                <!-- カード上部（タイトルと右上バッジ） -->
+                <div class="flex justify-between items-start mb-2 gap-4">
+                    <h3 class="font-bold text-base md:text-lg text-gray-800 flex items-center pr-2">
+                        <span class="mr-1 text-lg">📅</span>
+                        <span>${e.title}</span>
+                    </h3>
+                    ${rightHeaderHtml}
+                </div>
+
+                <!-- カード中部（カテゴリと詳細） -->
+                <div class="flex flex-wrap items-center gap-2 text-xs md:text-sm text-gray-600">
+                    <span class="px-2 py-0.5 rounded text-[11px] font-bold" style="background-color: ${categoryColor}; color: #1f2937">${e.category || 'イベント'}</span>
+                    <span class="flex items-center space-x-1">
+                        <span>🕒</span>
+                        <span>${dt}</span>
+                    </span>
+                    <span class="flex items-center space-x-0.5">
+                        <span>📍</span>
+                        <span>${e.location || '未定'}</span>
+                    </span>
+                </div>
+
+                <!-- カード下部（登録者と詳細矢印） -->
+                <div class="flex justify-between items-end mt-2">
+                    ${creatorHtml}
+                    <!-- 詳細矢印 (緑の右向き) -->
+                    <div class="w-6 h-6 rounded-full bg-green-50 flex items-center justify-center hover:bg-green-100 transition absolute right-3 bottom-3">
+                        <span class="text-green-700 text-xs font-bold leading-none">&#10095;</span>
+                    </div>
+                </div>
+
+            </div>
+            `;
+        });
+
+        html += `</div>`;
+    });
+
+    container.innerHTML = html;
 }
 
 // =====================================
