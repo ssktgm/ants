@@ -959,6 +959,7 @@ async function loadAdminUsersData() {
         let userGroupsData = [];
         let categoriesData = [];
         let userAttributesData = [];
+        let eventLocationsData = [];
         try {
             const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
             if (gData) groupsData = gData;
@@ -968,6 +969,12 @@ async function loadAdminUsersData() {
             if (catData) categoriesData = catData;
             const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
             if (attrData) userAttributesData = attrData;
+            try {
+                const { data: locData } = await supabaseClient.from('event_locations').select('*').order('name');
+                if (locData) eventLocationsData = locData;
+            } catch (e) {
+                console.warn("event_locations table not created yet:", e);
+            }
             
             // 代行権限の取得
             const { data: mdData } = await supabaseClient.from('master_data').select('*').eq('key', 'ATTENDANCE_DELEGATIONS').single();
@@ -1020,6 +1027,29 @@ async function loadAdminUsersData() {
                 <input type="color" id="admin-new-group-color" value="#d1fae5" class="w-8 h-8 border p-0 rounded cursor-pointer" title="グループの色">
                 <input type="text" id="admin-new-group-name" placeholder="新しいグループ名" class="border p-1 rounded text-sm w-48">
                 <button onclick="saveNewGroupAdmin()" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
+            </div>
+        </div>
+        `;
+
+        // --- 場所マスター管理ブロック ---
+        let locationMasterHtml = `
+        <div class="mb-6 p-4 bg-teal-50 border border-teal-200 rounded shadow-sm">
+            <h3 class="font-bold text-teal-800 mb-2">場所マスタの管理</h3>
+            <div class="flex flex-col gap-2 mb-3">
+                ${eventLocationsData.length === 0 ? '<span class="text-sm text-gray-500">登録済みの場所はありません</span>' : ''}
+                ${eventLocationsData.map(loc => `
+                    <div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit gap-2">
+                        <span class="font-bold text-teal-900">${loc.name}</span>
+                        ${loc.url ? `<a href="${loc.url}" target="_blank" class="text-blue-500 text-xs hover:underline truncate max-w-xs">${loc.url}</a>` : ''}
+                        <button onclick="renameLocationAdmin('${loc.id}', '${loc.name}', '${loc.url || ''}')" class="text-blue-500 hover:text-blue-700 font-bold ml-2" title="名称変更">✎</button>
+                        <button onclick="deleteLocationAdmin('${loc.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button>
+                    </div>
+                `).join('')}
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+                <input type="text" id="admin-new-location-name" placeholder="場所の名前" class="border p-1 rounded text-sm w-48">
+                <input type="text" id="admin-new-location-url" placeholder="URL (任意)" class="border p-1 rounded text-sm w-64">
+                <button onclick="saveNewLocationAdmin()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1 rounded text-sm shadow font-bold">追加</button>
             </div>
         </div>
         `;
@@ -1093,7 +1123,7 @@ async function loadAdminUsersData() {
     
         const masterListEl = document.getElementById('admin-master-list');
         if (masterListEl) {
-            masterListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml;
+            masterListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml + locationMasterHtml;
         }
     
         // 2. 申請待ち一覧の取得
@@ -1365,6 +1395,59 @@ window.renameGroupAdmin = async function(id, currentName) {
         if (error) throw error;
         await loadAdminUsersData();
     } catch (e) { alert('変更エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message)); } finally { hideLoading(); }
+};
+
+window.saveNewLocationAdmin = async function() {
+    const name = document.getElementById('admin-new-location-name').value.trim();
+    const url = document.getElementById('admin-new-location-url').value.trim();
+    if (!name) return alert('場所名を入力してください');
+    showLoading('場所追加中...');
+    try {
+        const { error } = await supabaseClient.from('event_locations').insert([{ name, url: url || null }]);
+        if (error) throw error;
+        await loadAdminUsersData();
+    } catch (e) {
+        alert('追加エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message));
+    } finally {
+        hideLoading();
+    }
+};
+
+window.deleteLocationAdmin = async function(id) {
+    if (!confirm('この場所をマスタから削除しますか？\n※既存の予定データ内の場所テキスト自体は削除されません。')) return;
+    showLoading('場所削除中...');
+    try {
+        const { error } = await supabaseClient.from('event_locations').delete().eq('id', id);
+        if (error) throw error;
+        await loadAdminUsersData();
+    } catch (e) {
+        alert('削除エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message));
+    } finally {
+        hideLoading();
+    }
+};
+
+window.renameLocationAdmin = async function(id, currentName, currentUrl) {
+    const newName = prompt('新しい場所名を入力してください:', currentName);
+    if (newName === null) return;
+    const newUrl = prompt('新しいURLを入力してください (空にする場合はそのまま確定):', currentUrl);
+    if (newUrl === null) return;
+    
+    if (newName.trim() === '' && newUrl.trim() === '') return;
+    
+    showLoading('場所マスタ更新中...');
+    try {
+        const { error } = await supabaseClient.from('event_locations').update({
+            name: newName.trim() || currentName,
+            url: newUrl.trim() || null
+        }).eq('id', id);
+        if (error) throw error;
+        await loadAdminUsersData();
+    } catch (e) {
+        alert('更新エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message));
+    } finally {
+        hideLoading();
+    }
 };
 
 window.saveNewUserAttributeAdmin = async function() {

@@ -12,6 +12,8 @@ let appUsers = [];
 let userAttributes = [];
 let isAttendanceInitialized = false;
 let myDelegations = [];
+let eventLocations = [];
+let modalSelectedDates = [];
 
 // イベントの対象グループ情報を取得するヘルパー
 function getEventTargetGroupsInfo(ev) {
@@ -212,6 +214,15 @@ async function loadData() {
         const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
         if (attrData) userAttributes = attrData;
 
+        // 場所情報（場所マスタ）
+        try {
+            const { data: locData } = await supabaseClient.from('event_locations').select('*').order('name');
+            if (locData) eventLocations = locData;
+        } catch (e) {
+            console.warn("event_locations table might not exist yet:", e);
+            eventLocations = [];
+        }
+
         // 全員の所属グループ
         const { data: ugData } = await supabaseClient.from('user_groups').select('*');
         if (ugData) {
@@ -309,25 +320,39 @@ function renderCalendar() {
         const cellDate = targetDate.getDate();
         const isCurrentMonth = (cellMonth === month);
         
+        const targetDateStr = `${cellYear}-${String(cellMonth+1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
+        const isSelected = window.att_multiSelectMode && window.att_selectedDates.has(targetDateStr);
+        
         const cell = document.createElement('div');
-        // 余白を最小化（1px程度）
-        cell.className = `border-r border-b min-h-[100px] flex flex-col p-[1px] bg-white ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
-        // 余白を完全に削除する
-        cell.className = `border-r border-b min-h-[100px] flex flex-col p-0 bg-white ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
+        let cellClass = `border-r border-b min-h-[100px] flex flex-col p-0 bg-white cursor-pointer ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
+        if (isSelected) {
+            cellClass = `border-2 border-blue-500 min-h-[100px] flex flex-col p-0 bg-blue-50/70 cursor-pointer z-10`;
+        }
+        cell.className = cellClass;
+        
+        cell.onclick = () => {
+            if (window.att_multiSelectMode) {
+                if (window.att_selectedDates.has(targetDateStr)) {
+                    window.att_selectedDates.delete(targetDateStr);
+                } else {
+                    window.att_selectedDates.add(targetDateStr);
+                }
+                renderCalendar();
+                window.att_updateMultiselectBar();
+            } else {
+                openAddEventModal(targetDateStr);
+            }
+        };
         
         // 日付は右上に配置
         const dateHeader = document.createElement('div');
-        dateHeader.className = 'text-right text-xs text-gray-700 font-bold mb-[1px] pr-1 pt-1 leading-none';
         dateHeader.className = 'text-right text-xs text-gray-700 font-bold mb-0 pr-1 pt-1 leading-none';
         dateHeader.textContent = cellDate;
         cell.appendChild(dateHeader);
         
         // 予定格納コンテナ
         const eventsContainer = document.createElement('div');
-        eventsContainer.className = 'flex-1 overflow-hidden flex flex-col gap-[1px]';
         eventsContainer.className = 'flex-1 overflow-hidden flex flex-col gap-0';
-        
-        const targetDateStr = `${cellYear}-${String(cellMonth+1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
         
         const filteredEvents = getFilteredEvents();
         const dayEvents = filteredEvents.filter(e => e.start_time && e.start_time.startsWith(targetDateStr));
@@ -583,7 +608,7 @@ function renderList() {
                     </span>
                     <span class="flex items-center space-x-0.5">
                         <span>📍</span>
-                        <span>${e.location || '未定'}</span>
+                        <span>${formatLocationHtml(e.location)}</span>
                     </span>
                 </div>
 
@@ -609,14 +634,27 @@ function renderList() {
 // =====================================
 // モーダルとDB操作（イベント）
 // =====================================
-function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
+function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, initialDates = null) {
     let titleVal = '';
     if (sourceEvent) {
         titleVal = sourceEvent.title.replace(/"/g, '&quot;');
         if (!isEdit) titleVal += ' (コピー)';
     }
     const isNew = !sourceEvent && !isEdit;
-    const dateVal = sourceEvent && sourceEvent.start_time ? sourceEvent.start_time.split('T')[0] : dateStr;
+    
+    // Initialize modalSelectedDates
+    if (initialDates && initialDates.length > 0) {
+        modalSelectedDates = [...initialDates];
+    } else if (sourceEvent) {
+        modalSelectedDates = [sourceEvent.start_time.split('T')[0]];
+    } else if (dateStr) {
+        modalSelectedDates = [dateStr];
+    } else {
+        modalSelectedDates = [new Date().toISOString().split('T')[0]];
+    }
+    window.att_modalSelectedDates = modalSelectedDates;
+    window.att_isEditingModal = isEdit;
+
     const timeVal = sourceEvent && sourceEvent.start_time && !sourceEvent.is_all_day ? sourceEvent.start_time.split('T')[1].substring(0,5) : (isNew ? '12:30' : '');
     const endTimeVal = sourceEvent && sourceEvent.end_time && !sourceEvent.is_all_day ? sourceEvent.end_time.split('T')[1].substring(0,5) : (isNew ? '17:00' : '');
     const isAllDay = sourceEvent ? sourceEvent.is_all_day : false;
@@ -631,10 +669,32 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
     const endTimeH = endTimeVal ? endTimeVal.split(':')[0] : '';
     const endTimeM = endTimeVal ? endTimeVal.split(':')[1] : '';
 
-    const dlDate = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[0] : (isNew ? dateVal : '');
-    const dlTime = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[1].substring(0,5) : (isNew ? '12:00' : '');
-    const dlTimeH = dlTime ? dlTime.split(':')[0] : '';
-    const dlTimeM = dlTime ? dlTime.split(':')[1] : '';
+    // Check if the current event's location is in the master list
+    const isCustomLocation = !locationVal || !eventLocations.some(loc => {
+        const fullVal = loc.url ? `${loc.name} ${loc.url}` : loc.name;
+        return fullVal === locationVal;
+    });
+    
+    let customName = '';
+    let customUrl = '';
+    if (locationVal) {
+        const urlMatch = locationVal.match(/(https?:\/\/[^\s\<\>\"]+)/);
+        if (urlMatch) {
+            customUrl = urlMatch[0];
+            customName = locationVal.replace(customUrl, '').trim();
+        } else {
+            customName = locationVal;
+        }
+    }
+
+    // Determine custom deadline or auto-deadline status
+    const hasCustomDeadline = !!(sourceEvent && sourceEvent.attendance_deadline && (sourceEvent.attendance_deadline !== getDefaultDeadline(sourceEvent.start_time.split('T')[0])));
+    
+    const defaultDlDate = getDefaultDeadline(modalSelectedDates[0]) ? getDefaultDeadline(modalSelectedDates[0]).split('T')[0] : '';
+    const dlDate = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[0] : defaultDlDate;
+    const dlTime = sourceEvent && sourceEvent.attendance_deadline ? sourceEvent.attendance_deadline.split('T')[1].substring(0,5) : '12:00';
+    const dlTimeH = dlTime ? dlTime.split(':')[0] : '12';
+    const dlTimeM = dlTime ? dlTime.split(':')[1] : '00';
 
     const hoursOptions = (selectedVal) => '<option value="">--</option>' + Array.from({length: 24}, (_, i) => String(i).padStart(2, '0')).map(h => `<option value="${h}" ${h === selectedVal ? 'selected' : ''}>${h}</option>`).join('');
     const minutesOptions = (selectedVal) => '<option value="">--</option>' + Array.from({length: 60}, (_, i) => String(i).padStart(2, '0')).map(m => `<option value="${m}" ${m === selectedVal ? 'selected' : ''}>${m}</option>`).join('');
@@ -663,48 +723,77 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
         <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col text-sm text-gray-800">
             <h3 class="text-lg font-bold mb-3 shrink-0">${modalTitle}</h3>
             <div class="space-y-3 overflow-y-auto pr-1 flex-1">
-                <div><label class="text-xs font-bold text-gray-600">イベント名*</label>
-                <input type="text" id="ev-title" value="${titleVal}" placeholder="イベント名" class="w-full border p-1.5 rounded text-xs"></div>
-                <div class="flex space-x-2">
-                    <div class="w-[34%]"><label class="text-xs font-bold text-gray-600">日付*</label><input type="date" id="ev-date" value="${dateVal}" class="w-full border p-1.5 rounded text-xs px-1" onchange="this.blur()"></div>
-                    <div id="ev-time-container" class="w-[33%] ${isAllDay ? 'opacity-50' : ''}">
-                        <label class="text-xs font-bold text-gray-600">開始</label>
-                        <div class="flex items-center space-x-0.5">
-                            <select id="ev-time-h" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${hoursOptions(timeH)}</select>
-                            <span class="font-bold text-gray-500">:</span>
-                            <select id="ev-time-m" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${minutesOptions(timeM)}</select>
-                        </div>
-                    </div>
-                    <div id="ev-end-time-container" class="w-[33%] ${isAllDay ? 'opacity-50' : ''}">
-                        <label class="text-xs font-bold text-gray-600">終了</label>
-                        <div class="flex items-center space-x-0.5">
-                            <select id="ev-end-time-h" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${hoursOptions(endTimeH)}</select>
-                            <span class="font-bold text-gray-500">:</span>
-                            <select id="ev-end-time-m" class="w-full border py-1.5 px-1 rounded text-xs" ${isAllDay ? 'disabled' : ''}>${minutesOptions(endTimeM)}</select>
-                        </div>
-                    </div>
+                <div>
+                    <label class="text-xs font-bold text-gray-600">イベント名*</label>
+                    <input type="text" id="ev-title" value="${titleVal}" placeholder="イベント名" class="w-full border p-1.5 rounded text-xs">
                 </div>
-                <div class="flex items-center space-x-2 mt-1 mb-2 border-b pb-2">
-                    <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer" ${isAllDay ? 'checked' : ''} onchange="['ev-time-h','ev-time-m','ev-end-time-h','ev-end-time-m'].forEach(id=>{const el=document.getElementById(id); el.disabled=this.checked; if(this.checked)el.value='';}); document.getElementById('ev-time-container').classList.toggle('opacity-50', this.checked); document.getElementById('ev-end-time-container').classList.toggle('opacity-50', this.checked);">
-                    <label for="ev-all-day" class="font-bold text-gray-700 text-xs cursor-pointer">終日イベントにする</label>
+                
+                <!-- Date input block -->
+                <div>
+                    <label class="text-xs font-bold text-gray-600">日付*</label>
+                    <div id="ev-dates-container" class="space-y-1.5 max-h-32 overflow-y-auto border p-2 rounded bg-gray-50 mt-1">
+                        <!-- Rendered by renderDateRows() -->
+                    </div>
+                    ${!isEdit ? `
+                    <button type="button" onclick="window.att_addDateRow()" class="mt-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-xs font-bold flex items-center space-x-1 transition shadow-sm border border-gray-200">
+                        <span>＋ 日付を追加</span>
+                    </button>
+                    ` : ''}
+                </div>
+                
+                <!-- Time and AllDay Row -->
+                <div class="flex space-x-4 items-end">
+                    <div id="ev-time-container" class="flex-1 ${isAllDay ? 'opacity-50' : ''}">
+                        <label class="text-xs font-bold text-gray-600">開始時間</label>
+                        <div class="flex items-center space-x-1 mt-1">
+                            <select id="ev-time-h" class="w-full border py-1.5 px-1.5 rounded text-xs bg-white" ${isAllDay ? 'disabled' : ''}>${hoursOptions(timeH)}</select>
+                            <span class="font-bold text-gray-500">:</span>
+                            <select id="ev-time-m" class="w-full border py-1.5 px-1.5 rounded text-xs bg-white" ${isAllDay ? 'disabled' : ''}>${minutesOptions(timeM)}</select>
+                        </div>
+                    </div>
+                    <div id="ev-end-time-container" class="flex-1 ${isAllDay ? 'opacity-50' : ''}">
+                        <label class="text-xs font-bold text-gray-600">終了時間</label>
+                        <div class="flex items-center space-x-1 mt-1">
+                            <select id="ev-end-time-h" class="w-full border py-1.5 px-1.5 rounded text-xs bg-white" ${isAllDay ? 'disabled' : ''}>${hoursOptions(endTimeH)}</select>
+                            <span class="font-bold text-gray-500">:</span>
+                            <select id="ev-end-time-m" class="w-full border py-1.5 px-1.5 rounded text-xs bg-white" ${isAllDay ? 'disabled' : ''}>${minutesOptions(endTimeM)}</select>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 pb-1.5">
+                        <input type="checkbox" id="ev-all-day" class="w-4 h-4 text-blue-600 cursor-pointer rounded border-gray-300 focus:ring-blue-500" ${isAllDay ? 'checked' : ''} onchange="['ev-time-h','ev-time-m','ev-end-time-h','ev-end-time-m'].forEach(id=>{const el=document.getElementById(id); el.disabled=this.checked; if(this.checked)el.value='';}); document.getElementById('ev-time-container').classList.toggle('opacity-50', this.checked); document.getElementById('ev-end-time-container').classList.toggle('opacity-50', this.checked);">
+                        <label for="ev-all-day" class="font-bold text-gray-700 text-xs cursor-pointer select-none">終日</label>
+                    </div>
                 </div>
                 
                 <div class="flex space-x-2 pb-2 mb-2 border-b">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">出欠設定</label>
-                        <select id="ev-attendance-type" class="w-full border p-1.5 rounded font-bold text-xs" onchange="document.getElementById('ev-deadline-container').style.display = this.value === 'none' ? 'none' : 'block';">
+                        <select id="ev-attendance-type" class="w-full border p-1.5 rounded font-bold text-xs bg-white" onchange="document.getElementById('ev-deadline-container').style.display = this.value === 'none' ? 'none' : 'block';">
                             <option value="none" ${!reqAtt ? 'selected' : ''}>なし</option>
                             <option value="simple" ${reqAtt && !reqDetAtt ? 'selected' : ''}>簡易</option>
                             <option value="detailed" ${reqAtt && reqDetAtt ? 'selected' : ''}>詳細 (車・同伴者)</option>
                         </select>
                     </div>
+                    
                     <div class="w-1/2" id="ev-deadline-container" style="display: ${!reqAtt ? 'none' : 'block'}">
-                        <label class="text-xs font-bold text-gray-600">回答期限</label>
-                        <div class="flex items-center space-x-0.5">
+                        <div class="flex items-center justify-between mb-0.5">
+                            <label class="text-xs font-bold text-gray-600">回答期限</label>
+                            <div class="flex items-center space-x-1">
+                                <input type="checkbox" id="ev-deadline-custom-cb" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5 cursor-pointer" ${hasCustomDeadline ? 'checked' : ''} onchange="window.att_toggleDeadlineCustom(this.checked)">
+                                <label for="ev-deadline-custom-cb" class="text-[11px] font-bold text-gray-500 cursor-pointer select-none">個別指定</label>
+                            </div>
+                        </div>
+                        
+                        <!-- Custom Deadline Inputs -->
+                        <div id="ev-deadline-custom-inputs" class="flex items-center space-x-0.5 ${hasCustomDeadline ? '' : 'hidden'}">
                             <input type="date" id="ev-deadline-date" value="${dlDate}" class="w-[50%] border p-1.5 rounded text-xs px-1" onchange="this.blur()">
-                            <select id="ev-deadline-time-h" class="w-[25%] border py-1.5 px-1 rounded text-xs">${hoursOptions(dlTimeH)}</select>
+                            <select id="ev-deadline-time-h" class="w-[25%] border py-1.5 px-1 rounded text-xs bg-white">${hoursOptions(dlTimeH)}</select>
                             <span class="font-bold text-gray-500">:</span>
-                            <select id="ev-deadline-time-m" class="w-[25%] border py-1.5 px-1 rounded text-xs">${minutesOptions(dlTimeM)}</select>
+                            <select id="ev-deadline-time-m" class="w-[25%] border py-1.5 px-1 rounded text-xs bg-white">${minutesOptions(dlTimeM)}</select>
+                        </div>
+                        
+                        <!-- Default Deadline Auto Label -->
+                        <div id="ev-deadline-auto-preview" class="text-[11px] text-gray-600 bg-gray-50 border border-dashed border-gray-200 rounded p-1.5 font-medium leading-normal ${hasCustomDeadline ? 'hidden' : ''}">
                         </div>
                     </div>
                 </div>
@@ -712,7 +801,7 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                 <div class="flex space-x-2">
                     <div class="w-1/2">
                         <label class="text-xs font-bold text-gray-600">カテゴリ</label>
-                        <select id="ev-category" class="w-full border p-1.5 rounded text-xs">
+                        <select id="ev-category" class="w-full border p-1.5 rounded text-xs bg-white">
                             ${categories.map(c => `<option value="${c.name}" ${c.name === categoryVal ? 'selected' : ''}>${c.name}</option>`).join('')}
                         </select>
                     </div>
@@ -721,8 +810,43 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
                         ${groupCheckboxes}
                     </div>
                 </div>
-                <div><label class="text-xs font-bold text-gray-600">場所</label><input type="text" id="ev-location" value="${locationVal}" placeholder="場所" class="w-full border p-1.5 rounded text-xs"></div>
-                <div><label class="text-xs font-bold text-gray-600">説明</label><textarea id="ev-description" placeholder="説明" class="w-full border p-1.5 rounded text-xs" rows="3">${descVal}</textarea></div>
+                
+                <!-- Place selection using Master Data -->
+                <div class="flex flex-col space-y-1.5">
+                    <label class="text-xs font-bold text-gray-600">場所</label>
+                    <select id="ev-location-select" class="w-full border p-1.5 rounded text-xs font-medium bg-white" onchange="window.att_onLocationSelectChange(this.value)">
+                        <option value="custom">-- 直接入力 / 新規マスタ追加 --</option>
+                        ${eventLocations.map(loc => {
+                            const fullVal = loc.url ? `${loc.name} ${loc.url}` : loc.name;
+                            const isSelected = (locationVal === fullVal);
+                            return `<option value="${fullVal}" ${isSelected ? 'selected' : ''}>${loc.name}${loc.url ? ' (URLあり)' : ''}</option>`;
+                        }).join('')}
+                    </select>
+                    
+                    <!-- Direct Input & Inline Master Register container -->
+                    <div id="ev-location-custom-container" class="border p-2.5 rounded bg-gray-50 space-y-2 mt-1 ${isCustomLocation ? '' : 'hidden'}">
+                        <div class="flex space-x-2">
+                            <div class="flex-1">
+                                <label class="text-[10px] font-bold text-gray-500">場所名</label>
+                                <input type="text" id="ev-location-custom-name" value="${customName}" placeholder="例: 〇〇グラウンド" class="w-full border p-1 rounded text-xs bg-white">
+                            </div>
+                            <div class="flex-1">
+                                <label class="text-[10px] font-bold text-gray-500">URL (Google Map 等、任意)</label>
+                                <input type="text" id="ev-location-custom-url" value="${customUrl}" placeholder="https://..." class="w-full border p-1 rounded text-xs bg-white">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="button" onclick="window.att_registerNewLocation()" class="bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded text-xs font-bold transition shadow-sm">
+                                場所マスタに登録して選択する
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-xs font-bold text-gray-600">説明</label>
+                    <textarea id="ev-description" placeholder="説明" class="w-full border p-1.5 rounded text-xs" rows="3">${descVal}</textarea>
+                </div>
             </div>
             <div class="flex justify-end space-x-3 mt-4 pt-4 border-t shrink-0">
                 <button onclick="window.att_closeModal()" class="bg-gray-300 hover:bg-gray-400 px-4 py-1.5 rounded font-bold text-xs">キャンセル</button>
@@ -731,6 +855,24 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
         </div>
     </div>`;
     document.getElementById('attendance-modals').innerHTML = modalHtml;
+
+    // Call helpers to render date list and default deadline
+    renderDateRows();
+    updateDefaultDeadlineLabel();
+
+    // Toggle custom deadline function inside global space
+    window.att_toggleDeadlineCustom = (isChecked) => {
+        const customInputs = document.getElementById('ev-deadline-custom-inputs');
+        const autoPreview = document.getElementById('ev-deadline-auto-preview');
+        if (isChecked) {
+            customInputs.classList.remove('hidden');
+            autoPreview.classList.add('hidden');
+        } else {
+            customInputs.classList.add('hidden');
+            autoPreview.classList.remove('hidden');
+            updateDefaultDeadlineLabel();
+        }
+    };
 
     // 全体と個別の排他制御イベントリスナー
     const allCb = document.getElementById('ev-group-all');
@@ -751,9 +893,15 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false) {
 }
 
 async function saveEvent(editEventId = null) {
-    const title = document.getElementById('ev-title').value;
-    const date = document.getElementById('ev-date').value;
+    const title = document.getElementById('ev-title').value.trim();
     
+    // Get all date values from the container
+    const dateInputs = document.querySelectorAll('#ev-dates-container input[type="date"]');
+    const dates = Array.from(dateInputs).map(inp => inp.value).filter(Boolean);
+    
+    if (!title) return alert('イベント名は必須です');
+    if (dates.length === 0) return alert('日付を1つ以上指定してください');
+
     const th = document.getElementById('ev-time-h').value;
     const tm = document.getElementById('ev-time-m').value;
     let time = '';
@@ -769,24 +917,32 @@ async function saveEvent(editEventId = null) {
     }
     
     const isAllDay = document.getElementById('ev-all-day').checked;
-    
-    if (!title || !date) return alert('イベント名と日付は必須です');
 
     // モーダルを閉じてDOMが削除される前に、すべての入力値を取得する
     const category = document.getElementById('ev-category').value;
     const description = document.getElementById('ev-description').value;
-    const location = document.getElementById('ev-location').value;
+    
+    // Location handling
+    const locationSelect = document.getElementById('ev-location-select');
+    let location = '';
+    if (locationSelect) {
+        if (locationSelect.value === 'custom') {
+            const custName = document.getElementById('ev-location-custom-name')?.value.trim() || '';
+            const custUrl = document.getElementById('ev-location-custom-url')?.value.trim() || '';
+            location = custUrl ? `${custName} ${custUrl}` : custName;
+        } else {
+            location = locationSelect.value;
+        }
+    }
+    
     const attType = document.getElementById('ev-attendance-type').value;
     const requires_attendance = attType !== 'none';
     const require_detailed_attendance = attType === 'detailed';
     
+    const isCustomDeadline = document.getElementById('ev-deadline-custom-cb')?.checked || false;
     const dlDate = document.getElementById('ev-deadline-date')?.value;
     const dlH = document.getElementById('ev-deadline-time-h')?.value;
     const dlM = document.getElementById('ev-deadline-time-m')?.value;
-    let attendanceDeadline = null;
-    if (requires_attendance && dlDate && dlH && dlM) {
-        attendanceDeadline = `${dlDate}T${dlH}:${dlM}:00`;
-    }
 
     const isAll = document.getElementById('ev-group-all').checked;
     let target_group_ids = [];
@@ -809,40 +965,85 @@ async function saveEvent(editEventId = null) {
         }
 
         try {
-            const startTime = `${date}T${time || '00:00'}:00`;
-            let endTime = null;
-            if (endTimeStr) endTime = `${date}T${endTimeStr}:00`;
-
-            const payload = {
-                title, category: category,
-                description: description,
-                location: location,
-                start_time: startTime,
-                end_time: endTime,
-                is_all_day: isAllDay,
-                requires_attendance: requires_attendance,
-                require_detailed_attendance: require_detailed_attendance,
-                attendance_deadline: attendanceDeadline,
-                target_group_id: target_group_id,
-                target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
-            };
-            
-            if (!editEventId) payload.created_by = currentUser?.email;
-            
             if (editEventId) {
+                const dateVal = dates[0];
+                const startTime = `${dateVal}T${time || '00:00'}:00`;
+                let endTime = null;
+                if (endTimeStr) endTime = `${dateVal}T${endTimeStr}:00`;
+                
+                let attendanceDeadline = null;
+                if (requires_attendance) {
+                    if (isCustomDeadline) {
+                        if (dlDate && dlH && dlM) {
+                            attendanceDeadline = `${dlDate}T${dlH}:${dlM}:00`;
+                        }
+                    } else {
+                        attendanceDeadline = getDefaultDeadline(dateVal);
+                    }
+                }
+                
+                const payload = {
+                    title, category: category,
+                    description: description,
+                    location: location,
+                    start_time: startTime,
+                    end_time: endTime,
+                    is_all_day: isAllDay,
+                    requires_attendance: requires_attendance,
+                    require_detailed_attendance: require_detailed_attendance,
+                    attendance_deadline: attendanceDeadline,
+                    target_group_id: target_group_id,
+                    target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
+                };
+                
                 const { error } = await supabaseClient.from('events').update(payload).eq('id', editEventId);
                 if (error) throw error;
                 await logAction('UPDATE_EVENT', `イベント「${title}」を更新しました`);
             } else {
-                const { error } = await supabaseClient.from('events').insert(payload);
+                const payloads = dates.map(dVal => {
+                    const startTime = `${dVal}T${time || '00:00'}:00`;
+                    let endTime = null;
+                    if (endTimeStr) endTime = `${dVal}T${endTimeStr}:00`;
+                    
+                    let attendanceDeadline = null;
+                    if (requires_attendance) {
+                        if (isCustomDeadline) {
+                            if (dlDate && dlH && dlM) {
+                                attendanceDeadline = `${dlDate}T${dlH}:${dlM}:00`;
+                            }
+                        } else {
+                            attendanceDeadline = getDefaultDeadline(dVal);
+                        }
+                    }
+                    
+                    return {
+                        title, category: category,
+                        description: description,
+                        location: location,
+                        start_time: startTime,
+                        end_time: endTime,
+                        is_all_day: isAllDay,
+                        requires_attendance: requires_attendance,
+                        require_detailed_attendance: require_detailed_attendance,
+                        attendance_deadline: attendanceDeadline,
+                        target_group_id: target_group_id,
+                        target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
+                        created_by: currentUser?.email
+                    };
+                });
+                
+                const { error } = await supabaseClient.from('events').insert(payloads);
                 if (error) throw error;
-                await logAction('CREATE_EVENT', `イベント「${title}」を作成しました`);
+                await logAction('CREATE_EVENT', `イベント「${title}」を${payloads.length}件作成しました`);
             }
             
             await loadData();
             renderCalendar();
             if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
             
+            if (!editEventId && typeof window.att_clearDateSelection === 'function') {
+                window.att_clearDateSelection();
+            }
             window.att_closeModal();
             break;
         } catch (e) {
@@ -864,6 +1065,7 @@ async function saveEvent(editEventId = null) {
     }
     hideLoading();
 }
+
 
 async function deleteEvent(id) {
     if(!confirm("このイベントを削除しますか？")) return;
@@ -1303,7 +1505,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                 ${activeTab === 'basic' ? `
                     <div class="text-sm text-gray-600 mb-4 space-y-1">
                         <p><strong>日時:</strong> ${dt}</p>
-                        <p><strong>場所:</strong> ${ev.location || '未定'}</p>
+                        <p><strong>場所:</strong> ${formatLocationHtml(ev.location)}</p>
                         <p class="flex items-center gap-1 mt-1"><strong>カテゴリ:</strong> <span class="px-2 py-0.5 rounded text-xs text-gray-800 shadow-sm" style="background-color: ${categoryColor}">${ev.category || '未設定'}</span></p>
                         <p class="flex items-center gap-1 mt-1"><strong>対象:</strong> <span class="px-2 py-0.5 rounded text-xs border border-gray-300 text-gray-800 shadow-sm" style="background-color: ${groupColor}">${groupName}</span></p>
                         <p class="mt-2 whitespace-pre-wrap border p-2 bg-gray-50 rounded min-h-[60px] text-gray-800">${ev.description || '説明なし'}</p>
@@ -1609,3 +1811,219 @@ window.att_importCsv = async function(event) {
     };
     reader.readAsText(file);
 };
+
+// =====================================
+// 一括登録・場所マスタ・回答期限自動算出のヘルパー関数群
+// =====================================
+function getDefaultDeadline(eventDateStr) {
+    if (!eventDateStr) return null;
+    const d = new Date(eventDateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return null;
+    const day = d.getDay();
+    const diff = (day - 4 + 7) % 7;
+    const deadlineDate = new Date(d.getTime() - diff * 24 * 60 * 60 * 1000);
+    const year = deadlineDate.getFullYear();
+    const month = String(deadlineDate.getMonth() + 1).padStart(2, '0');
+    const date = String(deadlineDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${date}T12:00:00`;
+}
+
+function formatDefaultDeadlineDisplay(eventDateStr) {
+    const dlStr = getDefaultDeadline(eventDateStr);
+    if (!dlStr) return '';
+    const d = new Date(dlStr);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const date = d.getDate();
+    return `${year}/${month}/${date}(木) 12:00`;
+}
+
+function formatLocationHtml(locationStr) {
+    if (!locationStr) return '未定';
+    let escaped = locationStr
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    
+    const urlRegex = /(https?:\/\/[^\s\<\>\"]+)/g;
+    return escaped.replace(urlRegex, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" class="text-blue-600 hover:underline inline-flex items-center space-x-0.5 ml-1 font-semibold">
+            <span>地図/リンク</span>
+            <svg class="w-3.5 h-3.5 inline ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+        </a>`;
+    });
+}
+
+function updateMultiselectBar() {
+    const bar = document.getElementById('multiselect-bar');
+    const count = document.getElementById('multiselect-count');
+    if (!bar || !count) return;
+    
+    if (window.att_multiSelectMode && window.att_selectedDates.size > 0) {
+        count.textContent = window.att_selectedDates.size;
+        bar.classList.remove('hidden');
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+function clearDateSelection() {
+    window.att_selectedDates.clear();
+    renderCalendar();
+    updateMultiselectBar();
+}
+
+function openBulkAddEvent() {
+    if (window.att_selectedDates.size === 0) {
+        alert('日程が選択されていません。');
+        return;
+    }
+    const sortedDates = Array.from(window.att_selectedDates).sort();
+    openAddEventModal('', null, false, sortedDates);
+}
+
+function renderDateRows() {
+    const container = document.getElementById('ev-dates-container');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    if (modalSelectedDates.length === 0) {
+        container.innerHTML = '<div class="text-xs text-gray-500 py-1.5 text-center">日付が選択されていません</div>';
+        return;
+    }
+    
+    modalSelectedDates.forEach((dVal, idx) => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center space-x-2 bg-white p-1.5 rounded border shadow-sm';
+        
+        const input = document.createElement('input');
+        input.type = 'date';
+        input.value = dVal;
+        input.className = 'border rounded text-xs px-2 py-1 flex-1 min-w-0 font-medium focus:ring-1 focus:ring-blue-500 focus:border-blue-500';
+        input.onchange = (e) => {
+            modalSelectedDates[idx] = e.target.value;
+            updateDefaultDeadlineLabel();
+        };
+        row.appendChild(input);
+        
+        if (!window.att_isEditingModal) {
+            const delBtn = document.createElement('button');
+            delBtn.type = 'button';
+            delBtn.className = 'text-red-500 hover:text-red-700 font-bold p-1 transition rounded hover:bg-red-50';
+            delBtn.innerHTML = `
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+            `;
+            delBtn.onclick = () => {
+                modalSelectedDates.splice(idx, 1);
+                renderDateRows();
+                updateDefaultDeadlineLabel();
+            };
+            row.appendChild(delBtn);
+        }
+        
+        container.appendChild(row);
+    });
+}
+
+function addDateRow() {
+    let nextDateStr = new Date().toISOString().split('T')[0];
+    if (modalSelectedDates.length > 0) {
+        const lastDate = new Date(modalSelectedDates[modalSelectedDates.length - 1]);
+        if (!isNaN(lastDate.getTime())) {
+            lastDate.setDate(lastDate.getDate() + 1);
+            nextDateStr = lastDate.toISOString().split('T')[0];
+        }
+    }
+    modalSelectedDates.push(nextDateStr);
+    renderDateRows();
+    updateDefaultDeadlineLabel();
+}
+
+function removeDateRow(idx) {
+    modalSelectedDates.splice(idx, 1);
+    renderDateRows();
+    updateDefaultDeadlineLabel();
+}
+
+function updateDefaultDeadlineLabel() {
+    const previewEl = document.getElementById('ev-deadline-auto-preview');
+    if (!previewEl) return;
+    
+    if (modalSelectedDates.length === 0) {
+        previewEl.innerHTML = '<span class="text-red-500 font-semibold text-xs">日付を入力してください</span>';
+        return;
+    }
+    
+    if (modalSelectedDates.length === 1) {
+        const dl = getDefaultDeadline(modalSelectedDates[0]);
+        if (dl) {
+            const formatted = formatDefaultDeadlineDisplay(modalSelectedDates[0]);
+            previewEl.innerHTML = `<span class="text-blue-600 font-bold">自動算出:</span> ${formatted}`;
+        } else {
+            previewEl.innerHTML = '<span class="text-red-500 font-semibold text-xs">日付が不正です</span>';
+        }
+    } else {
+        const formatted1 = formatDefaultDeadlineDisplay(modalSelectedDates[0]);
+        previewEl.innerHTML = `<span class="text-blue-600 font-bold">自動算出:</span> 各日程の直近木曜12:00<br><span class="text-[10px] text-gray-400 font-semibold">(例: ${modalSelectedDates[0]}分 → ${formatted1})</span>`;
+    }
+}
+
+function onLocationSelectChange(value) {
+    const customContainer = document.getElementById('ev-location-custom-container');
+    if (!customContainer) return;
+    if (value === 'custom') {
+        customContainer.classList.remove('hidden');
+    } else {
+        customContainer.classList.add('hidden');
+    }
+}
+
+async function registerNewLocation() {
+    const nameInput = document.getElementById('ev-location-custom-name');
+    const urlInput = document.getElementById('ev-location-custom-url');
+    if (!nameInput) return;
+    
+    const name = nameInput.value.trim();
+    const url = urlInput ? urlInput.value.trim() : '';
+    
+    if (!name) return alert('場所名は必須です');
+    
+    showLoading('場所マスタに登録中...');
+    try {
+        const { error } = await supabaseClient.from('event_locations').insert({ name, url: url || null });
+        if (error) throw error;
+        
+        const { data: locData } = await supabaseClient.from('event_locations').select('*').order('name');
+        if (locData) eventLocations = locData;
+        
+        const selectEl = document.getElementById('ev-location-select');
+        if (selectEl) {
+            const fullVal = url ? `${name} ${url}` : name;
+            selectEl.innerHTML = `
+                <option value="custom">-- 直接入力 / 新規マスタ追加 --</option>
+                ${eventLocations.map(loc => {
+                    const fVal = loc.url ? `${loc.name} ${loc.url}` : loc.name;
+                    return `<option value="${fVal}" ${fVal === fullVal ? 'selected' : ''}>${loc.name}${loc.url ? ' (URLあり)' : ''}</option>`;
+                }).join('')}
+            `;
+            
+            const customContainer = document.getElementById('ev-location-custom-container');
+            if (customContainer) customContainer.classList.add('hidden');
+            
+            nameInput.value = '';
+            if (urlInput) urlInput.value = '';
+        }
+        alert('場所マスタに登録しました');
+    } catch (err) {
+        console.error("Failed to register location:", err);
+        alert('マスタ登録エラー: ' + (err.message || String(err)));
+    } finally {
+        hideLoading();
+    }
+}

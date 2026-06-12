@@ -470,6 +470,7 @@
                 </div>
                 <div class="flex space-x-2">
                     <button id="btn-group-manage" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow text-sm">所属グループ管理</button>
+                    <button id="btn-toggle-multiselect" class="bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-2 rounded shadow-sm font-bold text-xs md:text-sm transition">📅 日程複数選択</button>
                     <button id="btn-add-event" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm">＋ 新規イベント</button>
                 </div>
             </div>
@@ -512,6 +513,13 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- 日程複数選択時の一括アクションバー -->
+    <div id="multiselect-bar" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur border border-gray-200 shadow-2xl px-6 py-3 rounded-full flex items-center space-x-4 z-[90] hidden transition-all duration-300">
+        <span class="text-sm font-bold text-gray-700">選択中: <span class="text-blue-600 text-base font-extrabold" id="multiselect-count">0</span> 日程</span>
+        <button onclick="window.att_openBulkAddEvent()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-4 rounded-full text-xs shadow-md transition">選択日程で一括登録</button>
+        <button onclick="window.att_clearDateSelection()" class="text-gray-500 hover:text-gray-700 text-xs font-bold transition">選択をクリア</button>
     </div>
 
     <!-- 動的モーダル格納用コンテナ -->
