@@ -707,9 +707,8 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, ini
         </div>
     `;
 
-    const isSingleEditOrCreate = isEdit || (modalSelectedDates.length === 1 && window.att_selectedDates.size === 0);
     let datesHtml = '';
-    if (isSingleEditOrCreate) {
+    if (isEdit) {
         datesHtml = `
             <div>
                 <label class="text-xs font-bold text-gray-600">日付*</label>
@@ -721,16 +720,17 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, ini
     } else {
         datesHtml = `
             <div>
-                <label class="text-xs font-bold text-gray-600">日付 (一括登録)*</label>
-                <div class="flex flex-wrap gap-1.5 p-2.5 border rounded-lg bg-gray-50 max-h-24 overflow-y-auto mt-1">
-                    ${modalSelectedDates.map(d => `<span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 text-xs font-bold shadow-sm">${d}</span>`).join('')}
+                <label class="text-xs font-bold text-gray-600">日付*</label>
+                <div id="ev-dates-container" class="space-y-1.5 max-h-32 overflow-y-auto border p-2 rounded bg-gray-50 mt-1">
+                    <!-- Rendered by renderDateRows() -->
                 </div>
-                <div id="ev-dates-container" class="hidden">
-                    ${modalSelectedDates.map(d => `<input type="date" value="${d}">`).join('')}
-                </div>
+                <button type="button" onclick="window.att_addDateRow()" class="mt-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-xs font-bold flex items-center space-x-1 transition shadow-sm border border-gray-200">
+                    <span>＋ 日付を追加</span>
+                </button>
             </div>
         `;
     }
+
 
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
@@ -862,6 +862,10 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, ini
 
     // Call helpers to render default deadline
     updateDefaultDeadlineLabel();
+
+    if (!isEdit) {
+        renderDateRows();
+    }
 
     // 全体と個別の排他制御イベントリスナー
     const allCb = document.getElementById('ev-group-all');
