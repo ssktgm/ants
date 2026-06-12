@@ -871,6 +871,30 @@ async function handleLogout(e) {
 }
 
 
+function updateHeaderTabsVisibility(activeSubView) {
+    const navDispatch = document.getElementById('nav-dispatch');
+    const navMaster = document.getElementById('nav-master');
+    const navUsers = document.getElementById('nav-users');
+
+    if (activeSubView === 'users') {
+        navDispatch?.classList.add('hidden');
+        navMaster?.classList.add('hidden');
+        navUsers?.classList.add('hidden');
+    } else {
+        navUsers?.classList.add('hidden');
+        if (currentUserRole === 'admin') {
+            navDispatch?.classList.remove('hidden');
+            navMaster?.classList.remove('hidden');
+        } else if (currentUserRole === 'leader') {
+            navDispatch?.classList.remove('hidden');
+            navMaster?.classList.add('hidden');
+        } else {
+            navDispatch?.classList.add('hidden');
+            navMaster?.classList.add('hidden');
+        }
+    }
+}
+
 // --- アプリ初期化 ---
 let localFamilies = [];
 let localCars = [];
@@ -880,11 +904,17 @@ let deletedParkingIds = new Set();
 async function initApp() {
     isAppInitialized = true;
     
+    // Set initial header tab visibility
+    updateHeaderTabsVisibility('dispatch');
+    
     // ナビゲーションイベント設定
     navDispatch?.addEventListener('click', async () => {
         viewDispatch?.classList.remove('hidden'); 
         viewMaster?.classList.add('hidden');
         document.getElementById('view-users')?.classList.add('hidden');
+        
+        // Restore tab visibility
+        updateHeaderTabsVisibility('dispatch');
         
         navDispatch?.classList.add('text-blue-300'); navDispatch?.classList.remove('text-gray-400');
         navMaster?.classList.remove('text-blue-300'); navMaster?.classList.add('text-gray-400');
@@ -896,6 +926,9 @@ async function initApp() {
         viewMaster?.classList.remove('hidden'); 
         viewDispatch?.classList.add('hidden');
         document.getElementById('view-users')?.classList.add('hidden');
+        
+        // Restore tab visibility
+        updateHeaderTabsVisibility('master');
         
         navMaster?.classList.add('text-blue-300'); navMaster?.classList.remove('text-gray-400');
         navDispatch?.classList.remove('text-blue-300'); navDispatch?.classList.add('text-gray-400');
@@ -939,6 +972,9 @@ async function handleNavUsers() {
     document.getElementById('view-users').classList.remove('hidden');
     document.getElementById('view-master').classList.add('hidden');
     document.getElementById('view-dispatch').classList.add('hidden');
+    
+    updateHeaderTabsVisibility('users');
+    
     document.getElementById('nav-users').classList.add('text-blue-300');
     document.getElementById('nav-users').classList.remove('text-gray-400');
     document.getElementById('nav-dispatch').classList.remove('text-blue-300');
