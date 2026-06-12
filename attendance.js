@@ -9,6 +9,7 @@ let attendances = [];
 let allUserGroups = [];
 let allAttendances = [];
 let appUsers = [];
+let userAttributes = [];
 let isAttendanceInitialized = false;
 let myDelegations = [];
 
@@ -36,6 +37,21 @@ function generateGroupTagsHtml(groupInfo) {
         return `<span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded shadow-sm" style="background-color: #e5e7eb">全体</span>`;
     }
     return groupInfo.groups.map(g => `<span class="text-xs border border-gray-300 text-gray-800 px-2 py-0.5 rounded shadow-sm" style="background-color: ${g.color || '#e5e7eb'}">${g.name}</span>`).join(' ');
+}
+
+function formatUpdatedAt(isoStr) {
+    if (!isoStr) return '-';
+    try {
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return '-';
+        const m = d.getMonth() + 1;
+        const date = d.getDate();
+        const h = String(d.getHours()).padStart(2, '0');
+        const min = String(d.getMinutes()).padStart(2, '0');
+        return `${m}/${date} ${h}:${min}`;
+    } catch (e) {
+        return '-';
+    }
 }
 
 // =====================================
@@ -125,6 +141,16 @@ function setupEventListeners() {
     window.att_openAttendanceForm = openAttendanceFormModal;
     window.att_saveAttendance = saveAttendance;
     window.att_exportCsv = exportCsv;
+    window.att_statusViewType = window.att_statusViewType || 'group';
+    window.att_statusFilter = window.att_statusFilter || 'all';
+    window.att_setStatusViewType = (eventId, viewType) => {
+        window.att_statusViewType = viewType;
+        window.att_openEventDetail(eventId, 'status');
+    };
+    window.att_setStatusFilter = (eventId, filterType) => {
+        window.att_statusFilter = filterType;
+        window.att_openEventDetail(eventId, 'status');
+    };
     window.att_copyEvent = function(eventId) {
         const ev = events.find(e => e.id === eventId);
         if (!ev) return;
@@ -179,8 +205,12 @@ async function loadData() {
         if (eData) events = eData;
 
         // 全ユーザー情報（出欠集計用）
-        const { data: uData } = await supabaseClient.from('app_users').select('email, name');
+        const { data: uData } = await supabaseClient.from('app_users').select('email, name, attribute_id');
         if (uData) appUsers = uData;
+
+        // ユーザー属性情報（出欠集計用）
+        const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
+        if (attrData) userAttributes = attrData;
 
         // 全員の所属グループ
         const { data: ugData } = await supabaseClient.from('user_groups').select('*');
@@ -963,33 +993,219 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     // 所属グループ判定 (全体 or 所属しているか)
     const canAttend = groupInfo.ids.length === 0 || userGroups.some(ug => groupInfo.ids.includes(ug.group_id));
 
-    let attendanceSummaryHtml = '';
-    if (ev.requires_attendance) {
-        let targetUsers = [];
-        if (groupInfo.ids.length === 0) {
-            targetUsers = appUsers;
-        } else {
-            const memberEmails = allUserGroups.filter(ug => groupInfo.ids.includes(ug.group_id)).map(ug => ug.user_email);
-            targetUsers = appUsers.filter(u => memberEmails.includes(u.email));
-        }
-
+    // 対象ユーザー一覧の収集 (グループ対象者 + 回答実績者)
+    let targetUsers = [];
+    if (groupInfo.ids.length === 0) {
+        targetUsers = [...appUsers];
+    } else {
+        const memberEmails = allUserGroups.filter(ug => groupInfo.ids.includes(ug.group_id)).map(ug => ug.user_email);
         const evAtts = allAttendances.filter(a => a.event_id === ev.id);
-        
-        let attending = [];
-        let absent = [];
-        let pending = [];
-        let unassigned = [];
-        
-        targetUsers.forEach(u => {
-            const att = evAtts.find(a => a.user_email === u.email);
-            const userName = u.name || u.email.split('@')[0];
-            if (!att || att.status === '未回答' || !att.status) {
-                unassigned.push(userName);
-                return;
-            }
+        const answeredEmails = evAtts.map(a => a.user_email);
+        targetUsers = appUsers.filter(u => memberEmails.includes(u.email) || answeredEmails.includes(u.email));
+    }
 
-            // コメントから荷物車プレフィックスをパース
-            let displayComment = att.comment || '';
+    // 表示切替とフィルター設定の初期値
+    if (!window.att_statusViewType) window.att_statusViewType = 'group';
+    if (!window.att_statusFilter) window.att_statusFilter = 'all';
+
+    const isGroupView = (window.att_statusViewType === 'group');
+
+    // 1. 全体集計
+    let totalAttending = 0;
+    let totalAbsent = 0;
+    let totalPending = 0;
+
+    targetUsers.forEach(u => {
+        const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+        if (att && att.status === '出席') totalAttending++;
+        else if (att && att.status === '欠席') totalAbsent++;
+        else totalPending++;
+    });
+
+    // 2. グループ/属性別集計
+    const rowsData = [];
+    if (isGroupView) {
+        groups.forEach(g => {
+            const memberEmails = allUserGroups.filter(ug => ug.group_id === g.id).map(ug => ug.user_email);
+            const groupMembers = targetUsers.filter(u => memberEmails.includes(u.email));
+            
+            let attendingCount = 0;
+            let absentCount = 0;
+            let pendingCount = 0;
+            let hasInput = false;
+            
+            groupMembers.forEach(u => {
+                const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+                if (att && att.status && att.status !== '未回答') {
+                    hasInput = true;
+                    if (att.status === '出席') attendingCount++;
+                    else if (att.status === '欠席') absentCount++;
+                    else pendingCount++;
+                } else {
+                    pendingCount++;
+                }
+            });
+            
+            if (hasInput) {
+                rowsData.push({
+                    name: g.name,
+                    attending: attendingCount,
+                    absent: absentCount,
+                    pending: pendingCount
+                });
+            }
+        });
+    } else {
+        userAttributes.forEach(attr => {
+            const attrMembers = targetUsers.filter(u => u.attribute_id === attr.id);
+            
+            let attendingCount = 0;
+            let absentCount = 0;
+            let pendingCount = 0;
+            let hasInput = false;
+            
+            attrMembers.forEach(u => {
+                const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+                if (att && att.status && att.status !== '未回答') {
+                    hasInput = true;
+                    if (att.status === '出席') attendingCount++;
+                    else if (att.status === '欠席') absentCount++;
+                    else pendingCount++;
+                } else {
+                    pendingCount++;
+                }
+            });
+            
+            if (hasInput) {
+                rowsData.push({
+                    name: attr.name,
+                    attending: attendingCount,
+                    absent: absentCount,
+                    pending: pendingCount
+                });
+            }
+        });
+    }
+
+    // 表示切替トグルHTML
+    const viewToggleHtml = `
+        <div class="flex items-center space-x-1 mb-4 p-1 bg-gray-100/80 rounded-lg w-fit shrink-0">
+            <button onclick="window.att_setStatusViewType('${ev.id}', 'group')" class="px-4 py-1.5 rounded-md text-xs font-bold transition shadow-sm ${isGroupView ? 'bg-green-600 text-white' : 'text-gray-600 hover:text-gray-900'}">📂 グループ別</button>
+            <button onclick="window.att_setStatusViewType('${ev.id}', 'attribute')" class="px-4 py-1.5 rounded-md text-xs font-bold transition shadow-sm ${!isGroupView ? 'bg-green-600 text-white' : 'text-gray-600 hover:text-gray-900'}">👥 属性別</button>
+        </div>
+    `;
+
+    const footnoteText = isGroupView ? '※出欠の入力があるグループのみ表示しています。' : '※出欠の入力がある属性のみ表示しています。';
+    
+    let tableRowsHtml = `
+        <tr class="bg-gray-50/50 font-bold border-b border-gray-200">
+            <td class="px-4 py-2.5 text-gray-800">全体</td>
+            <td class="px-4 py-2.5 text-center text-gray-400">なし</td>
+            <td class="px-4 py-2.5 text-center text-green-600 font-extrabold">${totalAttending}</td>
+            <td class="px-4 py-2.5 text-center text-red-500 font-extrabold">${totalAbsent}</td>
+            <td class="px-4 py-2.5 text-center text-gray-600">${totalPending}</td>
+        </tr>
+    `;
+    
+    if (rowsData.length === 0) {
+        tableRowsHtml += `
+            <tr>
+                <td colspan="5" class="px-4 py-6 text-center text-gray-400 text-xs">出欠の入力がある${isGroupView ? 'グループ' : '属性'}はありません。</td>
+            </tr>
+        `;
+    } else {
+        tableRowsHtml += rowsData.map(r => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50/30 transition">
+                <td class="px-4 py-2.5 text-gray-700 font-semibold text-xs">${r.name}</td>
+                <td class="px-4 py-2.5 text-center text-gray-400 text-xs">-</td>
+                <td class="px-4 py-2.5 text-center text-green-600 font-bold text-xs">${r.attending}</td>
+                <td class="px-4 py-2.5 text-center text-red-500 font-bold text-xs">${r.absent}</td>
+                <td class="px-4 py-2.5 text-center text-gray-500 text-xs">${r.pending}</td>
+            </tr>
+        `).join('');
+    }
+
+    const summaryTableHtml = `
+        <div class="overflow-hidden border border-gray-200 rounded-lg shadow-sm bg-white mb-1">
+            <table class="min-w-full text-xs">
+                <thead>
+                    <tr class="bg-gray-50 border-b border-gray-200">
+                        <th class="px-4 py-2.5 text-left font-bold text-gray-600"></th>
+                        <th class="px-4 py-2.5 text-center font-bold text-gray-600">👥 定員</th>
+                        <th class="px-4 py-2.5 text-center font-bold text-gray-600">🟢 参加</th>
+                        <th class="px-4 py-2.5 text-center font-bold text-gray-600">❌ 不参加</th>
+                        <th class="px-4 py-2.5 text-center font-bold text-gray-600">❓ 未定/その他</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${tableRowsHtml}
+                </tbody>
+            </table>
+        </div>
+        <p class="text-[10px] text-gray-400 font-semibold mb-4">${footnoteText}</p>
+    `;
+
+    // 参加者リストの構築
+    const filteredUsers = targetUsers.filter(u => {
+        const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+        const statusVal = att?.status || '未回答';
+        
+        if (window.att_statusFilter === 'all') return true;
+        if (window.att_statusFilter === 'attending') return statusVal === '出席';
+        if (window.att_statusFilter === 'absent') return statusVal === '欠席';
+        if (window.att_statusFilter === 'pending') return statusVal === '保留' || statusVal === '未定';
+        if (window.att_statusFilter === 'unanswered') return statusVal === '未回答' || !statusVal;
+        return true;
+    });
+
+    const filters = [
+        { type: 'all', label: 'すべて' },
+        { type: 'attending', label: '出席' },
+        { type: 'absent', label: '欠席' },
+        { type: 'pending', label: '保留' },
+        { type: 'unanswered', label: '未回答' }
+    ];
+    
+    const pillsHtml = filters.map(f => {
+        const isActive = (window.att_statusFilter === f.type);
+        return `<button onclick="window.att_setStatusFilter('${ev.id}', '${f.type}')" class="px-2.5 py-1 rounded-full text-xs font-bold transition ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}">${f.label}</button>`;
+    }).join(' ');
+
+    let listRowsHtml = '';
+    if (filteredUsers.length === 0) {
+        listRowsHtml = `
+            <tr>
+                <td colspan="5" class="px-4 py-6 text-center text-gray-400 text-xs">該当するメンバーはいません。</td>
+            </tr>
+        `;
+    } else {
+        listRowsHtml = filteredUsers.map(u => {
+            const userName = u.name || u.email.split('@')[0];
+            
+            let matched = '-';
+            if (isGroupView) {
+                const userGIds = allUserGroups.filter(ug => ug.user_email === u.email).map(ug => ug.group_id);
+                matched = groups.filter(g => userGIds.includes(g.id)).map(g => g.name).join(', ') || '-';
+            } else {
+                matched = userAttributes.find(a => a.id === u.attribute_id)?.name || '-';
+            }
+            
+            const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+            let statusVal = att?.status || '未回答';
+            if (statusVal === '未定') statusVal = '保留';
+            
+            let statusBadgeHtml = '';
+            if (statusVal === '出席') {
+                statusBadgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-green-100 text-green-800 border border-green-200">🟢 参加</span>`;
+            } else if (statusVal === '欠席') {
+                statusBadgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-red-100 text-red-800 border border-red-200">❌ 不参加</span>`;
+            } else if (statusVal === '保留') {
+                statusBadgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">❓ 未定/その他</span>`;
+            } else {
+                statusBadgeHtml = `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-gray-100 text-gray-500 border border-gray-200">❓ 未定/その他</span>`;
+            }
+            
+            let displayComment = att?.comment || '';
             let luggageCar = '否';
             if (displayComment.startsWith('[荷物車:可]')) {
                 luggageCar = '可';
@@ -998,69 +1214,77 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                 luggageCar = '否';
                 displayComment = displayComment.substring(8);
             }
-
-            // 表示用詳細情報の組み立て
-            let details = [];
             
+            let details = [];
             if (ev.require_detailed_attendance) {
-                // 詳細出欠の場合
-                // 同伴者
-                if (att.accompanying_persons) {
+                if (att?.accompanying_persons) {
                     details.push(`同伴: ${att.accompanying_persons}`);
                 }
-                // 車出し
-                if (att.car_capacity && att.car_capacity > 0) {
+                if (att?.car_capacity && att.car_capacity > 0) {
                     details.push(`車出: 可[${att.car_capacity}人]`);
                     details.push(`荷物車: ${luggageCar}`);
                 } else {
                     details.push(`車出: 否`);
                 }
             }
-            
-            // メモ（コメント）
             if (displayComment.trim()) {
                 details.push(`メモ: ${displayComment.trim()}`);
             }
+            
+            const memoText = details.length > 0 ? details.join(', ') : '-';
+            const updatedTimeText = att ? formatUpdatedAt(att.updated_at) : '-';
+            
+            return `
+                <tr class="hover:bg-gray-50/50 border-b border-gray-100 transition">
+                    <td class="px-4 py-2 font-bold text-gray-800 text-[11px]">${userName}</td>
+                    <td class="px-4 py-2 text-gray-500 text-[11px] font-semibold">${matched}</td>
+                    <td class="px-4 py-2">${statusBadgeHtml}</td>
+                    <td class="px-4 py-2 text-gray-600 text-[11px] max-w-[180px] truncate" title="${memoText}">${memoText}</td>
+                    <td class="px-4 py-2 text-gray-400 text-[11px] font-semibold">${updatedTimeText}</td>
+                </tr>
+            `;
+        }).join('');
+    }
 
-            const detailStr = details.length > 0 ? ` <span class="text-[10px] text-gray-500 font-normal">(${details.join(', ')})</span>` : '';
-            const itemHtml = `<div class="py-1 border-b border-gray-100 last:border-0"><span class="font-semibold text-gray-800">${userName}</span>${detailStr}</div>`;
-
-            if (att.status === '出席') attending.push(itemHtml);
-            else if (att.status === '欠席') absent.push(itemHtml);
-            else pending.push(itemHtml); // 保留
-        });
-        
-        attendanceSummaryHtml = `
-            <div class="mt-4 border-t pt-4">
-                <h4 class="font-bold text-gray-700 mb-2">メンバーの出欠状況</h4>
-                <div class="grid grid-cols-1 gap-3 text-sm">
-                    <div class="bg-green-50 p-2.5 rounded border border-green-100">
-                        <div class="font-bold text-green-700 mb-1.5 flex justify-between items-center"><span>出席</span><span class="bg-green-200 text-green-800 px-1.5 py-0.5 rounded-full text-xs">${attending.length}</span></div>
-                        <div class="text-xs text-gray-600 break-all space-y-0.5 max-h-40 overflow-y-auto">${attending.join('') || 'なし'}</div>
+    const participantListHtml = `
+        <div class="mt-4 border-t pt-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
+                <h4 class="font-bold text-gray-700 text-xs shrink-0">参加者リスト</h4>
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center space-x-1">
+                        ${pillsHtml}
                     </div>
-                    <div class="bg-gray-50 p-2.5 rounded border border-gray-200">
-                        <div class="font-bold text-gray-700 mb-1.5 flex justify-between items-center"><span>欠席</span><span class="bg-gray-200 text-gray-800 px-1.5 py-0.5 rounded-full text-xs">${absent.length}</span></div>
-                        <div class="text-xs text-gray-600 break-all space-y-0.5 max-h-40 overflow-y-auto">${absent.join('') || 'なし'}</div>
-                    </div>
-                    <div class="bg-orange-50 p-2.5 rounded border border-orange-100">
-                        <div class="font-bold text-orange-700 mb-1.5 flex justify-between items-center"><span>保留</span><span class="bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-full text-xs">${pending.length}</span></div>
-                        <div class="text-xs text-gray-600 break-all space-y-0.5 max-h-40 overflow-y-auto">${pending.join('') || 'なし'}</div>
-                    </div>
-                    <div class="bg-blue-50 p-2.5 rounded border border-blue-100">
-                        <div class="font-bold text-blue-700 mb-1.5 flex justify-between items-center"><span>未回答</span><span class="bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full text-xs">${unassigned.length}</span></div>
-                        <div class="text-xs text-gray-600 break-all max-h-24 overflow-y-auto">${unassigned.join(', ') || 'なし'}</div>
+                    <div class="text-[10px] text-gray-500 font-extrabold bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-0.5">
+                        👤 <span>${filteredUsers.length}</span>
                     </div>
                 </div>
             </div>
-        `;
-    }
+            <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white">
+                <table class="min-w-full text-xs">
+                    <thead>
+                        <tr class="bg-gray-50 border-b border-gray-200">
+                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">名前</th>
+                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">${isGroupView ? 'グループ' : '属性'}</th>
+                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">出欠</th>
+                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">出欠メモ</th>
+                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">更新日時</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${listRowsHtml}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
 
-    const basicTabClass = activeTab === 'basic' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700';
-    const attTabClass = activeTab === 'attendance' ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500 hover:text-gray-700';
+    const basicTabClass = activeTab === 'basic' ? 'border-b-2 border-blue-500 text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700';
+    const attTabClass = activeTab === 'attendance' ? 'border-b-2 border-blue-500 text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700';
+    const statusTabClass = activeTab === 'status' ? 'border-b-2 border-blue-500 text-blue-600 font-bold' : 'text-gray-500 hover:text-gray-700';
 
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100]">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
             <div class="flex justify-between items-center p-4 border-b shrink-0">
                 <h3 class="text-lg font-bold text-gray-800 truncate pr-2">${ev.title}</h3>
                 <div class="flex items-center shrink-0">
@@ -1073,7 +1297,10 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
 
             <div class="flex border-b shrink-0">
                 <button onclick="window.att_openEventDetail('${ev.id}', 'basic')" class="flex-1 py-2 text-sm font-medium ${basicTabClass}">基本情報</button>
-                ${ev.requires_attendance ? `<button onclick="window.att_openEventDetail('${ev.id}', 'attendance')" class="flex-1 py-2 text-sm font-medium ${attTabClass}">出欠</button>` : ''}
+                ${ev.requires_attendance ? `
+                    <button onclick="window.att_openEventDetail('${ev.id}', 'attendance')" class="flex-1 py-2 text-sm font-medium ${attTabClass}">出欠登録</button>
+                    <button onclick="window.att_openEventDetail('${ev.id}', 'status')" class="flex-1 py-2 text-sm font-medium ${statusTabClass}">出欠状況</button>
+                ` : ''}
             </div>
 
             <div class="p-4 overflow-y-auto">
@@ -1085,8 +1312,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                         <p class="flex items-center gap-1 mt-1"><strong>対象:</strong> <span class="px-2 py-0.5 rounded text-xs border border-gray-300 text-gray-800 shadow-sm" style="background-color: ${groupColor}">${groupName}</span></p>
                         <p class="mt-2 whitespace-pre-wrap border p-2 bg-gray-50 rounded min-h-[60px] text-gray-800">${ev.description || '説明なし'}</p>
                     </div>
-                    ${ev.requires_attendance ? attendanceSummaryHtml : ''}
-                ` : `
+                ` : activeTab === 'attendance' ? `
                     <div class="space-y-4">
                         <div class="text-sm border-b pb-2 mb-2">
                             現在のステータス: <span class="font-bold ${statusStr==='出席'?'text-green-600':statusStr==='欠席'?'text-red-500':'text-gray-800'}">${statusStr}</span>
@@ -1101,6 +1327,12 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                                 </div>
                             ` : '');
                         })()}
+                    </div>
+                ` : `
+                    <div class="space-y-4">
+                        ${viewToggleHtml}
+                        ${summaryTableHtml}
+                        ${participantListHtml}
                     </div>
                 `}
             </div>
@@ -1189,7 +1421,7 @@ async function saveAttendance(eventId) {
         renderCalendar(); // カレンダーの表示を更新
         renderList();     // リストの表示を更新
         
-        window.att_openEventDetail(eventId); // 保存成功後に詳細画面に切り替える
+        window.att_openEventDetail(eventId, 'status'); // 保存成功後に詳細画面の出欠状況タブに切り替える
     } catch (e) {
         console.error('Save Attendance Error:', e);
         if (e.message === 'Load failed' || e.message === 'Failed to fetch') {

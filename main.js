@@ -167,6 +167,7 @@ function initAppDOM() {
         document.getElementById('nav-users')?.addEventListener('click', handleNavUsers);
         document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
         document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
+        document.getElementById('btn-save-all-users')?.addEventListener('click', saveAllAdminUsers);
 
         // 管理画面にダミーユーザー追加ボタンを動的に挿入
         const btnAdminAddUser = document.getElementById('btn-admin-add-user');
@@ -1027,10 +1028,16 @@ async function loadAdminUsersData() {
         const usersHtml = (usersData || []).map((u, i) => {
             const isDummy = u.email.endsWith('@local.dummy');
 
-            const groupCheckboxes = groupsData.map(g => {
-                const isMember = userGroupsData.some(ug => ug.user_email === u.email && ug.group_id === g.id);
-                return `<label class="inline-flex items-center mr-3 mb-1 cursor-pointer"><input type="checkbox" id="edit-group-${i}-${g.id}" value="${g.id}" class="mr-1" ${isMember ? 'checked' : ''}> <span class="text-sm font-medium">${g.name}</span></label>`;
+            const selectedGroupId = userGroupsData.find(ug => ug.user_email === u.email)?.group_id || '';
+            const groupSelectOptions = groupsData.map(g => {
+                return `<option value="${g.id}" ${selectedGroupId === g.id ? 'selected' : ''}>${g.name}</option>`;
             }).join('');
+            const groupSelectHtml = `
+                <select id="edit-group-${i}" class="border p-1 rounded text-sm w-36 font-semibold text-gray-700 bg-white">
+                    <option value="">選択なし</option>
+                    ${groupSelectOptions}
+                </select>
+            `;
     
             const delegationCheckboxes = (usersData || []).filter(other => other.email !== u.email).map(other => `
                 <label class="inline-flex items-center text-xs mr-3 mb-1 w-32 truncate" title="${other.email}">
@@ -1040,7 +1047,7 @@ async function loadAdminUsersData() {
             `).join('');
 
             return `
-            <div class="flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition">
+            <div class="user-admin-card flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition" data-email="${u.email}" data-index="${i}" data-old-role="${u.role}">
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
                     <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
                     <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
@@ -1068,7 +1075,7 @@ async function loadAdminUsersData() {
                 <div class="flex flex-col md:flex-row md:items-start justify-between gap-2">
                     <div class="flex-grow">
                         <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
-                        <div class="flex flex-wrap" id="group-container-${i}">${groupCheckboxes || '<span class="text-xs text-gray-400">グループがありません</span>'}</div>
+                        <div id="group-container-${i}">${groupSelectHtml}</div>
                     </div>
                     <div class="flex-grow mt-2 md:mt-0 border-t md:border-t-0 md:border-l border-gray-200 pt-2 md:pt-0 md:pl-4">
                         <div class="text-xs font-bold text-gray-500 mb-1">代行権限 (他メンバーの出欠を代理で入力できる権限):</div>
@@ -1076,9 +1083,6 @@ async function loadAdminUsersData() {
                             <summary class="cursor-pointer text-gray-700 font-bold">代行入力できるメンバーを選択 (複数可)</summary>
                             <div class="flex flex-wrap mt-2 max-h-32 overflow-y-auto border-t border-gray-200 pt-2">${delegationCheckboxes || '<span class="text-gray-400">他のメンバーがいません</span>'}</div>
                         </details>
-                    </div>
-                    <div class="shrink-0 mt-2 md:mt-0 flex items-end">
-                        <button onclick="updateAdminUser('${u.email}', ${i}, '${u.role}')" class="text-sm bg-green-500 hover:bg-green-600 text-white px-4 py-1.5 rounded shadow font-bold">設定を保存</button>
                     </div>
                 </div>
             </div>
@@ -1116,79 +1120,102 @@ async function loadAdminUsersData() {
     }
 }
 
-window.updateAdminUser = async function(oldEmail, index, oldRole) {
-    const emailEl = document.getElementById(`edit-email-${index}`);
-    const nameEl = document.getElementById(`edit-name-${index}`);
-    const attrEl = document.getElementById(`edit-attribute-${index}`);
-    const roleEl = document.getElementById(`edit-role-${index}`);
-    const useDispatchEl = document.getElementById(`edit-use-dispatch-${index}`);
-    const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
-    const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
-    
-    const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
-    const newName = nameEl.value.trim();
-    const newAttributeId = attrEl ? (attrEl.value || null) : null;
-    const newRole = roleEl.disabled ? oldRole : roleEl.value;
-    const canUseDispatch = useDispatchEl ? useDispatchEl.checked : true;
-    const canUseDashboard = useDashboardEl ? useDashboardEl.checked : true;
-    const canUseAttendance = useAttendanceEl ? useAttendanceEl.checked : true;
+async function saveAllAdminUsers() {
+    const cards = document.querySelectorAll('.user-admin-card');
+    if (cards.length === 0) return;
 
-    if (!newEmail) return alert('メールアドレスを入力してください');
-    if (!confirm(`${oldEmail} のユーザー情報と所属グループ設定を保存しますか？`)) return;
+    if (!confirm('全メンバーの設定を一括保存しますか？')) return;
 
-    showLoading('ユーザー情報更新中...');
+    showLoading('全メンバー設定を保存中...');
     try {
+        const userUpdates = [];
+        const groupInserts = [];
+        const emailsToSave = [];
+        
+        cards.forEach(card => {
+            const oldEmail = card.getAttribute('data-email');
+            const index = card.getAttribute('data-index');
+            const oldRole = card.getAttribute('data-old-role');
+            
+            const emailEl = document.getElementById(`edit-email-${index}`);
+            const nameEl = document.getElementById(`edit-name-${index}`);
+            const attrEl = document.getElementById(`edit-attribute-${index}`);
+            const roleEl = document.getElementById(`edit-role-${index}`);
+            const useDispatchEl = document.getElementById(`edit-use-dispatch-${index}`);
+            const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
+            const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
+            
+            const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
+            const newName = nameEl.value.trim();
+            const newAttributeId = attrEl ? (attrEl.value || null) : null;
+            const newRole = roleEl.disabled ? oldRole : roleEl.value;
+            const canUseDispatch = useDispatchEl ? useDispatchEl.checked : true;
+            const canUseDashboard = useDashboardEl ? useDashboardEl.checked : true;
+            const canUseAttendance = useAttendanceEl ? useAttendanceEl.checked : true;
+
+            if (!newEmail) {
+                throw new Error('メールアドレスが空のレコードがあります。');
+            }
+            
+            emailsToSave.push(oldEmail);
+            
+            const updatePayload = {
+                email: newEmail,
+                name: newName,
+                attribute_id: newAttributeId,
+                role: newRole,
+                can_use_dispatch: canUseDispatch,
+                can_use_dashboard: canUseDashboard,
+                can_use_attendance: canUseAttendance
+            };
+            userUpdates.push({ oldEmail, updatePayload });
+
+            const groupSelectEl = document.getElementById(`edit-group-${index}`);
+            const selectedGroupId = groupSelectEl ? groupSelectEl.value : '';
+            if (selectedGroupId) {
+                groupInserts.push({ user_email: newEmail, group_id: selectedGroupId });
+            }
+
+            const delegationCbs = document.querySelectorAll(`input[name="edit-delegation-${index}"]:checked`);
+            const newDelegations = Array.from(delegationCbs).map(cb => cb.value);
+            if (oldEmail !== newEmail && window.adminDelegations[oldEmail]) {
+                delete window.adminDelegations[oldEmail];
+            }
+            window.adminDelegations[newEmail] = newDelegations;
+        });
+
         // 1. ユーザー情報の更新
-        const updatePayload = {};
-        if (!emailEl.disabled) updatePayload.email = newEmail;
-        if (!roleEl.disabled) updatePayload.role = newRole;
-        updatePayload.name = newName;
-        updatePayload.attribute_id = newAttributeId;
-        updatePayload.can_use_dispatch = canUseDispatch;
-        updatePayload.can_use_dashboard = canUseDashboard;
-        updatePayload.can_use_attendance = canUseAttendance;
-        
-        if (Object.keys(updatePayload).length > 0) {
-            const { error } = await supabaseClient.from('app_users').update(updatePayload).eq('email', oldEmail);
-            if (error) throw error;
+        const userPromises = userUpdates.map(u => {
+            return supabaseClient.from('app_users').update(u.updatePayload).eq('email', u.oldEmail);
+        });
+        const userResults = await Promise.all(userPromises);
+        for (const res of userResults) {
+            if (res.error) throw res.error;
         }
-        
+
         // 2. 所属グループの更新
-        // 現在のユーザーのグループ情報を一旦全削除
-        const { error: delErr } = await supabaseClient.from('user_groups').delete().eq('user_email', oldEmail);
+        const { error: delErr } = await supabaseClient.from('user_groups').delete().in('user_email', emailsToSave);
         if (delErr) throw delErr;
-        
-        // チェックされているグループを登録
-        const container = document.getElementById(`group-container-${index}`);
-        const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
-        const selectedGroupIds = Array.from(checkboxes).map(cb => cb.value);
-        
-        if (selectedGroupIds.length > 0) {
-            const inserts = selectedGroupIds.map(gId => ({ user_email: newEmail, group_id: gId }));
-            const { error: insErr } = await supabaseClient.from('user_groups').insert(inserts);
+
+        if (groupInserts.length > 0) {
+            const { error: insErr } = await supabaseClient.from('user_groups').insert(groupInserts);
             if (insErr) throw insErr;
         }
-        
+
         // 3. 代行権限の更新
-        const delegationCbs = document.querySelectorAll(`input[name="edit-delegation-${index}"]:checked`);
-        const newDelegations = Array.from(delegationCbs).map(cb => cb.value);
-        if (oldEmail !== newEmail && window.adminDelegations[oldEmail]) {
-            delete window.adminDelegations[oldEmail];
-        }
-        window.adminDelegations[newEmail] = newDelegations;
-        
         const { error: delgErr } = await supabaseClient.from('master_data').upsert({ key: 'ATTENDANCE_DELEGATIONS', data: window.adminDelegations });
         if (delgErr) throw delgErr;
 
-        await logAction('UPDATE_USER', `ユーザー「${oldEmail}」の設定を更新しました`);
-        alert('設定を保存しました');
+        await logAction('UPDATE_USERS_ALL', '全メンバーの設定を一括更新しました');
+        alert('全メンバーの設定を一括保存しました');
         await loadAdminUsersData();
     } catch (err) {
-        alert('更新処理中にエラーが発生しました: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
+        console.error(err);
+        alert('保存中にエラーが発生しました: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
     } finally {
         hideLoading();
     }
-};
+}
 
 window.forceResetPassword = async function(email) {
     if (!confirm(`${email} 宛にパスワード再設定メールを送信し、強制的にパスワードをリセットさせますか？`)) return;
