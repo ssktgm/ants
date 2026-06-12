@@ -2584,7 +2584,7 @@ function handleParkingAction_master(e) { if(e.target.dataset.act==='del') { db.d
 function handleParkingInput_master(e) {
     const t=e.target, f=t.dataset.f, pid=t.closest('[data-pid]').dataset.pid; if(!f) return;
     const p = localParkings.find(x => x.id === pid); const v=t.type==='number'?parseInt(t.value):t.value;
-    if(f==='name') p.name=v; else { const fs=f.split('.'); if(fs.length===2) p.parking[fs[0]][fs[1]]=v; else p.parking[fs[0]][fs[1]][fs[2]]=v; }
+    if(f==='name') p.name=v; else { const fs=f.split('.'); if(fs.length===2) p[fs[0]][fs[1]]=v; else p[fs[0]][fs[1]][fs[2]]=v; }
     db.updateParkingMaster(p);
 }
 
