@@ -931,10 +931,6 @@ function generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline = false) {
                 </select>
             </div>
             ${ev.require_detailed_attendance ? `
-                <div class="mt-2">
-                    <label class="block text-xs font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
-                    <input type="text" id="att-acc-${idx}" value="${tAtt.accompanying_persons||''}" class="w-full border p-1.5 rounded text-sm" ${isPastDeadline ? 'disabled' : ''}>
-                </div>
                 <div class="flex items-center space-x-2 mt-2">
                     <div class="w-1/3">
                         <label class="block text-xs font-bold text-gray-700 mb-1">車出し可否</label>
@@ -954,6 +950,10 @@ function generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline = false) {
                             <option value="可" ${luggageCarInit === '可' ? 'selected' : ''}>可</option>
                         </select>
                     </div>
+                </div>
+                <div class="mt-2">
+                    <label class="block text-xs font-bold text-gray-700 mb-1">同伴者 (例: 父、母、弟)</label>
+                    <input type="text" id="att-acc-${idx}" value="${tAtt.accompanying_persons||''}" class="w-full border p-1.5 rounded text-sm" ${isPastDeadline ? 'disabled' : ''}>
                 </div>
             ` : ''}
             <div class="mt-2">
@@ -1100,7 +1100,6 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     let tableRowsHtml = `
         <tr class="bg-gray-50/50 font-bold border-b border-gray-200">
             <td class="px-4 py-2.5 text-gray-800">全体</td>
-            <td class="px-4 py-2.5 text-center text-gray-400">なし</td>
             <td class="px-4 py-2.5 text-center text-green-600 font-extrabold">${totalAttending}</td>
             <td class="px-4 py-2.5 text-center text-red-500 font-extrabold">${totalAbsent}</td>
             <td class="px-4 py-2.5 text-center text-gray-600">${totalPending}</td>
@@ -1110,14 +1109,13 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     if (rowsData.length === 0) {
         tableRowsHtml += `
             <tr>
-                <td colspan="5" class="px-4 py-6 text-center text-gray-400 text-xs">出欠の入力がある${isGroupView ? 'グループ' : '属性'}はありません。</td>
+                <td colspan="4" class="px-4 py-6 text-center text-gray-400 text-xs">出欠の入力がある${isGroupView ? 'グループ' : '属性'}はありません。</td>
             </tr>
         `;
     } else {
         tableRowsHtml += rowsData.map(r => `
             <tr class="border-b border-gray-100 hover:bg-gray-50/30 transition">
                 <td class="px-4 py-2.5 text-gray-700 font-semibold text-xs">${r.name}</td>
-                <td class="px-4 py-2.5 text-center text-gray-400 text-xs">-</td>
                 <td class="px-4 py-2.5 text-center text-green-600 font-bold text-xs">${r.attending}</td>
                 <td class="px-4 py-2.5 text-center text-red-500 font-bold text-xs">${r.absent}</td>
                 <td class="px-4 py-2.5 text-center text-gray-500 text-xs">${r.pending}</td>
@@ -1131,7 +1129,6 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                 <thead>
                     <tr class="bg-gray-50 border-b border-gray-200">
                         <th class="px-4 py-2.5 text-left font-bold text-gray-600"></th>
-                        <th class="px-4 py-2.5 text-center font-bold text-gray-600">👥 定員</th>
                         <th class="px-4 py-2.5 text-center font-bold text-gray-600">🟢 参加</th>
                         <th class="px-4 py-2.5 text-center font-bold text-gray-600">❌ 不参加</th>
                         <th class="px-4 py-2.5 text-center font-bold text-gray-600">❓ 未定/その他</th>
@@ -1151,6 +1148,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
         const statusVal = att?.status || '未回答';
         
         if (window.att_statusFilter === 'all') return true;
+        if (window.att_statusFilter === 'answered') return statusVal === '出席' || statusVal === '欠席' || statusVal === '保留' || statusVal === '未定';
         if (window.att_statusFilter === 'attending') return statusVal === '出席';
         if (window.att_statusFilter === 'absent') return statusVal === '欠席';
         if (window.att_statusFilter === 'pending') return statusVal === '保留' || statusVal === '未定';
@@ -1160,6 +1158,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
 
     const filters = [
         { type: 'all', label: 'すべて' },
+        { type: 'answered', label: '回答済' },
         { type: 'attending', label: '出席' },
         { type: 'absent', label: '欠席' },
         { type: 'pending', label: '保留' },
@@ -1216,19 +1215,19 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
             }
             
             let details = [];
-            if (ev.require_detailed_attendance) {
-                if (att?.accompanying_persons) {
-                    details.push(`同伴: ${att.accompanying_persons}`);
+            if (att && att.status && att.status !== '未回答') {
+                if (ev.require_detailed_attendance) {
+                    if (att.accompanying_persons) {
+                        details.push(`同伴: ${att.accompanying_persons}`);
+                    }
+                    if (att.car_capacity && att.car_capacity > 0) {
+                        details.push(`車出: 可[${att.car_capacity}人]`);
+                        details.push(`荷物車: ${luggageCar}`);
+                    }
                 }
-                if (att?.car_capacity && att.car_capacity > 0) {
-                    details.push(`車出: 可[${att.car_capacity}人]`);
-                    details.push(`荷物車: ${luggageCar}`);
-                } else {
-                    details.push(`車出: 否`);
+                if (displayComment.trim()) {
+                    details.push(`メモ: ${displayComment.trim()}`);
                 }
-            }
-            if (displayComment.trim()) {
-                details.push(`メモ: ${displayComment.trim()}`);
             }
             
             const memoText = details.length > 0 ? details.join(', ') : '-';
@@ -1253,9 +1252,6 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                 <div class="flex flex-wrap items-center gap-2">
                     <div class="flex items-center space-x-1">
                         ${pillsHtml}
-                    </div>
-                    <div class="text-[10px] text-gray-500 font-extrabold bg-gray-100 px-2 py-0.5 rounded-full flex items-center gap-0.5">
-                        👤 <span>${filteredUsers.length}</span>
                     </div>
                 </div>
             </div>
