@@ -92,6 +92,7 @@ async function withLoading(asyncFunc, msg = '通信中...') {
 // --- 操作ログ記録関数 ---
 async function logAction(actionType, details) {
     if (!currentUser) return;
+    if (actionType === 'NAVIGATE') return;
     try {
         await supabaseClient.from('action_logs').insert({
             user_email: currentUser.email,
@@ -526,6 +527,10 @@ if (supabaseClient) {
                                             console.error("App init error:", err);
                                             forceHideLoading();
                                         });
+                                    } else {
+                                        if (subView === 'users') handleNavUsers();
+                                        else if (subView === 'master') document.getElementById('nav-master')?.click();
+                                        else document.getElementById('nav-dispatch')?.click();
                                     }
                                 } else if (sId === 'attendance-view') {
                                     switchAuthScreen('attendance-view');

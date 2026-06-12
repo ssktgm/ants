@@ -191,8 +191,17 @@ async function loadData() {
             categories = [{id:'1', name:'練習'}, {id:'2', name:'試合'}, {id:'3', name:'イベント'}];
         }
 
+        // 取得するイベントの日付範囲を計算（現在日時から前後6ヶ月）
+        const now = new Date();
+        const rangeStart = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+        const rangeEnd = new Date(now.getFullYear(), now.getMonth() + 7, 1);
+
         // イベント読み込み
-        const { data: eData } = await supabaseClient.from('events').select('*').order('start_time');
+        const { data: eData } = await supabaseClient.from('events')
+            .select('*')
+            .gte('start_time', rangeStart.toISOString())
+            .lt('start_time', rangeEnd.toISOString())
+            .order('start_time');
         if (eData) events = eData;
 
         // 全ユーザー情報（出欠集計用）
@@ -220,11 +229,16 @@ async function loadData() {
         }
 
         // 全員の出欠情報
-        const { data: aData } = await supabaseClient.from('attendances').select('*');
-        if (aData) {
-            allAttendances = aData;
-            if (currentUser) attendances = aData.filter(a => a.user_email === currentUser.email);
+        let aData = [];
+        if (events && events.length > 0) {
+            const eventIds = events.map(e => e.id);
+            const { data } = await supabaseClient.from('attendances')
+                .select('*')
+                .in('event_id', eventIds);
+            if (data) aData = data;
         }
+        allAttendances = aData;
+        if (currentUser) attendances = aData.filter(a => a.user_email === currentUser.email);
         
         // 代行権限情報の読み込み
         try {
