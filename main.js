@@ -2473,6 +2473,8 @@ async function handleFamilyAction_master(e) {
     if(act==='add-m'){ const f=await db.getFamily(fn); f.members.push({id:'p'+Date.now(), name:'新規', type:'保護者', isFlagTarget:false, data:{}}); db.updateFamily(f); renderFamilies_master(); }
     if(act==='del-m'){ const f=await db.getFamily(fn); f.members=f.members.filter(m=>m.id!==t.dataset.id); db.updateFamily(f); renderFamilies_master(); }
     if(act==='up'||act==='down'){
+        localFamilies.sort((a,b)=>(a.order||99)-(b.order||99));
+        localFamilies.forEach((f, idx) => { f.order = idx; });
         const i=localFamilies.findIndex(x=>x.familyName===fn), ti=act==='up'?i-1:i+1;
         if(ti>=0&&ti<localFamilies.length){ const tmp=localFamilies[i].order; localFamilies[i].order=localFamilies[ti].order; localFamilies[ti].order=tmp; renderFamilies_master(); }
     }
@@ -2532,7 +2534,12 @@ function handleAddCar_master() { db.addCar({id:'c'+Date.now(), name:'新規車',
 function handleCarAction_master(e) {
     const t=e.target, act=t.dataset.act, card=t.closest('[data-cid]'); if(!card) return; const cid=card.dataset.cid;
     if(act==='del'){ db.deleteCar(cid); loadCars_master(); }
-    if(act==='up'||act==='down'){ const i=localCars.findIndex(x=>x.id===cid), ti=act==='up'?i-1:i+1; if(ti>=0&&ti<localCars.length){ const tmp=localCars[i].order; localCars[i].order=localCars[ti].order; localCars[ti].order=tmp; loadCars_master(); } }
+    if(act==='up'||act==='down'){
+        localCars.sort((a,b)=>(a.order||99)-(b.order||99));
+        localCars.forEach((c, idx) => { c.order = idx; });
+        const i=localCars.findIndex(x=>x.id===cid), ti=act==='up'?i-1:i+1;
+        if(ti>=0&&ti<localCars.length){ const tmp=localCars[i].order; localCars[i].order=localCars[ti].order; localCars[ti].order=tmp; loadCars_master(); }
+    }
 }
 async function handleCarInput_master(e) { const t=e.target, f=t.dataset.f, cid=t.closest('[data-cid]').dataset.cid; if(!f) return; const c=await db.getCar(cid); c[f]=t.type==='number'?parseInt(t.value):t.value; db.updateCar(c); }
 
