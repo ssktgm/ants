@@ -2461,7 +2461,7 @@ async function handleSaveMasterDB() {
 function renderFamilies_master() {
     if (!familyListMasterEl) return;
     familyListMasterEl.innerHTML = '';
-    localFamilies.sort((a,b)=>(a.order||99)-(b.order||99)).forEach((f,i)=>{
+    localFamilies.sort((a,b)=>(a.order ?? 99)-(b.order ?? 99)).forEach((f,i)=>{
         const mHtml = f.members.map(m=>`<div class="p-2 border rounded bg-gray-50 member-grid"><input data-id="${m.id}" data-f="name" value="${m.name}" class="col-span-3 md:col-span-1 p-1 border"><select data-id="${m.id}" data-f="type" class="col-span-2 md:col-span-1 p-1 border"><option ${m.type==='選手'?'selected':''}>選手</option><option ${m.type==='保護者'?'selected':''}>保護者</option><option ${m.type==='兄弟'?'selected':''}>兄弟</option><option ${m.type==='その他'?'selected':''}>その他</option></select><input data-id="${m.id}" data-f="data.grade" value="${m.data.grade||''}" placeholder="学年" class="col-span-1 border"><input data-id="${m.id}" data-f="data.school" value="${m.data.school||''}" placeholder="学校" class="col-span-2 md:col-span-1 border"><input data-id="${m.id}" data-f="data.other" value="${m.data.other||''}" placeholder="他" class="col-span-2 md:col-span-1 border"><input data-id="${m.id}" data-f="data.memo" value="${m.data.memo||''}" placeholder="備考" class="col-span-2 md:col-span-1 border"><div class="col-span-3 md:col-span-1 flex items-center justify-between"><label class="text-xs"><input type="checkbox" data-id="${m.id}" data-f="isFlagTarget" ${m.isFlagTarget?'checked':''}>同乗優先</label><button data-action="del-m" data-id="${m.id}" class="bg-red-500 text-white px-2 py-1 rounded text-xs">削</button></div></div>`).join('');
         familyListMasterEl.innerHTML += `<div class="bg-white border rounded shadow" data-fname="${f.familyName}"><div class="family-header"><input data-action="ren-f" value="${f.familyName}" class="font-bold border p-1"><div class="space-x-2"><button data-action="up" class="bg-gray-400 text-white px-2 rounded text-xs">▲</button><button data-action="down" class="bg-gray-400 text-white px-2 rounded text-xs">▼</button><button data-action="del-f" class="bg-red-500 text-white px-2 py-1 rounded text-xs">家族削除</button></div></div><div class="p-3 space-y-2">${mHtml}</div><button data-action="add-m" class="ml-3 mb-3 bg-blue-500 text-white px-2 py-1 rounded text-xs">＋メンバー</button></div>`;
     });
@@ -2473,7 +2473,7 @@ async function handleFamilyAction_master(e) {
     if(act==='add-m'){ const f=await db.getFamily(fn); f.members.push({id:'p'+Date.now(), name:'新規', type:'保護者', isFlagTarget:false, data:{}}); db.updateFamily(f); renderFamilies_master(); }
     if(act==='del-m'){ const f=await db.getFamily(fn); f.members=f.members.filter(m=>m.id!==t.dataset.id); db.updateFamily(f); renderFamilies_master(); }
     if(act==='up'||act==='down'){
-        localFamilies.sort((a,b)=>(a.order||99)-(b.order||99));
+        localFamilies.sort((a,b)=>(a.order ?? 99)-(b.order ?? 99));
         localFamilies.forEach((f, idx) => { f.order = idx; });
         const i=localFamilies.findIndex(x=>x.familyName===fn), ti=act==='up'?i-1:i+1;
         if(ti>=0&&ti<localFamilies.length){ const tmp=localFamilies[i].order; localFamilies[i].order=localFamilies[ti].order; localFamilies[ti].order=tmp; renderFamilies_master(); }
@@ -2526,7 +2526,7 @@ async function handleMemberInput_master(e) {
 function loadCars_master() {
     if (!carListMasterEl) return;
     carListMasterEl.innerHTML = '';
-    localCars.sort((a,b)=>(a.order||99)-(b.order||99)).forEach(c=>{
+    localCars.sort((a,b)=>(a.order ?? 99)-(b.order ?? 99)).forEach(c=>{
         carListMasterEl.innerHTML += `<div class="p-3 border rounded bg-gray-50 flex flex-wrap gap-2 items-center" data-cid="${c.id}"><button data-act="up" class="bg-gray-400 text-white px-2 py-1 text-xs">▲</button><button data-act="down" class="bg-gray-400 text-white px-2 py-1 text-xs">▼</button><input data-f="name" value="${c.name}" class="p-1 border text-sm w-32"><input data-f="familyName" value="${c.familyName}" class="p-1 border text-sm w-32"><input type="number" data-f="baseCapacity" value="${c.baseCapacity}" class="p-1 border text-sm w-16"><button data-act="del" class="bg-red-500 text-white px-2 py-1 rounded text-xs">削</button></div>`;
     });
 }
@@ -2535,7 +2535,7 @@ function handleCarAction_master(e) {
     const t=e.target, act=t.dataset.act, card=t.closest('[data-cid]'); if(!card) return; const cid=card.dataset.cid;
     if(act==='del'){ db.deleteCar(cid); loadCars_master(); }
     if(act==='up'||act==='down'){
-        localCars.sort((a,b)=>(a.order||99)-(b.order||99));
+        localCars.sort((a,b)=>(a.order ?? 99)-(b.order ?? 99));
         localCars.forEach((c, idx) => { c.order = idx; });
         const i=localCars.findIndex(x=>x.id===cid), ti=act==='up'?i-1:i+1;
         if(ti>=0&&ti<localCars.length){ const tmp=localCars[i].order; localCars[i].order=localCars[ti].order; localCars[ti].order=tmp; loadCars_master(); }
