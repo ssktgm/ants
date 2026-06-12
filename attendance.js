@@ -15,6 +15,10 @@ let myDelegations = [];
 let eventLocations = [];
 let modalSelectedDates = [];
 
+window.att_multiSelectMode = false;
+window.att_selectedDates = new Set();
+
+
 // イベントの対象グループ情報を取得するヘルパー
 function getEventTargetGroupsInfo(ev) {
     let gIds = ev.target_group_ids || [];
@@ -135,34 +139,19 @@ function setupEventListeners() {
         renderCalendar();
     });
     
-    // グローバルにアクセスさせる関数 (HTMLのonclickから呼ぶ用)
-    window.att_closeModal = () => document.getElementById('attendance-modals').innerHTML = '';
-    window.att_saveEvent = saveEvent;
-    window.att_deleteEvent = deleteEvent;
-    window.att_openEventDetail = openEventDetailModal;
-    window.att_openAttendanceForm = openAttendanceFormModal;
-    window.att_saveAttendance = saveAttendance;
-    window.att_exportCsv = exportCsv;
-    window.att_statusViewType = window.att_statusViewType || 'group';
-    window.att_statusFilter = window.att_statusFilter || 'all';
-    window.att_setStatusViewType = (eventId, viewType) => {
-        window.att_statusViewType = viewType;
-        window.att_openEventDetail(eventId, 'status');
-    };
-    window.att_setStatusFilter = (eventId, filterType) => {
-        window.att_statusFilter = filterType;
-        window.att_openEventDetail(eventId, 'status');
-    };
-    window.att_copyEvent = function(eventId) {
-        const ev = events.find(e => e.id === eventId);
-        if (!ev) return;
-        openAddEventModal('', ev, false);
-    };
-    window.att_editEvent = function(eventId) {
-        const ev = events.find(e => e.id === eventId);
-        if (!ev) return;
-        openAddEventModal('', ev, true);
-    };
+    document.getElementById('btn-toggle-multiselect')?.addEventListener('click', function() {
+        window.att_multiSelectMode = !window.att_multiSelectMode;
+        if (!window.att_multiSelectMode) {
+            window.att_selectedDates.clear();
+        }
+        this.classList.toggle('bg-blue-600', window.att_multiSelectMode);
+        this.classList.toggle('text-white', window.att_multiSelectMode);
+        this.classList.toggle('bg-blue-50', !window.att_multiSelectMode);
+        this.classList.toggle('text-blue-600', !window.att_multiSelectMode);
+        
+        renderCalendar();
+        window.att_updateMultiselectBar();
+    });
 }
 
 function switchTab(tab) {
@@ -718,6 +707,31 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, ini
         </div>
     `;
 
+    const isSingleEditOrCreate = isEdit || (modalSelectedDates.length === 1 && window.att_selectedDates.size === 0);
+    let datesHtml = '';
+    if (isSingleEditOrCreate) {
+        datesHtml = `
+            <div>
+                <label class="text-xs font-bold text-gray-600">日付*</label>
+                <div id="ev-dates-container" class="mt-1">
+                    <input type="date" value="${modalSelectedDates[0]}" class="w-full border p-1.5 rounded text-xs px-1" onchange="window.att_onSingleDateChange(this.value)">
+                </div>
+            </div>
+        `;
+    } else {
+        datesHtml = `
+            <div>
+                <label class="text-xs font-bold text-gray-600">日付 (一括登録)*</label>
+                <div class="flex flex-wrap gap-1.5 p-2.5 border rounded-lg bg-gray-50 max-h-24 overflow-y-auto mt-1">
+                    ${modalSelectedDates.map(d => `<span class="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-200 text-xs font-bold shadow-sm">${d}</span>`).join('')}
+                </div>
+                <div id="ev-dates-container" class="hidden">
+                    ${modalSelectedDates.map(d => `<input type="date" value="${d}">`).join('')}
+                </div>
+            </div>
+        `;
+    }
+
     const modalHtml = `
     <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[100] p-4">
         <div class="bg-white p-6 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col text-sm text-gray-800">
@@ -729,17 +743,7 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, ini
                 </div>
                 
                 <!-- Date input block -->
-                <div>
-                    <label class="text-xs font-bold text-gray-600">日付*</label>
-                    <div id="ev-dates-container" class="space-y-1.5 max-h-32 overflow-y-auto border p-2 rounded bg-gray-50 mt-1">
-                        <!-- Rendered by renderDateRows() -->
-                    </div>
-                    ${!isEdit ? `
-                    <button type="button" onclick="window.att_addDateRow()" class="mt-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-xs font-bold flex items-center space-x-1 transition shadow-sm border border-gray-200">
-                        <span>＋ 日付を追加</span>
-                    </button>
-                    ` : ''}
-                </div>
+                ${datesHtml}
                 
                 <!-- Time and AllDay Row -->
                 <div class="flex space-x-4 items-end">
@@ -856,23 +860,8 @@ function openAddEventModal(dateStr = '', sourceEvent = null, isEdit = false, ini
     </div>`;
     document.getElementById('attendance-modals').innerHTML = modalHtml;
 
-    // Call helpers to render date list and default deadline
-    renderDateRows();
+    // Call helpers to render default deadline
     updateDefaultDeadlineLabel();
-
-    // Toggle custom deadline function inside global space
-    window.att_toggleDeadlineCustom = (isChecked) => {
-        const customInputs = document.getElementById('ev-deadline-custom-inputs');
-        const autoPreview = document.getElementById('ev-deadline-auto-preview');
-        if (isChecked) {
-            customInputs.classList.remove('hidden');
-            autoPreview.classList.add('hidden');
-        } else {
-            customInputs.classList.add('hidden');
-            autoPreview.classList.remove('hidden');
-            updateDefaultDeadlineLabel();
-        }
-    };
 
     // 全体と個別の排他制御イベントリスナー
     const allCb = document.getElementById('ev-group-all');
@@ -2027,3 +2016,102 @@ async function registerNewLocation() {
         hideLoading();
     }
 }
+
+// =====================================
+// Global Window API Bindings
+// =====================================
+window.att_closeModal = () => {
+    const modalsContainer = document.getElementById('attendance-modals');
+    if (modalsContainer) modalsContainer.innerHTML = '';
+};
+window.att_saveEvent = saveEvent;
+window.att_deleteEvent = deleteEvent;
+window.att_openEventDetail = openEventDetailModal;
+window.att_openAttendanceForm = openAttendanceFormModal;
+window.att_saveAttendance = saveAttendance;
+window.att_exportCsv = exportCsv;
+window.att_statusViewType = window.att_statusViewType || 'group';
+window.att_statusFilter = window.att_statusFilter || 'all';
+window.att_setStatusViewType = (eventId, viewType) => {
+    window.att_statusViewType = viewType;
+    window.att_openEventDetail(eventId, 'status');
+};
+window.att_setStatusFilter = (eventId, filterType) => {
+    window.att_statusFilter = filterType;
+    window.att_openEventDetail(eventId, 'status');
+};
+window.att_copyEvent = function(eventId) {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
+    const initialDates = window.att_selectedDates && window.att_selectedDates.size > 0 ? Array.from(window.att_selectedDates).sort() : null;
+    openAddEventModal('', ev, false, initialDates);
+};
+window.att_editEvent = function(eventId) {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
+    openAddEventModal('', ev, true);
+};
+
+window.att_addDateRow = addDateRow;
+window.att_removeDateRow = removeDateRow;
+window.att_renderDateRows = renderDateRows;
+window.att_updateDefaultDeadlineLabel = updateDefaultDeadlineLabel;
+window.att_openBulkAddEvent = openBulkAddEvent;
+window.att_clearDateSelection = clearDateSelection;
+window.att_onLocationSelectChange = onLocationSelectChange;
+window.att_registerNewLocation = registerNewLocation;
+window.att_updateMultiselectBar = updateMultiselectBar;
+
+window.att_onSingleDateChange = (val) => {
+    modalSelectedDates = [val];
+    updateDefaultDeadlineLabel();
+    
+    // Also update the custom deadline inputs to match the new date's default deadline
+    const dl = getDefaultDeadline(val);
+    if (dl) {
+        const dlDate = dl.split('T')[0];
+        const dlTime = dl.split('T')[1].substring(0,5);
+        const dlH = dlTime.split(':')[0];
+        const dlM = dlTime.split(':')[1];
+        
+        const dateInput = document.getElementById('ev-deadline-date');
+        const hSelect = document.getElementById('ev-deadline-time-h');
+        const mSelect = document.getElementById('ev-deadline-time-m');
+        
+        if (dateInput) dateInput.value = dlDate;
+        if (hSelect) hSelect.value = dlH;
+        if (mSelect) mSelect.value = dlM;
+    }
+};
+
+window.att_toggleDeadlineCustom = (isChecked) => {
+    const customInputs = document.getElementById('ev-deadline-custom-inputs');
+    const autoPreview = document.getElementById('ev-deadline-auto-preview');
+    if (!customInputs || !autoPreview) return;
+    if (isChecked) {
+        customInputs.classList.remove('hidden');
+        autoPreview.classList.add('hidden');
+        
+        // Populate custom inputs if they are empty
+        const dateVal = modalSelectedDates[0];
+        const dl = getDefaultDeadline(dateVal);
+        if (dl) {
+            const dlDate = dl.split('T')[0];
+            const dlTime = dl.split('T')[1].substring(0,5);
+            const dlH = dlTime.split(':')[0];
+            const dlM = dlTime.split(':')[1];
+            
+            const dateInput = document.getElementById('ev-deadline-date');
+            const hSelect = document.getElementById('ev-deadline-time-h');
+            const mSelect = document.getElementById('ev-deadline-time-m');
+            
+            if (dateInput && !dateInput.value) dateInput.value = dlDate;
+            if (hSelect && !hSelect.value) hSelect.value = dlH;
+            if (mSelect && !mSelect.value) mSelect.value = dlM;
+        }
+    } else {
+        customInputs.classList.add('hidden');
+        autoPreview.classList.remove('hidden');
+        updateDefaultDeadlineLabel();
+    }
+};
