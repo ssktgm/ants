@@ -1808,9 +1808,7 @@ function getDefaultDeadline(eventDateStr) {
     if (!eventDateStr) return null;
     const d = new Date(eventDateStr + 'T00:00:00');
     if (isNaN(d.getTime())) return null;
-    const day = d.getDay();
-    const diff = (day - 4 + 7) % 7;
-    const deadlineDate = new Date(d.getTime() - diff * 24 * 60 * 60 * 1000);
+    const deadlineDate = new Date(d.getTime() - 3 * 24 * 60 * 60 * 1000);
     const year = deadlineDate.getFullYear();
     const month = String(deadlineDate.getMonth() + 1).padStart(2, '0');
     const date = String(deadlineDate.getDate()).padStart(2, '0');
@@ -1824,7 +1822,8 @@ function formatDefaultDeadlineDisplay(eventDateStr) {
     const year = d.getFullYear();
     const month = d.getMonth() + 1;
     const date = d.getDate();
-    return `${year}/${month}/${date}(木) 12:00`;
+    const day = WEEKDAYS[d.getDay()];
+    return `${year}/${month}/${date}(${day}) 12:00`;
 }
 
 function formatLocationHtml(locationStr) {
@@ -1959,7 +1958,7 @@ function updateDefaultDeadlineLabel() {
         }
     } else {
         const formatted1 = formatDefaultDeadlineDisplay(modalSelectedDates[0]);
-        previewEl.innerHTML = `<span class="text-blue-600 font-bold">自動算出:</span> 各日程の直近木曜12:00<br><span class="text-[10px] text-gray-400 font-semibold">(例: ${modalSelectedDates[0]}分 → ${formatted1})</span>`;
+        previewEl.innerHTML = `<span class="text-blue-600 font-bold">自動算出:</span> 各日程の3日前の12:00<br><span class="text-[10px] text-gray-400 font-semibold">(例: ${modalSelectedDates[0]}分 → ${formatted1})</span>`;
     }
 }
 
