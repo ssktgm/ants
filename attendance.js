@@ -350,7 +350,7 @@ function renderCalendar() {
             cellClass = `border-2 border-blue-500 min-h-[100px] flex flex-col p-0 bg-blue-50/70 cursor-pointer z-10`;
         }
         
-        if (isToday) {
+        if (isToday && !window.att_multiSelectMode) {
             cellClass += ' today-cell-border';
         }
         
