@@ -22,6 +22,26 @@ let currentUser = null;
 let isAppInitialized = false;
 let currentUserRole = 'user'; // 'admin' or 'user'
 
+// ==========================================
+// ★ ログインID/メールアドレスの相互変換ユーティリティ
+// ==========================================
+function formatLoginId(id) {
+    id = id.trim();
+    if (!id) return '';
+    if (!id.includes('@')) {
+        return `${id}@ants.local`;
+    }
+    return id;
+}
+
+function displayLoginId(email) {
+    if (!email) return '';
+    if (email.endsWith('@ants.local')) {
+        return email.split('@')[0];
+    }
+    return email;
+}
+
 // --- ローディング表示のカウント管理 ---
 let loadingCount = 0;
 let loadingDetailEl = null;
@@ -506,7 +526,7 @@ if (supabaseClient) {
                     }
 
                     const emailDisplay = document.getElementById('user-email-display');
-                    if (emailDisplay) emailDisplay.textContent = currentUser.name || currentUser.email; // 名前があれば名前を表示
+                    if (emailDisplay) emailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email); // 名前があれば名前を表示
 
                     // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
                     const hash = window.location.hash;
@@ -617,7 +637,8 @@ async function handleLogin(e) {
     if (e && e.preventDefault) e.preventDefault();
     if (isAuthenticating) return;
     
-    const email = document.getElementById('email-address')?.value || '';
+    const rawEmail = document.getElementById('email-address')?.value || '';
+    const email = formatLoginId(rawEmail);
     const password = document.getElementById('password')?.value || '';
     const msg = document.getElementById('auth-message');
     if (msg) msg.classList.add('hidden');
@@ -1122,7 +1143,7 @@ async function loadAdminUsersData() {
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
                     <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
                     <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
-                    <input type="email" id="edit-email-${i}" value="${u.email}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email || isDummy ? 'disabled' : ''}>
+                    <input type="text" id="edit-email-${i}" value="${displayLoginId(u.email)}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email || isDummy ? 'disabled' : ''}>
                     <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
                         <option value="">属性なし</option>
                         ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
@@ -1216,7 +1237,7 @@ async function saveAllAdminUsers() {
             const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
             const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
             
-            const newEmail = emailEl.disabled ? oldEmail : emailEl.value.trim();
+            const newEmail = emailEl.disabled ? oldEmail : formatLoginId(emailEl.value.trim());
             const newName = nameEl.value.trim();
             const newAttributeId = attrEl ? (attrEl.value || null) : null;
             const newRole = roleEl.disabled ? oldRole : roleEl.value;
@@ -1304,13 +1325,14 @@ window.forceResetPassword = async function(email) {
 };
 
 window.adminAddUser = async function() {
-    const email = document.getElementById('admin-add-email')?.value.trim() || '';
+    const rawEmail = document.getElementById('admin-add-email')?.value.trim() || '';
+    const email = formatLoginId(rawEmail);
     const name = document.getElementById('admin-add-name')?.value.trim() || '';
     const password = document.getElementById('admin-add-password')?.value.trim() || '';
     const role = document.getElementById('admin-add-role')?.value || 'user';
     
-    if (!email || !name || !password) {
-        return alert("メールアドレス、氏名、仮パスワードは必須入力項目です。");
+    if (!rawEmail || !name || !password) {
+        return alert("ユーザーID（またはメールアドレス）、氏名、仮パスワードは必須入力項目です。");
     }
     if (password.length < 6) {
         return alert("仮パスワードは6文字以上で設定してください。");
@@ -1353,7 +1375,7 @@ window.adminAddUser = async function() {
         document.getElementById('admin-add-name').value = '';
         document.getElementById('admin-add-password').value = '';
         
-        alert(`アカウントの払い出しが完了しました！\n\n【ユーザー通知内容】\nメールアドレス: ${email}\n仮パスワード: ${password}\n\n上記情報をLINE等の別手段でユーザーに通知してください。`);
+        alert(`アカウントの払い出しが完了しました！\n\n【ユーザー通知内容】\nログインID: ${displayLoginId(email)}\n仮パスワード: ${password}\n\n上記情報をLINE等の別手段でユーザーに通知してください。`);
         
         await loadAdminUsersData();
     } catch (err) {
