@@ -200,12 +200,49 @@ graph TD
 
 ---
 
-## 8. 管理者向け機能：操作ログの確認
+## 8. 管理者向け機能：操作ログの確認およびユーザーパスワードの変更
 
+管理者（adminロール）ユーザーは、システムの保守・運用のために以下の管理機能を利用できます。
+
+### 8.1. 操作ログの確認
 マスターデータ管理画面の下部には「**操作ログ**」が表示されます。
-
 - **ログの目的**: 誰がいつ、どのようなマスタ更新やデータベース全リセットなどの操作を行ったかを監視・確認し、誤操作時の原因究明に役立てます。
 - **CSVダウンロード**: 「CSVダウンロード」ボタンを押すと、すべての操作ログをCSVファイルとしてダウンロードしてExcel等で確認・保管できます。
+
+### 8.2. ユーザーパスワードの直接変更（強制変更）
+メール送信制限を回避しているため、管理者がユーザー一覧から特定のユーザーのパスワードをその場で直接書き換えることができます。
+- **操作手順**:
+  1. 「メンバー・マスタ管理」➔ 「ユーザー管理」の一覧を表示します。
+  2. 対象ユーザーの右側にある「**パスワード変更**」ボタンを押します。
+  3. 新しいパスワード（6文字以上）を入力して確定すると、確認メール等を送信せずに即座にパスワードが更新されます。
+- **事前設定 (Supabase管理者用)**:
+  この機能を有効にするには、Supabase Dashboardの **SQL Editor** で以下のSQLスクリプトを実行し、セキュリティで保護されたデータベース関数（RPC）を事前に定義しておく必要があります。
+
+```sql
+-- 管理者が他ユーザーのパスワードを強制変更できるセキュアな関数を定義
+create or replace function admin_update_user_password(user_email text, new_password text)
+returns void as $$
+declare
+  caller_role text;
+begin
+  -- 操作実行者のロール（app_users テーブルに登録されている role）を取得
+  select role into caller_role
+  from public.app_users
+  where email = auth.jwt()->>'email';
+
+  -- 実行者が管理者（admin）ではない場合は拒否
+  if caller_role != 'admin' or caller_role is null then
+    raise exception 'Unauthorized: Only administrators can change passwords.';
+  end if;
+
+  -- auth.users のパスワードハッシュを直接更新 (bcryptハッシュ)
+  update auth.users
+  set encrypted_password = extensions.crypt(new_password, extensions.gen_salt('bf'))
+  where email = user_email;
+end;
+$$ language plpgsql security definer
+set search_path = public, extensions;
+```
 
 ---
 

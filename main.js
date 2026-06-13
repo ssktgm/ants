@@ -1160,7 +1160,7 @@ async function loadAdminUsersData() {
                     </div>
                 </div>
                 <div class="flex items-center space-x-2 shrink-0">
-                    ${!isDummy ? `<button onclick="forceResetPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">PWリセット送信</button>` : ''}
+                    ${!isDummy ? `<button onclick="adminChangeUserPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">パスワード変更</button>` : ''}
                     ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
                 </div>
             </div>
@@ -1319,6 +1319,37 @@ window.forceResetPassword = async function(email) {
         else { alert("パスワード再設定メールを送信しました。"); }
     } catch (err) {
         console.error(err);
+    } finally {
+        hideLoading();
+    }
+};
+
+window.adminChangeUserPassword = async function(email) {
+    const displayedId = displayLoginId(email);
+    const newPassword = prompt(`「${displayedId}」の新しいパスワードを入力してください（6文字以上）：`);
+    if (newPassword === null) return; // キャンセルされた場合
+    
+    const passwordTrimmed = newPassword.trim();
+    if (passwordTrimmed.length < 6) {
+        return alert("パスワードは6文字以上で設定してください。");
+    }
+    
+    showLoading('パスワード変更中...');
+    try {
+        const { error } = await supabaseClient.rpc('admin_update_user_password', {
+            user_email: email,
+            new_password: passwordTrimmed
+        });
+        
+        if (error) {
+            throw new Error(error.message);
+        }
+        
+        await logAction('ADMIN_CHANGE_PASSWORD', `ユーザー「${email}」のパスワードを変更しました`);
+        alert(`「${displayedId}」のパスワードを正常に変更しました。`);
+    } catch (err) {
+        console.error(err);
+        alert('パスワード変更エラー:\n' + err.message + '\n\n※この機能を使用するには、あらかじめSupabaseのSQLエディタで専用のデータベース関数（admin_update_user_password）を設定する必要があります。詳細はマニュアルまたはエージェントのメッセージを参照してください。');
     } finally {
         hideLoading();
     }
