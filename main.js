@@ -275,6 +275,7 @@ function initAppDOM() {
 
         document.getElementById('btn-back-to-menu-att')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
         document.getElementById('btn-logout-att')?.addEventListener('click', handleLogout);
+        document.getElementById('btn-change-password-menu')?.addEventListener('click', openChangePasswordModal);
 
         // メニューのレイアウト調整（縦並びのリスト化）
         const menuContainer = document.getElementById('app-menu-view')?.querySelector('.space-y-4');
@@ -1532,6 +1533,10 @@ window.approveRequest = async function(id, email) {
         await supabaseClient.from('app_users').insert([{ email, role: 'user', name: nameToSave }]);
         // リクエストのステータスを更新
         await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
+        
+        // 承認と同時に自動でパスワード設定（リセット）メールを送信
+        await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+
         await loadAdminUsersData();
     } catch (err) {
         console.error(err);
