@@ -314,6 +314,7 @@ function renderCalendar() {
     const startDate = new Date(year, month, 1 - startOffset);
     
     // 6週間 (42日) 分を描画
+    const now = new Date();
     for (let i = 0; i < 42; i++) {
         const targetDate = new Date(startDate);
         targetDate.setDate(startDate.getDate() + i);
@@ -326,11 +327,33 @@ function renderCalendar() {
         const targetDateStr = `${cellYear}-${String(cellMonth+1).padStart(2, '0')}-${String(cellDate).padStart(2, '0')}`;
         const isSelected = window.att_multiSelectMode && window.att_selectedDates.has(targetDateStr);
         
+        const dayOfWeek = targetDate.getDay();
+        const isHoliday = isJapaneseHoliday(targetDate);
+        const isToday = (cellYear === now.getFullYear() && cellMonth === now.getMonth() && cellDate === now.getDate());
+
         const cell = document.createElement('div');
-        let cellClass = `border-r border-b min-h-[100px] flex flex-col p-0 bg-white cursor-pointer ${!isCurrentMonth ? 'bg-gray-50 opacity-60' : ''}`;
+        let cellClass = `border-r border-b min-h-[100px] flex flex-col p-0 cursor-pointer`;
+        
+        if (!isCurrentMonth) {
+            cellClass += ' bg-gray-50 opacity-60';
+        } else {
+            if (isHoliday || dayOfWeek === 0) {
+                cellClass += ' bg-sunday-hatch';
+            } else if (dayOfWeek === 6) {
+                cellClass += ' bg-saturday-hatch';
+            } else {
+                cellClass += ' bg-white';
+            }
+        }
+        
         if (isSelected) {
             cellClass = `border-2 border-blue-500 min-h-[100px] flex flex-col p-0 bg-blue-50/70 cursor-pointer z-10`;
         }
+        
+        if (isToday) {
+            cellClass += ' today-cell-border';
+        }
+        
         cell.className = cellClass;
         
         cell.onclick = () => {
@@ -347,9 +370,17 @@ function renderCalendar() {
             }
         };
         
-        // 日付は右上に配置
+        // 日付は右上に配置（土日祝の色分け）
         const dateHeader = document.createElement('div');
-        dateHeader.className = 'text-right text-xs text-gray-700 font-bold mb-0 pr-1 pt-1 leading-none';
+        let dateColorClass = 'text-gray-700';
+        if (isCurrentMonth) {
+            if (isHoliday || dayOfWeek === 0) {
+                dateColorClass = 'text-red-600 font-bold';
+            } else if (dayOfWeek === 6) {
+                dateColorClass = 'text-blue-600 font-bold';
+            }
+        }
+        dateHeader.className = `text-right text-[11px] ${dateColorClass} mb-0 pr-1 pt-1 leading-none`;
         dateHeader.textContent = cellDate;
         cell.appendChild(dateHeader);
         
@@ -367,21 +398,21 @@ function renderCalendar() {
             const evEl = document.createElement('div');
             
             const myAtt = attendances.find(a => a.event_id === e.id);
-            let iconText = '';
+            let iconHtml = '';
             let statusClass = 'text-gray-800'; // 出欠なしのデフォルト
             if (e.requires_attendance) {
                 const status = myAtt ? myAtt.status : '未入力';
                 if (status === '出席') {
-                    iconText = '出:';
+                    iconHtml = '<span class="inline-block text-[9px] font-bold text-white bg-blue-600 rounded px-0.5 mr-0.5 leading-none shrink-0 align-middle">出</span>';
                     statusClass = 'text-blue-700 font-bold';
                 } else if (status === '欠席') {
-                    iconText = '欠:';
-                    statusClass = 'text-gray-800 line-through opacity-70'; // 少し薄くする
+                    iconHtml = '<span class="inline-block text-[9px] font-bold text-white bg-gray-400 rounded px-0.5 mr-0.5 leading-none shrink-0 align-middle">欠</span>';
+                    statusClass = 'text-gray-800 opacity-70'; // 少し薄くする
                 } else if (status === '保留' || status === '未定') {
-                    iconText = '保:';
+                    iconHtml = '<span class="inline-block text-[9px] font-bold text-white bg-amber-500 rounded px-0.5 mr-0.5 leading-none shrink-0 align-middle">保</span>';
                     statusClass = 'text-gray-800';
                 } else {
-                    iconText = '未:';
+                    iconHtml = '<span class="inline-block text-[9px] font-bold text-white bg-red-500 rounded px-0.5 mr-0.5 leading-none shrink-0 align-middle">未</span>';
                     statusClass = 'text-red-600 font-bold';
                 }
             }
@@ -391,9 +422,9 @@ function renderCalendar() {
             // タイトル内の改行コードを半角スペースに置換して表示崩れを防ぐ
             const cleanTitle = (e.title || '').replace(/[\r\n]+/g, ' ');
             
-            evEl.className = `text-[11px] rounded px-1 py-0.5 truncate whitespace-nowrap overflow-hidden text-ellipsis w-full text-left cursor-pointer hover:opacity-80 leading-normal mb-0.5 ${statusClass}`;
+            evEl.className = `text-[10px] rounded px-0.5 py-px truncate whitespace-nowrap overflow-hidden text-ellipsis w-full text-left cursor-pointer hover:opacity-80 leading-tight mb-0.5 ${statusClass}`;
             evEl.style.backgroundColor = categoryColor;
-            evEl.innerHTML = `${iconText ? `<span class="mr-0.5 leading-none">${iconText}</span>` : ''}${cleanTitle}`;
+            evEl.innerHTML = `${iconHtml}${cleanTitle}`;
             evEl.title = e.title;
             evEl.onclick = (ev) => {
                 ev.stopPropagation();
@@ -513,8 +544,8 @@ function renderList() {
         }
 
         html += `
-        <div class="space-y-3 mb-6">
-            <div class="flex items-center text-sm font-bold text-gray-700 border-b border-gray-200 pb-1.5 px-1">
+        <div class="space-y-2 mb-4">
+            <div class="flex items-center text-sm font-bold text-gray-700 border-b border-gray-200 pb-1 px-1">
                 <span>${headerText}</span>
                 ${todayBadgeHtml}
             </div>
@@ -543,7 +574,7 @@ function renderList() {
             }
             const createdAtStr = formatCreatedAt(e.created_at);
             const creatorHtml = e.created_by ? `
-                <div class="flex items-center text-gray-400 text-xs mt-2 space-x-1">
+                <div class="flex items-center text-gray-400 text-[10px] mt-1 space-x-1">
                     <span class="w-4 h-4 rounded-full bg-green-50 flex items-center justify-center text-[10px] text-green-700 font-bold">👤</span>
                     <span>${creatorName} ${createdAtStr}</span>
                 </div>
@@ -591,20 +622,20 @@ function renderList() {
             }
 
             html += `
-            <div class="p-4 border border-gray-200/60 rounded-xl hover:shadow-md transition bg-white flex flex-col justify-between cursor-pointer relative shadow-sm" onclick="window.att_openEventDetail('${e.id}')">
+            <div class="p-2 px-3 border border-gray-200/60 rounded-lg hover:shadow-md transition bg-white flex flex-col justify-between cursor-pointer relative shadow-sm" onclick="window.att_openEventDetail('${e.id}')">
                 
                 <!-- カード上部（タイトルと右上バッジ） -->
-                <div class="flex justify-between items-start mb-2 gap-4">
-                    <h3 class="font-bold text-base md:text-lg text-gray-800 flex items-center pr-2">
-                        <span class="mr-1 text-lg">📅</span>
+                <div class="flex justify-between items-start mb-1 gap-2">
+                    <h3 class="font-bold text-sm md:text-base text-gray-800 flex items-center pr-2">
+                        <span class="mr-1 text-base">📅</span>
                         <span>${e.title}</span>
                     </h3>
                     ${rightHeaderHtml}
                 </div>
 
                 <!-- カード中部（カテゴリと詳細） -->
-                <div class="flex flex-wrap items-center gap-2 text-xs md:text-sm text-gray-600">
-                    <span class="px-2 py-0.5 rounded text-[11px] font-bold" style="background-color: ${categoryColor}; color: #1f2937">${e.category || 'イベント'}</span>
+                <div class="flex flex-wrap items-center gap-2 text-[11px] md:text-xs text-gray-600">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${categoryColor}; color: #1f2937">${e.category || 'イベント'}</span>
                     <span class="flex items-center space-x-1">
                         <span>🕒</span>
                         <span>${dt}</span>
@@ -616,11 +647,11 @@ function renderList() {
                 </div>
 
                 <!-- カード下部（登録者と詳細矢印） -->
-                <div class="flex justify-between items-end mt-2">
+                <div class="flex justify-between items-end mt-1">
                     ${creatorHtml}
                     <!-- 詳細矢印 (緑の右向き) -->
-                    <div class="w-6 h-6 rounded-full bg-green-50 flex items-center justify-center hover:bg-green-100 transition absolute right-3 bottom-3">
-                        <span class="text-green-700 text-xs font-bold leading-none">&#10095;</span>
+                    <div class="w-5 h-5 rounded-full bg-green-50 flex items-center justify-center hover:bg-green-100 transition absolute right-2 bottom-2">
+                        <span class="text-green-700 text-[10px] font-bold leading-none">&#10095;</span>
                     </div>
                 </div>
 
@@ -2132,3 +2163,56 @@ window.att_toggleDeadlineCustom = (isChecked) => {
         updateDefaultDeadlineLabel();
     }
 };
+
+function isJapaneseHoliday(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    
+    // 静的祝日
+    if (month === 1 && day === 1) return true; // 元日
+    if (month === 2 && day === 11) return true; // 建国記念の日
+    if (month === 2 && day === 23) return true; // 天皇誕生日
+    if (month === 4 && day === 29) return true; // 昭和の日
+    if (month === 5 && day === 3) return true; // 憲法記念日
+    if (month === 5 && day === 4) return true; // みどりの日
+    if (month === 5 && day === 5) return true; // こどもの日
+    if (month === 8 && day === 11) return true; // 山の日
+    if (month === 11 && day === 3) return true; // 文化の日
+    if (month === 11 && day === 23) return true; // 勤労感謝の日
+    
+    // ハッピーマンデー (第2月曜日)
+    const dayOfWeek = date.getDay();
+    if (dayOfWeek === 1) { // 月曜日
+        const nth = Math.floor((day - 1) / 7) + 1;
+        if (month === 1 && nth === 2) return true; // 成人の日
+        if (month === 7 && nth === 3) return true; // 海の日 (第3月曜日)
+        if (month === 9 && nth === 3) return true; // 敬老の日 (第3月曜日)
+        if (month === 10 && nth === 2) return true; // スポーツの日 (第2月曜日)
+    }
+    
+    // 春分の日・秋分の日の簡易計算（2000〜2099年対応）
+    if (month === 3) {
+        const syunbun = Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+        if (day === syunbun) return true;
+    }
+    if (month === 9) {
+        const syubun = Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+        if (day === syubun) return true;
+    }
+    
+    // 振替休日判定（日曜日の翌日が祝日の場合）
+    if (dayOfWeek === 1) { // 月曜日
+        const prevDate = new Date(year, date.getMonth(), day - 1);
+        if (isJapaneseHoliday(prevDate)) return true;
+    }
+    
+    // 国民の休日判定（祝日と祝日に挟まれた平日）
+    const prevDate = new Date(year, date.getMonth(), day - 1);
+    const nextDate = new Date(year, date.getMonth(), day + 1);
+    if (isJapaneseHoliday(prevDate) && isJapaneseHoliday(nextDate)) {
+        return true;
+    }
+    
+    return false;
+}

@@ -70,3 +70,22 @@
 .fade-in {
   animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* 土曜日のハッチング */
+.bg-saturday-hatch {
+  background-image: repeating-linear-gradient(45deg, rgba(239, 246, 255, 0.4), rgba(239, 246, 255, 0.4) 8px, rgba(219, 234, 254, 0.3) 8px, rgba(219, 234, 254, 0.3) 16px) !important;
+  background-color: #f8fafc !important;
+}
+
+/* 日曜・祝日のハッチング */
+.bg-sunday-hatch {
+  background-image: repeating-linear-gradient(45deg, rgba(254, 242, 242, 0.4), rgba(254, 242, 242, 0.4) 8px, rgba(254, 226, 226, 0.3) 8px, rgba(254, 226, 226, 0.3) 16px) !important;
+  background-color: #fff1f2 !important;
+}
+
+/* 今日の太枠 */
+.today-cell-border {
+  border: 3px solid #3b82f6 !important;
+  position: relative;
+  z-index: 20;
+}
