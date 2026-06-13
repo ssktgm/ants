@@ -2164,7 +2164,7 @@ window.att_toggleDeadlineCustom = (isChecked) => {
     }
 };
 
-function isJapaneseHoliday(date) {
+function isBasicHoliday(date) {
     const year = date.getFullYear();
     const month = date.getMonth() + 1;
     const day = date.getDate();
@@ -2181,7 +2181,7 @@ function isJapaneseHoliday(date) {
     if (month === 11 && day === 3) return true; // 文化の日
     if (month === 11 && day === 23) return true; // 勤労感謝の日
     
-    // ハッピーマンデー (第2月曜日)
+    // ハッピーマンデー (第2月曜日など)
     const dayOfWeek = date.getDay();
     if (dayOfWeek === 1) { // 月曜日
         const nth = Math.floor((day - 1) / 7) + 1;
@@ -2191,7 +2191,7 @@ function isJapaneseHoliday(date) {
         if (month === 10 && nth === 2) return true; // スポーツの日 (第2月曜日)
     }
     
-    // 春分の日・秋分の日の簡易計算（2000〜2099年対応）
+    // 春分の日・秋分の日の簡易計算
     if (month === 3) {
         const syunbun = Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
         if (day === syunbun) return true;
@@ -2201,16 +2201,30 @@ function isJapaneseHoliday(date) {
         if (day === syubun) return true;
     }
     
-    // 振替休日判定（日曜日の翌日が祝日の場合）
-    if (dayOfWeek === 1) { // 月曜日
-        const prevDate = new Date(year, date.getMonth(), day - 1);
-        if (isJapaneseHoliday(prevDate)) return true;
+    return false;
+}
+
+function isJapaneseHoliday(date) {
+    // 1. 基本的な祝日に該当するか
+    if (isBasicHoliday(date)) return true;
+    
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    const dayOfWeek = date.getDay();
+    
+    // 2. 振替休日判定（日曜日の翌日が祝日の場合）
+    // 月曜日が平日の場合、前日の日曜日が基本祝日なら振替休日
+    if (dayOfWeek === 1) {
+        const prevDate = new Date(year, month, day - 1);
+        if (isBasicHoliday(prevDate)) return true;
     }
     
-    // 国民の休日判定（祝日と祝日に挟まれた平日）
-    const prevDate = new Date(year, date.getMonth(), day - 1);
-    const nextDate = new Date(year, date.getMonth(), day + 1);
-    if (isJapaneseHoliday(prevDate) && isJapaneseHoliday(nextDate)) {
+    // 3. 国民の休日判定（祝日と祝日に挟まれた平日）
+    // 前日と翌日が基本祝日であり、かつ当日が日曜日・祝日ではない場合
+    const prevDate = new Date(year, month, day - 1);
+    const nextDate = new Date(year, month, day + 1);
+    if (isBasicHoliday(prevDate) && isBasicHoliday(nextDate) && dayOfWeek !== 0) {
         return true;
     }
     
