@@ -55,7 +55,7 @@
                 <div id="auth-message" class="text-sm text-center hidden font-bold"></div>
 
                 <div class="mt-4 flex flex-col space-y-3 text-center text-sm border-t pt-4 border-gray-200">
-                    <a href="#" id="link-to-signup" class="font-bold text-blue-600 hover:text-blue-800 hover:underline">新規利用申請はこちら</a>
+                    <a href="#" id="link-to-signup" class="font-bold text-blue-600 hover:text-blue-800 hover:underline hidden">新規利用申請はこちら</a>
                     <a href="#" id="link-to-reset" class="text-gray-500 hover:text-gray-700 hover:underline">パスワードを忘れた場合</a>
                     <button id="btn-clear-cache" type="button" class="text-xs text-gray-500 hover:text-gray-700 underline mt-2">動作がおかしい・ログインできない場合はこちら</button>
                 </div>
@@ -408,18 +408,20 @@
         <!-- タブ1: ユーザー管理 -->
         <div id="tab-content-users-admin">
             <section class="mb-6 border p-4 rounded bg-gray-50">
-                <h3 class="text-xl font-semibold mb-3">新しいアカウントの追加（アクセス許可）</h3>
-            <div class="flex flex-wrap gap-2 items-center">
-                <input id="admin-add-email" type="email" placeholder="メールアドレス" class="border p-2 rounded w-64 shadow-sm focus:ring-blue-500">
-                <select id="admin-add-role" class="border p-2 rounded shadow-sm focus:ring-blue-500">
-                    <option value="user">一般ユーザー</option>
-                    <option value="leader">リーダー</option>
-                    <option value="admin">管理者</option>
-                </select>
-                <button id="btn-admin-add-user" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">追加</button>
-            </div>
-            <p class="text-xs text-gray-500 mt-2">※ここで追加されたメールアドレスで新規登録/ログインが可能になります。</p>
-        </section>
+                <h3 class="text-xl font-semibold mb-3">新しいアカウントの払い出し（Auth・仮パスワード同時生成）</h3>
+                <div class="flex flex-wrap gap-2 items-center">
+                    <input id="admin-add-email" type="email" placeholder="メールアドレス" class="border p-2 rounded w-48 shadow-sm focus:ring-blue-500 text-sm">
+                    <input id="admin-add-name" type="text" placeholder="氏名 (保護者名 (選手名) 等)" class="border p-2 rounded w-56 shadow-sm focus:ring-blue-500 text-sm">
+                    <input id="admin-add-password" type="text" placeholder="仮パスワード (6文字以上)" class="border p-2 rounded w-48 shadow-sm focus:ring-blue-500 text-sm">
+                    <select id="admin-add-role" class="border p-2 rounded shadow-sm focus:ring-blue-500 text-sm">
+                        <option value="user">一般ユーザー</option>
+                        <option value="leader">リーダー</option>
+                        <option value="admin">管理者</option>
+                    </select>
+                    <button id="btn-admin-add-user" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm">払い出し</button>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">※払い出しに成功すると、Authアカウントとメンバー情報が即座に生成されます。メールは送信されませんので、仮パスワードをユーザーへ別手段（LINE等）でお伝えください。</p>
+            </section>
 
         <section class="mb-6">
             <div class="flex justify-between items-center mb-3">

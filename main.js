@@ -1304,18 +1304,61 @@ window.forceResetPassword = async function(email) {
 };
 
 window.adminAddUser = async function() {
-    const email = document.getElementById('admin-add-email').value.trim();
-    const role = document.getElementById('admin-add-role').value;
-    if (!email) return;
-    showLoading('ユーザー追加処理中...');
+    const email = document.getElementById('admin-add-email')?.value.trim() || '';
+    const name = document.getElementById('admin-add-name')?.value.trim() || '';
+    const password = document.getElementById('admin-add-password')?.value.trim() || '';
+    const role = document.getElementById('admin-add-role')?.value || 'user';
+    
+    if (!email || !name || !password) {
+        return alert("メールアドレス、氏名、仮パスワードは必須入力項目です。");
+    }
+    if (password.length < 6) {
+        return alert("仮パスワードは6文字以上で設定してください。");
+    }
+    
+    showLoading('アカウント払い出し中...');
     try {
-        await supabaseClient.from('app_users').insert([{ email, role }]);
-        await logAction('ADD_USER', `ユーザー「${email}」を追加しました`);
+        // 1. 管理者セッションを維持したままバックグラウンドで新規ユーザーを作成
+        const tempSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            auth: {
+                persistSession: false,
+                autoRefreshToken: false
+            }
+        });
+        
+        const { data: authData, error: authError } = await tempSupabase.auth.signUp({
+            email: email,
+            password: password
+        });
+        
+        if (authError) {
+            throw new Error(`Authアカウント作成失敗: ${authError.message}`);
+        }
+        
+        // 2. データベース側 (app_users) レコード登録
+        const { error: dbError } = await supabaseClient.from('app_users').insert([{
+            email: email,
+            name: name,
+            role: role
+        }]);
+        
+        if (dbError) {
+            throw new Error(`データベース登録失敗: ${dbError.message}`);
+        }
+        
+        await logAction('ADD_USER_COMPLETED', `アカウント「${email}」を仮パスワード付きで払い出しました`);
+        
+        // 入力フォームのクリア
         document.getElementById('admin-add-email').value = '';
+        document.getElementById('admin-add-name').value = '';
+        document.getElementById('admin-add-password').value = '';
+        
+        alert(`アカウントの払い出しが完了しました！\n\n【ユーザー通知内容】\nメールアドレス: ${email}\n仮パスワード: ${password}\n\n上記情報をLINE等の別手段でユーザーに通知してください。`);
+        
         await loadAdminUsersData();
     } catch (err) {
         console.error(err);
-        alert('追加エラー: ' + (err.message === 'Load failed' || err.message === 'Failed to fetch' ? '通信に失敗しました。' : err.message));
+        alert('アカウント払い出しエラー:\n' + err.message);
     } finally {
         hideLoading();
     }
