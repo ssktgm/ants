@@ -1535,7 +1535,15 @@ window.approveRequest = async function(id, email) {
         await supabaseClient.from('signup_requests').update({ status: 'approved' }).eq('id', id);
         
         // 承認と同時に自動でパスワード設定（リセット）メールを送信
-        await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        try {
+            const { error: mailErr } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+            if (mailErr) {
+                console.warn("Auto password reset email failed (rate limit):", mailErr.message);
+                alert("メンバー承認は完了しました！\n\n※ただし、Supabaseのメール送信制限（レートリミット等）により、パスワード設定案内メールの自動送信に失敗しました（エラー: " + mailErr.message + "）。\n\nお手数ですが、ログイン画面の『パスワードを忘れた場合』からユーザー自身で再設定を行っていただくよう案内するか、時間をおいてメンバーリストの『PWリセット送信』から再送信してください。");
+            }
+        } catch (mailException) {
+            console.error("Auto password reset email exception:", mailException);
+        }
 
         await loadAdminUsersData();
     } catch (err) {
