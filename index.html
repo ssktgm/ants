@@ -211,11 +211,14 @@
                             <div class="bg-gray-50/50 p-3 rounded-lg border border-gray-100 flex flex-col justify-between">
                                 <div>
                                     <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">④ アプリ管理</label>
-                                    <p class="text-[11px] text-gray-400 leading-relaxed mb-2">配車マスタ管理の設定画面へ遷移、または登録データを全初期化します。</p>
+                                    <p class="text-[11px] text-gray-400 leading-relaxed mb-2">画面の入力をクリア、マスタ画面への遷移、またはデータベースのリセットを行います。</p>
                                 </div>
-                                <div class="flex space-x-2 mt-3">
-                                    <button id="btn-goto-master" onclick="document.getElementById('nav-master').click()" class="db-control flex-1 py-1.5 px-3 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-semibold rounded-lg text-xs shadow-sm transition duration-150">マスターへ</button>
-                                    <button id="clear-db-button" class="db-control flex-1 py-1.5 px-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg text-xs shadow-sm transition duration-150">全リセット</button>
+                                <div class="flex flex-col space-y-1.5 mt-3">
+                                    <div class="flex space-x-1.5">
+                                        <button id="btn-goto-master" onclick="document.getElementById('nav-master').click()" class="db-control flex-1 py-1.5 px-2 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-semibold rounded-lg text-xs shadow-sm transition duration-150 text-center">マスタへ</button>
+                                        <button id="btn-clear-inputs" class="db-control flex-1 py-1.5 px-2 bg-yellow-600 hover:bg-yellow-700 text-white font-semibold rounded-lg text-xs shadow-sm transition duration-150 text-center">入力クリア</button>
+                                    </div>
+                                    <button id="clear-db-button" class="db-control w-full py-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg text-[10px] transition duration-150">全データリセット（危険）</button>
                                 </div>
                             </div>
                         </div>

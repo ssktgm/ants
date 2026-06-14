@@ -2067,6 +2067,7 @@ function setupDispatchEventListeners() {
     document.getElementById('delete-parking-db-button')?.addEventListener('click', handleDeleteParkingFromDB);
 
     document.getElementById('clear-db-button')?.addEventListener('click', handleClearDB);
+    document.getElementById('btn-clear-inputs')?.addEventListener('click', window.clearCurrentInputs);
 }
 
 function initializeParticipantData() {
@@ -2660,6 +2661,63 @@ async function loadSavedParkingList() {
 async function handleClearDB() {
     if(confirm('全データをリセットしますか？')) { await db.clearDatabase(); location.reload(); }
 }
+
+window.clearCurrentInputs = function() {
+    if (!confirm("現在の入力内容（イベント情報、選択メンバー、車、駐車場、配車結果など）をすべてクリアして、初期状態に戻しますか？\n（※データベースに保存されているマスタデータや過去の保存データは削除されません）")) {
+        return;
+    }
+    
+    // 1. 各種入力項目のクリア
+    const eventDate = document.getElementById('event-date');
+    if (eventDate) eventDate.value = '';
+    const eventName = document.getElementById('event-name');
+    if (eventName) eventName.value = '';
+    const eventTimeline = document.getElementById('event-timeline');
+    if (eventTimeline) eventTimeline.value = '';
+    const eventRemarks = document.getElementById('event-remarks');
+    if (eventRemarks) eventRemarks.value = '';
+    
+    const groundName = document.getElementById('ground-name');
+    if (groundName) groundName.value = '';
+    const parkingName = document.getElementById('parking-name');
+    if (parkingName) parkingName.value = '';
+    const parkingLimit = document.getElementById('parking-limit');
+    if (parkingLimit) parkingLimit.value = '99';
+    const parkingRemarks = document.getElementById('parking-remarks');
+    if (parkingRemarks) parkingRemarks.value = '';
+    const otherParkingName = document.getElementById('other-parking-name');
+    if (otherParkingName) otherParkingName.value = '';
+    const otherParkingRemarks = document.getElementById('other-parking-remarks');
+    if (otherParkingRemarks) otherParkingRemarks.value = '';
+    
+    // 2. 状態変数のクリア
+    selectedParticipantIds.clear();
+    selectedCarIds.clear();
+    selectedDrivers.clear();
+    selectedLuggage.clear();
+    excludedParticipantIds.clear();
+    
+    // participantData のクリアと初期値セット
+    participantData.clear();
+    initializeParticipantData(); 
+    
+    // 3. 配車割り当て結果のクリア
+    currentAssignments = [];
+    
+    // 4. UIの再レンダリング
+    renderParticipantList();
+    renderCarList();
+    renderExclusionList();
+    renderResults();
+    updateTextOutput();
+    
+    // スワップ（入れ替え）用の選択状態をクリア
+    window.att_swapSelectedMember = null;
+    window.att_swapSelectedCar = null;
+    
+    // メッセージ表示
+    showDispatchMessage('画面の入力をクリアしました。', 'success');
+};
 
 function showDispatchMessage(msg, type='info') {
     const mc = document.getElementById('dispatch-message'); mc.className = `p-4 h-full border rounded-lg ${type==='error'?'bg-red-100 text-red-700':(type==='success'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700')}`;
