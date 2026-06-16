@@ -491,13 +491,24 @@
             </div>
             
             <!-- カレンダービュー -->
-            <div id="calendar-container" class="bg-white py-4 md:p-4 md:rounded-lg shadow">
+            <div id="calendar-container" class="bg-[#faf8f0] py-4 md:p-4 md:rounded-lg shadow">
                 <div class="flex justify-between items-center mb-4 px-2 md:px-0">
-                    <h2 id="cal-current-month" class="text-xl font-bold text-gray-800"></h2>
-                    <div class="inline-flex rounded-lg shadow-sm border border-gray-300 overflow-hidden">
-                        <button id="cal-prev-month" class="px-4 py-2 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors border-r border-gray-300">&lt;</button>
-                        <button id="cal-today" class="px-5 py-2 text-sm font-bold bg-green-700 hover:bg-green-800 text-white transition-colors">今日</button>
-                        <button id="cal-next-month" class="px-4 py-2 text-sm font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors border-l border-gray-300">&gt;</button>
+                    <div class="flex items-center space-x-3">
+                        <h2 id="cal-current-month" class="text-2xl font-normal text-slate-800 tracking-wider"></h2>
+                        <button id="btn-cal-filter" class="p-2 rounded-lg bg-[#e6e5dd] hover:bg-[#dcdad2] text-slate-800 transition-colors relative flex items-center justify-center border border-[#cfcdc5] shadow-sm" title="フィルター">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                            <span id="cal-filter-badge" class="absolute -top-1 -right-1 bg-green-600 text-white rounded-full text-[10px] w-4 h-4 flex items-center justify-center hidden font-bold">0</span>
+                        </button>
+                        <button id="btn-cal-filter-clear" class="text-xs text-red-600 hover:text-red-800 font-bold hidden transition-colors" title="フィルターをクリア">
+                            ✕ 解除
+                        </button>
+                    </div>
+                    <div class="inline-flex rounded-lg overflow-hidden border border-[#cfcdc5] shadow-sm">
+                        <button id="cal-prev-month" class="px-4 py-2 text-sm font-bold bg-[#e6e5dd] hover:bg-[#dcdad2] text-slate-800 transition-colors flex items-center justify-center">&lt;</button>
+                        <button id="cal-today" class="px-5 py-2 text-sm font-bold bg-[#1b7a14] hover:bg-[#15610f] text-white transition-colors flex items-center justify-center">今日</button>
+                        <button id="cal-next-month" class="px-4 py-2 text-sm font-bold bg-[#e6e5dd] hover:bg-[#dcdad2] text-slate-800 transition-colors flex items-center justify-center">&gt;</button>
                     </div>
                 </div>
                 <div id="calendar-grid" class="grid grid-cols-7 gap-0 border-l border-t text-center text-sm md:text-base">
@@ -546,6 +557,33 @@
     <!-- バージョン表示 -->
     <div class="fixed bottom-2 left-2 text-[10px] text-gray-400 opacity-60 select-none pointer-events-none z-[99]">
         v1.0.0
+    </div>
+
+    <!-- カレンダー用フィルターモーダル -->
+    <div id="filter-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] hidden">
+        <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                    </svg>
+                    <span>カレンダーフィルター</span>
+                </h3>
+                <button id="btn-close-filter-modal-x" class="text-gray-400 hover:text-gray-600 text-2xl font-semibold leading-none">&times;</button>
+            </div>
+            
+            <div id="filter-modal-content" class="flex-1 overflow-y-auto pr-1">
+                <!-- カテゴリとグループのチェックボックスがJSで動的生成される -->
+            </div>
+            
+            <div class="mt-6 pt-3 border-t flex justify-between gap-3 shrink-0">
+                <button id="btn-filter-clear" class="px-4 py-2 text-sm font-bold text-red-600 hover:text-red-800 transition-colors">すべてのクリア</button>
+                <div class="flex gap-2">
+                    <button id="btn-close-filter-modal" class="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">キャンセル</button>
+                    <button id="btn-apply-filter" class="px-5 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow transition-colors">適用する</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- ========================================== -->

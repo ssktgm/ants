@@ -17,6 +17,8 @@ let modalSelectedDates = [];
 
 window.att_multiSelectMode = false;
 window.att_selectedDates = new Set();
+window.att_selectedCategories = new Set();
+window.att_selectedGroups = new Set();
 
 
 // イベントの対象グループ情報を取得するヘルパー
@@ -142,6 +144,14 @@ function setupEventListeners() {
         renderCalendar();
         window.att_updateMultiselectBar();
     });
+
+    // カレンダー用フィルター
+    document.getElementById('btn-cal-filter')?.addEventListener('click', openFilterModal);
+    document.getElementById('btn-cal-filter-clear')?.addEventListener('click', clearFilters);
+    document.getElementById('btn-close-filter-modal-x')?.addEventListener('click', closeFilterModal);
+    document.getElementById('btn-close-filter-modal')?.addEventListener('click', closeFilterModal);
+    document.getElementById('btn-apply-filter')?.addEventListener('click', applyFilters);
+    document.getElementById('btn-filter-clear')?.addEventListener('click', clearFilters);
 }
 
 function switchTab(tab) {
@@ -265,21 +275,154 @@ function updateCategoryFilter() {
 }
 
 // =====================================
+// カレンダーフィルター機能 (複数選択モーダル制御)
+// =====================================
+function openFilterModal() {
+    const container = document.getElementById('filter-modal-content');
+    if (!container) return;
+    
+    let html = '';
+    
+    // カテゴリセクション
+    html += '<div class="mb-5">';
+    html += '<h4 class="text-xs font-bold text-gray-400 tracking-wider uppercase mb-2">カテゴリ（複数選択）</h4>';
+    if (categories.length === 0) {
+        html += '<p class="text-xs text-gray-400">カテゴリが登録されていません</p>';
+    } else {
+        html += '<div class="grid grid-cols-2 gap-2">';
+        categories.forEach(c => {
+            const checked = window.att_selectedCategories.has(c.name) ? 'checked' : '';
+            html += `
+                <label class="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded transition">
+                    <input type="checkbox" class="filter-cat-checkbox w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300" value="${c.name}" ${checked}>
+                    <span class="select-none">${c.name}</span>
+                </label>
+            `;
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    
+    // グループセクション
+    html += '<div class="mb-2">';
+    html += '<h4 class="text-xs font-bold text-gray-400 tracking-wider uppercase mb-2">対象グループ（複数選択）</h4>';
+    if (groups.length === 0) {
+        html += '<p class="text-xs text-gray-400">グループが登録されていません</p>';
+    } else {
+        html += '<div class="grid grid-cols-2 gap-2">';
+        groups.forEach(g => {
+            const checked = window.att_selectedGroups.has(g.id) ? 'checked' : '';
+            html += `
+                <label class="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded transition">
+                    <input type="checkbox" class="filter-group-checkbox w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300" value="${g.id}" ${checked}>
+                    <span class="select-none">${g.name}</span>
+                </label>
+            `;
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    
+    container.innerHTML = html;
+    document.getElementById('filter-modal').classList.remove('hidden');
+}
+
+function closeFilterModal() {
+    document.getElementById('filter-modal').classList.add('hidden');
+}
+
+function applyFilters() {
+    const catCheckboxes = document.querySelectorAll('.filter-cat-checkbox');
+    const groupCheckboxes = document.querySelectorAll('.filter-group-checkbox');
+    
+    window.att_selectedCategories.clear();
+    catCheckboxes.forEach(cb => {
+        if (cb.checked) window.att_selectedCategories.add(cb.value);
+    });
+    
+    window.att_selectedGroups.clear();
+    groupCheckboxes.forEach(cb => {
+        if (cb.checked) window.att_selectedGroups.add(cb.value);
+    });
+    
+    updateFilterUI();
+    renderCalendar();
+    closeFilterModal();
+}
+
+function clearFilters() {
+    window.att_selectedCategories.clear();
+    window.att_selectedGroups.clear();
+    
+    updateFilterUI();
+    renderCalendar();
+    closeFilterModal();
+}
+
+function updateFilterUI() {
+    const totalFilters = window.att_selectedCategories.size + window.att_selectedGroups.size;
+    const badge = document.getElementById('cal-filter-badge');
+    const clearBtn = document.getElementById('btn-cal-filter-clear');
+    
+    if (totalFilters > 0) {
+        if (badge) {
+            badge.textContent = totalFilters;
+            badge.classList.remove('hidden');
+        }
+        if (clearBtn) {
+            clearBtn.classList.remove('hidden');
+        }
+        const filterBtn = document.getElementById('btn-cal-filter');
+        if (filterBtn) {
+            filterBtn.classList.remove('bg-[#e6e5dd]', 'hover:bg-[#dcdad2]', 'text-slate-800');
+            filterBtn.classList.add('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
+        }
+    } else {
+        if (badge) {
+            badge.classList.add('hidden');
+        }
+        if (clearBtn) {
+            clearBtn.classList.add('hidden');
+        }
+        const filterBtn = document.getElementById('btn-cal-filter');
+        if (filterBtn) {
+            filterBtn.classList.remove('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
+            filterBtn.classList.add('bg-[#e6e5dd]', 'hover:bg-[#dcdad2]', 'text-slate-800');
+        }
+    }
+}
+
+// =====================================
 // カレンダー・リスト 描画
 // =====================================
 function getFilteredEvents() {
-    const catFilter = document.getElementById('filter-category')?.value;
-    const groupFilter = document.getElementById('filter-group')?.value;
+    const isCalendarActive = !document.getElementById('calendar-container')?.classList.contains('hidden');
     
-    return events.filter(e => {
-        if (catFilter && e.category !== catFilter) return false;
-        if (groupFilter) {
-            const groupInfo = getEventTargetGroupsInfo(e);
-            if (groupInfo.ids.length === 0) return false; // 全体の予定は除外
-            if (!groupInfo.ids.includes(groupFilter)) return false;
-        }
-        return true;
-    });
+    if (isCalendarActive) {
+        return events.filter(e => {
+            if (window.att_selectedCategories && window.att_selectedCategories.size > 0 && !window.att_selectedCategories.has(e.category)) return false;
+            if (window.att_selectedGroups && window.att_selectedGroups.size > 0) {
+                const groupInfo = getEventTargetGroupsInfo(e);
+                if (groupInfo.ids.length === 0) return false;
+                const hasMatchingGroup = groupInfo.ids.some(id => window.att_selectedGroups.has(id));
+                if (!hasMatchingGroup) return false;
+            }
+            return true;
+        });
+    } else {
+        const catFilter = document.getElementById('filter-category')?.value;
+        const groupFilter = document.getElementById('filter-group')?.value;
+        
+        return events.filter(e => {
+            if (catFilter && e.category !== catFilter) return false;
+            if (groupFilter) {
+                const groupInfo = getEventTargetGroupsInfo(e);
+                if (groupInfo.ids.length === 0) return false;
+                if (!groupInfo.ids.includes(groupFilter)) return false;
+            }
+            return true;
+        });
+    }
 }
 
 function renderCalendar() {
