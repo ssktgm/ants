@@ -89,23 +89,23 @@ function setupDashboardUI() {
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">期間</label>
                             <div class="flex items-center space-x-2">
-                                <input type="date" id="filter-date-from" class="border p-1.5 rounded w-full">
+                                <input type="date" id="db-filter-date-from" class="border p-1.5 rounded w-full">
                                 <span class="text-gray-500">〜</span>
-                                <input type="date" id="filter-date-to" class="border p-1.5 rounded w-full">
+                                <input type="date" id="db-filter-date-to" class="border p-1.5 rounded w-full">
                             </div>
                         </div>
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">相手チーム名 (正規表現可)</label>
-                            <input type="text" id="filter-team-regex" class="border p-1.5 rounded w-full" placeholder="例: イーグルス|シャークス">
+                            <input type="text" id="db-filter-team-regex" class="border p-1.5 rounded w-full" placeholder="例: イーグルス|シャークス">
                         </div>
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">大会・カテゴリ (複数選択/カンマ区切)</label>
-                            <input type="text" id="filter-category" class="border p-1.5 rounded w-full" placeholder="例: 練習試合, 東部近隣大会">
+                            <input type="text" id="db-filter-category" class="border p-1.5 rounded w-full" placeholder="例: 練習試合, 東部近隣大会">
                         </div>
                     </div>
                     <div class="flex space-x-3">
-                        <button id="btn-apply-filter" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded font-bold shadow-sm">適用</button>
-                        <button id="btn-clear-filter" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-1.5 rounded font-bold shadow-sm">クリア/リセット</button>
+                        <button id="btn-apply-dashboard-filter" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded font-bold shadow-sm">適用</button>
+                        <button id="btn-clear-dashboard-filter" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-1.5 rounded font-bold shadow-sm">クリア/リセット</button>
                     </div>
                 </div>
 
@@ -344,12 +344,12 @@ function setupDashboardUI() {
         });
 
         // フィルタ制御
-        document.getElementById('btn-apply-filter').addEventListener('click', applyFiltersAndRender);
-        document.getElementById('btn-clear-filter').addEventListener('click', () => {
-            document.getElementById('filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
-            document.getElementById('filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
-            document.getElementById('filter-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
-            document.getElementById('filter-category').value = dashboardSettings.defaultFilterDate.category || '';
+        document.getElementById('btn-apply-dashboard-filter').addEventListener('click', applyFiltersAndRender);
+        document.getElementById('btn-clear-dashboard-filter').addEventListener('click', () => {
+            document.getElementById('db-filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
+            document.getElementById('db-filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
+            document.getElementById('db-filter-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
+            document.getElementById('db-filter-category').value = dashboardSettings.defaultFilterDate.category || '';
             applyFiltersAndRender();
         });
 
@@ -398,10 +398,10 @@ function setupDashboardUI() {
             dashboardSettings.defaultFilterDate = updatedFilter;
 
             // 現在のフィルタ入力欄に反映
-            const filterDateFrom = document.getElementById('filter-date-from');
-            const filterDateTo = document.getElementById('filter-date-to');
-            const filterTeamRegex = document.getElementById('filter-team-regex');
-            const filterCategory = document.getElementById('filter-category');
+            const filterDateFrom = document.getElementById('db-filter-date-from');
+            const filterDateTo = document.getElementById('db-filter-date-to');
+            const filterTeamRegex = document.getElementById('db-filter-team-regex');
+            const filterCategory = document.getElementById('db-filter-category');
 
             if (filterDateFrom) filterDateFrom.value = from;
             if (filterDateTo) filterDateTo.value = to;
@@ -489,7 +489,7 @@ async function loadDashboardData() {
         document.getElementById('setting-default-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
         document.getElementById('setting-default-category').value = dashboardSettings.defaultFilterDate.category || '';
         if (!isFilterInitialized) {
-            document.getElementById('btn-clear-filter').click(); // 初回ロード時にデフォルト期間を適用
+            document.getElementById('btn-clear-dashboard-filter').click(); // 初回ロード時にデフォルト期間を適用
             isFilterInitialized = true;
         }
 
@@ -516,10 +516,10 @@ function isHomeTeam(teamName) {
 
 let currentFiltered = { games: [], bStats: [], pStats: [] };
 function applyFiltersAndRender() {
-    const from = document.getElementById('filter-date-from').value;
-    const to = document.getElementById('filter-date-to').value;
-    const teamRegexStr = document.getElementById('filter-team-regex').value;
-    const categoryStr = document.getElementById('filter-category').value;
+    const from = document.getElementById('db-filter-date-from').value;
+    const to = document.getElementById('db-filter-date-to').value;
+    const teamRegexStr = document.getElementById('db-filter-team-regex').value;
+    const categoryStr = document.getElementById('db-filter-category').value;
 
     let regex = null;
     if (teamRegexStr) {
