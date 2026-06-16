@@ -98,7 +98,7 @@ function setupEventListeners() {
         renderList();
     });
 
-    // カレンダー月移動
+    // カレンダー月・今日移動
     document.getElementById('cal-prev-month')?.addEventListener('click', () => {
         currentDate.setMonth(currentDate.getMonth() - 1);
         renderCalendar();
@@ -107,20 +107,10 @@ function setupEventListeners() {
         currentDate.setMonth(currentDate.getMonth() + 1);
         renderCalendar();
     });
-
-    // 「今日」ボタンを動的に追加
-    const nextMonthBtn = document.getElementById('cal-next-month');
-    if (nextMonthBtn && !document.getElementById('cal-today')) {
-        const todayBtn = document.createElement('button');
-        todayBtn.id = 'cal-today';
-        todayBtn.className = 'text-xs md:text-sm bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-1 rounded shadow-sm ml-2 font-bold transition';
-        todayBtn.textContent = '今日';
-        todayBtn.onclick = () => {
-            currentDate = new Date();
-            renderCalendar();
-        };
-        nextMonthBtn.parentNode.insertBefore(todayBtn, nextMonthBtn.nextSibling);
-    }
+    document.getElementById('cal-today')?.addEventListener('click', () => {
+        currentDate = new Date();
+        renderCalendar();
+    });
 
     // モーダルオープン系
     document.getElementById('btn-add-event')?.addEventListener('click', () => openAddEventModal());
@@ -296,7 +286,7 @@ function renderCalendar() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     
-    document.getElementById('cal-current-month').textContent = `${year}年 ${month + 1}月`;
+    document.getElementById('cal-current-month').textContent = `${year}年${month + 1}月`;
     
     const grid = document.getElementById('calendar-grid');
     if (grid) {
