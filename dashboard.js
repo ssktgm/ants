@@ -396,6 +396,20 @@ function setupDashboardUI() {
             }
             
             dashboardSettings.defaultFilterDate = updatedFilter;
+
+            // 現在のフィルタ入力欄に反映
+            const filterDateFrom = document.getElementById('filter-date-from');
+            const filterDateTo = document.getElementById('filter-date-to');
+            const filterTeamRegex = document.getElementById('filter-team-regex');
+            const filterCategory = document.getElementById('filter-category');
+
+            if (filterDateFrom) filterDateFrom.value = from;
+            if (filterDateTo) filterDateTo.value = to;
+            if (filterTeamRegex) filterTeamRegex.value = teamRegex;
+            if (filterCategory) filterCategory.value = category;
+
+            // 即座に再描画を実行
+            applyFiltersAndRender();
         });
     }
 }
