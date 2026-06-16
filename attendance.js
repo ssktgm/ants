@@ -201,7 +201,7 @@ async function loadData() {
         if (eData) events = eData;
 
         // 全ユーザー情報（出欠集計用）
-        const { data: uData } = await supabaseClient.from('app_users').select('email, name, attribute_id');
+        const { data: uData } = await supabaseClient.from('app_users').select('email, name, attribute_id, can_use_attendance');
         if (uData) appUsers = uData;
 
         // ユーザー属性情報（出欠集計用）
@@ -1272,11 +1272,16 @@ async function deleteEvent(id) {
 // 出欠フォームを生成する共通ヘルパー（代行分も含む）
 function generateAttendanceFormsHtml(ev, groupInfo, isPastDeadline = false) {
     const canAttend = groupInfo.ids.length === 0 || userGroups.some(ug => groupInfo.ids.includes(ug.group_id));
-    const targets = [{ email: currentUser.email, name: '自分 ( ' + (currentUser?.name || currentUser.email.split('@')[0]) + ' )', canAttend: canAttend }];
+    const currentUserInDb = appUsers.find(u => u.email === currentUser.email);
+    const currentUserCanUse = currentUserInDb ? currentUserInDb.can_use_attendance !== false : true;
+    const targets = [];
+    if (currentUserCanUse) {
+        targets.push({ email: currentUser.email, name: '自分 ( ' + (currentUser?.name || currentUser.email.split('@')[0]) + ' )', canAttend: canAttend });
+    }
     
     myDelegations.forEach(targetEmail => {
         const targetUser = appUsers.find(u => u.email === targetEmail);
-        if (targetUser) {
+        if (targetUser && targetUser.can_use_attendance !== false) {
             const canAttendTarget = groupInfo.ids.length === 0 || allUserGroups.some(ug => groupInfo.ids.includes(ug.group_id) && ug.user_email === targetEmail);
             targets.push({ email: targetEmail, name: targetUser.name || targetEmail.split('@')[0], canAttend: canAttendTarget });
         }
@@ -1385,12 +1390,12 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
     // 対象ユーザー一覧の収集 (グループ対象者 + 回答実績者)
     let targetUsers = [];
     if (groupInfo.ids.length === 0) {
-        targetUsers = [...appUsers];
+        targetUsers = appUsers.filter(u => u.can_use_attendance !== false);
     } else {
         const memberEmails = allUserGroups.filter(ug => groupInfo.ids.includes(ug.group_id)).map(ug => ug.user_email);
         const evAtts = allAttendances.filter(a => a.event_id === ev.id);
         const answeredEmails = evAtts.map(a => a.user_email);
-        targetUsers = appUsers.filter(u => memberEmails.includes(u.email) || answeredEmails.includes(u.email));
+        targetUsers = appUsers.filter(u => u.can_use_attendance !== false && (memberEmails.includes(u.email) || answeredEmails.includes(u.email)));
     }
 
     // 表示切替とフィルター設定の初期値
@@ -1545,6 +1550,81 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
         return true;
     });
 
+    // ソートステートの初期化
+    if (!window.att_statusSortKey) window.att_statusSortKey = 'default';
+    if (!window.att_statusSortOrder) window.att_statusSortOrder = 'asc';
+
+    // 参加者リストのソート
+    const sortKey = window.att_statusSortKey;
+    const sortOrder = window.att_statusSortOrder;
+
+    if (sortKey !== 'default') {
+        filteredUsers.sort((a, b) => {
+            let valA, valB;
+            if (sortKey === 'name') {
+                valA = a.name || a.email.split('@')[0];
+                valB = b.name || b.email.split('@')[0];
+            } else if (sortKey === 'group') {
+                if (isGroupView) {
+                    const userGIdsA = allUserGroups.filter(ug => ug.user_email === a.email).map(ug => ug.group_id);
+                    valA = groups.filter(g => userGIdsA.includes(g.id)).map(g => g.name).join(', ') || '-';
+                    const userGIdsB = allUserGroups.filter(ug => ug.user_email === b.email).map(ug => ug.group_id);
+                    valB = groups.filter(g => userGIdsB.includes(g.id)).map(g => g.name).join(', ') || '-';
+                } else {
+                    valA = userAttributes.find(attr => attr.id === a.attribute_id)?.name || '-';
+                    valB = userAttributes.find(attr => attr.id === b.attribute_id)?.name || '-';
+                }
+            } else if (sortKey === 'status') {
+                const getStatusWeight = (u) => {
+                    const att = allAttendances.find(at => at.event_id === ev.id && at.user_email === u.email);
+                    const statusVal = att?.status || '未回答';
+                    if (statusVal === '出席') return 1;
+                    if (statusVal === '保留' || statusVal === '未定') return 2;
+                    if (statusVal === '未回答') return 3;
+                    if (statusVal === '欠席') return 4;
+                    return 5;
+                };
+                valA = getStatusWeight(a);
+                valB = getStatusWeight(b);
+            } else if (sortKey === 'comment') {
+                const getMemoText = (u) => {
+                    const att = allAttendances.find(at => at.event_id === ev.id && at.user_email === u.email);
+                    if (!att || !att.status || att.status === '未回答') return '';
+                    let displayComment = att.comment || '';
+                    let luggageCar = '否';
+                    if (displayComment.startsWith('[荷物車:可]')) {
+                        luggageCar = '可';
+                        displayComment = displayComment.substring(8);
+                    } else if (displayComment.startsWith('[荷物車:否]')) {
+                        luggageCar = '否';
+                        displayComment = displayComment.substring(8);
+                    }
+                    let details = [];
+                    if (ev.require_detailed_attendance) {
+                        if (att.accompanying_persons) details.push(`同伴: ${att.accompanying_persons}`);
+                        if (att.car_capacity && att.car_capacity > 0) {
+                            details.push(`車出: 可[${att.car_capacity}人]`);
+                            details.push(`荷物車: ${luggageCar}`);
+                        }
+                    }
+                    if (displayComment.trim()) details.push(`メモ: ${displayComment.trim()}`);
+                    return details.join(', ');
+                };
+                valA = getMemoText(a);
+                valB = getMemoText(b);
+            } else if (sortKey === 'updated_at') {
+                const attA = allAttendances.find(at => at.event_id === ev.id && at.user_email === a.email);
+                const attB = allAttendances.find(at => at.event_id === ev.id && at.user_email === b.email);
+                valA = attA ? new Date(attA.updated_at).getTime() : 0;
+                valB = attB ? new Date(attB.updated_at).getTime() : 0;
+            }
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
     const filters = [
         { type: 'all', label: 'すべて' },
         { type: 'answered', label: '回答済' },
@@ -1634,6 +1714,11 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
         }).join('');
     }
 
+    const getArrow = (key) => {
+        if (sortKey !== key) return '<span class="text-gray-300 ml-1">⇅</span>';
+        return sortOrder === 'asc' ? '<span class="text-blue-600 ml-1">▲</span>' : '<span class="text-blue-600 ml-1">▼</span>';
+    };
+
     const participantListHtml = `
         <div class="mt-4 border-t pt-4">
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 mb-3">
@@ -1642,17 +1727,20 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                     <div class="flex items-center space-x-1">
                         ${pillsHtml}
                     </div>
+                    <button onclick="window.att_exportParticipantList('${ev.id}')" class="px-3 py-1.5 rounded bg-green-600 hover:bg-green-700 text-white font-bold text-xs shadow transition flex items-center gap-1 shrink-0">
+                        📥 CSVエクスポート
+                    </button>
                 </div>
             </div>
             <div class="overflow-x-auto border border-gray-200 rounded-lg shadow-sm bg-white">
                 <table class="min-w-full text-xs">
                     <thead>
-                        <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">名前</th>
-                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">${isGroupView ? 'グループ' : '属性'}</th>
-                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">出欠</th>
-                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">出欠メモ</th>
-                            <th class="px-4 py-2 font-bold text-gray-600 text-left text-xs">更新日時</th>
+                        <tr class="bg-gray-50 border-b border-gray-200 select-none">
+                            <th onclick="window.att_toggleSort('${ev.id}', 'name')" class="px-4 py-2 font-bold text-gray-600 text-left text-xs cursor-pointer hover:bg-gray-100 transition">名前 ${getArrow('name')}</th>
+                            <th onclick="window.att_toggleSort('${ev.id}', 'group')" class="px-4 py-2 font-bold text-gray-600 text-left text-xs cursor-pointer hover:bg-gray-100 transition">${isGroupView ? 'グループ' : '属性'} ${getArrow('group')}</th>
+                            <th onclick="window.att_toggleSort('${ev.id}', 'status')" class="px-4 py-2 font-bold text-gray-600 text-left text-xs cursor-pointer hover:bg-gray-100 transition">出欠 ${getArrow('status')}</th>
+                            <th onclick="window.att_toggleSort('${ev.id}', 'comment')" class="px-4 py-2 font-bold text-gray-600 text-left text-xs cursor-pointer hover:bg-gray-100 transition">出欠メモ ${getArrow('comment')}</th>
+                            <th onclick="window.att_toggleSort('${ev.id}', 'updated_at')" class="px-4 py-2 font-bold text-gray-600 text-left text-xs cursor-pointer hover:bg-gray-100 transition">更新日時 ${getArrow('updated_at')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2672,3 +2760,178 @@ function downloadEventsCSVSample() {
     link.download = 'schedule_sample.csv';
     link.click();
 }
+
+window.att_toggleSort = function(eventId, key) {
+    if (window.att_statusSortKey === key) {
+        if (window.att_statusSortOrder === 'asc') {
+            window.att_statusSortOrder = 'desc';
+        } else {
+            window.att_statusSortKey = 'default';
+            window.att_statusSortOrder = 'asc';
+        }
+    } else {
+        window.att_statusSortKey = key;
+        window.att_statusSortOrder = 'asc';
+    }
+    window.att_openEventDetail(eventId, 'status');
+};
+
+window.att_exportParticipantList = function(eventId) {
+    const ev = events.find(e => e.id === eventId);
+    if (!ev) return;
+    
+    const groupInfo = getEventTargetGroupsInfo(ev);
+    const isGroupView = (window.att_statusViewType === 'group');
+
+    // Get target users (same filtering as UI)
+    let targetUsers = [];
+    if (groupInfo.ids.length === 0) {
+        targetUsers = appUsers.filter(u => u.can_use_attendance !== false);
+    } else {
+        const memberEmails = allUserGroups.filter(ug => groupInfo.ids.includes(ug.group_id)).map(ug => ug.user_email);
+        const evAtts = allAttendances.filter(a => a.event_id === ev.id);
+        const answeredEmails = evAtts.map(a => a.user_email);
+        targetUsers = appUsers.filter(u => u.can_use_attendance !== false && (memberEmails.includes(u.email) || answeredEmails.includes(u.email)));
+    }
+
+    // Filter target users (same as UI filters)
+    const filteredUsers = targetUsers.filter(u => {
+        const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+        const statusVal = att?.status || '未回答';
+        
+        if (window.att_statusFilter === 'all') return true;
+        if (window.att_statusFilter === 'answered') return statusVal === '出席' || statusVal === '欠席' || statusVal === '保留' || statusVal === '未定';
+        if (window.att_statusFilter === 'attending') return statusVal === '出席';
+        if (window.att_statusFilter === 'absent') return statusVal === '欠席';
+        if (window.att_statusFilter === 'pending') return statusVal === '保留' || statusVal === '未定';
+        if (window.att_statusFilter === 'unanswered') return statusVal === '未回答' || !statusVal;
+        return true;
+    });
+
+    // Sort target users (same as UI sorting)
+    const sortKey = window.att_statusSortKey || 'default';
+    const sortOrder = window.att_statusSortOrder || 'asc';
+    
+    if (sortKey !== 'default') {
+        filteredUsers.sort((a, b) => {
+            let valA, valB;
+            if (sortKey === 'name') {
+                valA = a.name || a.email.split('@')[0];
+                valB = b.name || b.email.split('@')[0];
+            } else if (sortKey === 'group') {
+                if (isGroupView) {
+                    const userGIdsA = allUserGroups.filter(ug => ug.user_email === a.email).map(ug => ug.group_id);
+                    valA = groups.filter(g => userGIdsA.includes(g.id)).map(g => g.name).join(', ') || '-';
+                    const userGIdsB = allUserGroups.filter(ug => ug.user_email === b.email).map(ug => ug.group_id);
+                    valB = groups.filter(g => userGIdsB.includes(g.id)).map(g => g.name).join(', ') || '-';
+                } else {
+                    valA = userAttributes.find(attr => attr.id === a.attribute_id)?.name || '-';
+                    valB = userAttributes.find(attr => attr.id === b.attribute_id)?.name || '-';
+                }
+            } else if (sortKey === 'status') {
+                const getStatusWeight = (u) => {
+                    const att = allAttendances.find(at => at.event_id === ev.id && at.user_email === u.email);
+                    const statusVal = att?.status || '未回答';
+                    if (statusVal === '出席') return 1;
+                    if (statusVal === '保留' || statusVal === '未定') return 2;
+                    if (statusVal === '未回答') return 3;
+                    if (statusVal === '欠席') return 4;
+                    return 5;
+                };
+                valA = getStatusWeight(a);
+                valB = getStatusWeight(b);
+            } else if (sortKey === 'comment') {
+                const getMemoText = (u) => {
+                    const att = allAttendances.find(at => at.event_id === ev.id && at.user_email === u.email);
+                    if (!att || !att.status || att.status === '未回答') return '';
+                    let displayComment = att.comment || '';
+                    let luggageCar = '否';
+                    if (displayComment.startsWith('[荷物車:可]')) {
+                        luggageCar = '可';
+                        displayComment = displayComment.substring(8);
+                    } else if (displayComment.startsWith('[荷物車:否]')) {
+                        luggageCar = '否';
+                        displayComment = displayComment.substring(8);
+                    }
+                    let details = [];
+                    if (ev.require_detailed_attendance) {
+                        if (att.accompanying_persons) details.push(`同伴: ${att.accompanying_persons}`);
+                        if (att.car_capacity && att.car_capacity > 0) {
+                            details.push(`車出: 可[${att.car_capacity}人]`);
+                            details.push(`荷物車: ${luggageCar}`);
+                        }
+                    }
+                    if (displayComment.trim()) details.push(`メモ: ${displayComment.trim()}`);
+                    return details.join(', ');
+                };
+                valA = getMemoText(a);
+                valB = getMemoText(b);
+            } else if (sortKey === 'updated_at') {
+                const attA = allAttendances.find(at => at.event_id === ev.id && at.user_email === a.email);
+                const attB = allAttendances.find(at => at.event_id === ev.id && at.user_email === b.email);
+                valA = attA ? new Date(attA.updated_at).getTime() : 0;
+                valB = attB ? new Date(attB.updated_at).getTime() : 0;
+            }
+
+            if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+            if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
+
+    // Generate CSV content
+    const headers = ['名前', isGroupView ? 'グループ' : '属性', '出欠ステータス', '同伴者', '車出し可否', '乗車人数', '荷物車対応', 'コメント', '更新日時'];
+    const rows = [headers];
+
+    filteredUsers.forEach(u => {
+        const userName = u.name || u.email.split('@')[0];
+        let matched = '-';
+        if (isGroupView) {
+            const userGIds = allUserGroups.filter(ug => ug.user_email === u.email).map(ug => ug.group_id);
+            matched = groups.filter(g => userGIds.includes(g.id)).map(g => g.name).join(', ') || '-';
+        } else {
+            matched = userAttributes.find(attr => attr.id === u.attribute_id)?.name || '-';
+        }
+
+        const att = allAttendances.find(a => a.event_id === ev.id && a.user_email === u.email);
+        let statusVal = att?.status || '未回答';
+        if (statusVal === '未定') statusVal = '保留';
+
+        let displayComment = att?.comment || '';
+        let luggageCar = '否';
+        if (displayComment.startsWith('[荷物車:可]')) {
+            luggageCar = '可';
+            displayComment = displayComment.substring(8);
+        } else if (displayComment.startsWith('[荷物車:否]')) {
+            luggageCar = '否';
+            displayComment = displayComment.substring(8);
+        }
+
+        const accompanying = att?.accompanying_persons || '';
+        const carCapacity = att?.car_capacity || 0;
+        const carFlag = carCapacity > 0 ? '可' : '否';
+        const updatedTimeText = att ? formatUpdatedAt(att.updated_at) : '-';
+
+        rows.push([
+            userName,
+            matched,
+            statusVal,
+            accompanying,
+            carFlag,
+            carCapacity,
+            luggageCar,
+            displayComment,
+            updatedTimeText
+        ]);
+    });
+
+    const csvContent = rows.map(r => r.map(window.escapeCSV).join(',')).join('\n');
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const cleanTitle = ev.title.replace(/[\/\\?%*:|"<>]/g, '_');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `参加者リスト_${cleanTitle}_${window.att_statusFilter}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
