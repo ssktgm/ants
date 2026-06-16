@@ -116,6 +116,10 @@ function setupEventListeners() {
 
     // モーダルオープン系
     document.getElementById('btn-add-event')?.addEventListener('click', () => openAddEventModal());
+    document.getElementById('btn-export-events')?.addEventListener('click', exportEventsCSV);
+    document.getElementById('btn-import-events')?.addEventListener('click', () => document.getElementById('input-import-events-csv').click());
+    document.getElementById('btn-download-events-sample')?.addEventListener('click', downloadEventsCSVSample);
+    document.getElementById('input-import-events-csv')?.addEventListener('change', handleImportEventsCSVFile);
     
     // 古いグループ管理ボタンは非表示化
     const manageBtn = document.getElementById('btn-group-manage');
@@ -2374,4 +2378,297 @@ function isJapaneseHoliday(date) {
     }
     
     return false;
+}
+
+// =====================================
+// イベント（予定）CSVインポート・エクスポート
+// =====================================
+async function exportEventsCSV() {
+    showLoading('予定情報をエクスポート中...');
+    try {
+        const { data: dbEvents } = await supabaseClient.from('events').select('*').order('start_time', { ascending: true });
+        const { data: groups } = await supabaseClient.from('groups').select('*');
+
+        const groupMap = new Map(groups.map(g => [g.id, g.name]));
+
+        const headers = ['ID', 'タイトル', 'カテゴリ', '場所', '開始日時', '終了日時', '説明', '終日(1/0)', '出欠回答要(1/0)', '詳細回答要(1/0)', '回答期限', '対象グループ名', '削除(1/0)'];
+        const rows = [headers];
+
+        dbEvents.forEach(e => {
+            let targetGroupStr = '';
+            if (e.target_group_ids && e.target_group_ids.length > 0) {
+                targetGroupStr = e.target_group_ids.map(id => groupMap.get(id) || '').filter(name => name).join(', ');
+            } else if (e.target_group_id) {
+                targetGroupStr = groupMap.get(e.target_group_id) || '';
+            }
+
+            const startTime = e.start_time ? e.start_time.replace('T', ' ').substring(0, 16) : '';
+            const endTime = e.end_time ? e.end_time.replace('T', ' ').substring(0, 16) : '';
+            const deadline = e.attendance_deadline ? e.attendance_deadline.replace('T', ' ').substring(0, 16) : '';
+
+            rows.push([
+                e.id,
+                e.title || '',
+                e.category || '',
+                e.location || '',
+                startTime,
+                endTime,
+                e.description || '',
+                e.is_all_day ? '1' : '0',
+                e.requires_attendance ? '1' : '0',
+                e.require_detailed_attendance ? '1' : '0',
+                deadline,
+                targetGroupStr,
+                '0'
+            ]);
+        });
+
+        const csvContent = rows.map(r => r.map(window.escapeCSV).join(',')).join('\n');
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `schedule_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+    } catch (e) {
+        console.error(e);
+        alert('予定のエクスポートに失敗しました: ' + e.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function handleImportEventsCSVFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showLoading('CSVファイルを解析中...');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const text = event.target.result;
+            const rows = window.parseCSV(text);
+            if (rows.length < 2) {
+                alert('有効なデータがありません。');
+                hideLoading();
+                return;
+            }
+
+            const headers = rows[0].map(h => h.trim());
+            const idIdx = headers.indexOf('ID');
+            const titleIdx = headers.indexOf('タイトル');
+            const categoryIdx = headers.indexOf('カテゴリ');
+            const locationIdx = headers.indexOf('場所');
+            const startIdx = headers.indexOf('開始日時');
+            const endIdx = headers.indexOf('終了日時');
+            const descIdx = headers.indexOf('説明');
+            const allDayIdx = headers.findIndex(h => h.includes('終日'));
+            const reqAttIdx = headers.findIndex(h => h.includes('出欠回答要'));
+            const reqDetIdx = headers.findIndex(h => h.includes('詳細回答要'));
+            const deadlineIdx = headers.findIndex(h => h.includes('回答期限'));
+            const groupIdx = headers.findIndex(h => h.includes('対象グループ名'));
+            const deleteIdx = headers.findIndex(h => h.includes('削除'));
+
+            if (titleIdx === -1 || startIdx === -1) {
+                alert('「タイトル」および「開始日時」列は必須です。');
+                hideLoading();
+                return;
+            }
+
+            const { data: dbEvents } = await supabaseClient.from('events').select('*');
+            const { data: groups } = await supabaseClient.from('groups').select('*');
+
+            const groupMap = new Map(groups.map(g => [g.name, g.id]));
+            const existingEventsById = new Map(dbEvents.map(ev => [ev.id, ev]));
+            
+            const existingEventsByKey = new Map(dbEvents.map(ev => {
+                const key = `${ev.title}_${ev.start_time ? ev.start_time.substring(0, 16).replace('T', ' ') : ''}`;
+                return [key, ev];
+            }));
+
+            const addList = [];
+            const updateList = [];
+            const deleteList = [];
+
+            const formatDateTimeStr = (str) => {
+                if (!str) return null;
+                let formatted = str.trim().replace(/\//g, '-').replace(' ', 'T');
+                if (formatted.length === 10) formatted += 'T00:00:00';
+                else if (formatted.length === 16) formatted += ':00';
+                return formatted;
+            };
+
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.length < 2) continue;
+
+                const title = (row[titleIdx] || '').trim();
+                const rawStart = (row[startIdx] || '').trim();
+                if (!title || !rawStart) continue;
+
+                const start_time = formatDateTimeStr(rawStart);
+                const id = idIdx !== -1 ? (row[idIdx] || '').trim() : '';
+                const category = categoryIdx !== -1 ? (row[categoryIdx] || '').trim() : '';
+                const location = locationIdx !== -1 ? (row[locationIdx] || '').trim() : '';
+                const end_time = endIdx !== -1 ? formatDateTimeStr(row[endIdx]) : null;
+                const description = descIdx !== -1 ? (row[descIdx] || '').trim() : '';
+
+                const isAllDay = allDayIdx !== -1 ? (row[allDayIdx] === '1' || row[allDayIdx] === 'true' ? true : false) : false;
+                const requiresAttendance = reqAttIdx !== -1 ? (row[reqAttIdx] === '0' || row[reqAttIdx] === 'false' ? false : true) : true;
+                const requireDetailed = reqDetIdx !== -1 ? (row[reqDetIdx] === '1' || row[reqDetIdx] === 'true' ? true : false) : false;
+                const deadline = deadlineIdx !== -1 ? formatDateTimeStr(row[deadlineIdx]) : null;
+                const isDelete = deleteIdx !== -1 ? (row[deleteIdx] === '1' || row[deleteIdx] === '削除' ? true : false) : false;
+
+                const rawGroupsStr = groupIdx !== -1 ? (row[groupIdx] || '').trim() : '';
+                let target_group_ids = [];
+                let target_group_name = '';
+                if (rawGroupsStr) {
+                    const groupNames = rawGroupsStr.split(',').map(name => name.trim()).filter(name => name);
+                    target_group_ids = groupNames.map(name => groupMap.get(name)).filter(id => id);
+                    target_group_name = groupNames.join(', ');
+                }
+
+                const item = {
+                    id, title, category, location, start_time, end_time, description,
+                    is_all_day: isAllDay, requires_attendance: requiresAttendance,
+                    require_detailed_attendance: requireDetailed, attendance_deadline: deadline,
+                    target_group_ids, target_group_name
+                };
+
+                let existing = null;
+                if (id) {
+                    existing = existingEventsById.get(id);
+                }
+                if (!existing) {
+                    const key = `${title}_${rawStart.substring(0, 16).replace(/\//g, '-')}`;
+                    existing = existingEventsByKey.get(key);
+                }
+
+                if (existing) {
+                    item.id = existing.id;
+                    if (isDelete) {
+                        deleteList.push(item);
+                    } else {
+                        const titleChanged = existing.title !== title;
+                        const catChanged = existing.category !== category;
+                        const locChanged = existing.location !== location;
+                        const descChanged = existing.description !== description;
+                        const startChanged = (existing.start_time ? existing.start_time.substring(0, 16) : '') !== (start_time ? start_time.substring(0, 16) : '');
+                        const endChanged = (existing.end_time ? existing.end_time.substring(0, 16) : '') !== (end_time ? end_time.substring(0, 16) : '');
+                        const allDayChanged = existing.is_all_day !== isAllDay;
+                        const reqAttChanged = existing.requires_attendance !== requiresAttendance;
+                        const reqDetChanged = existing.require_detailed_attendance !== requireDetailed;
+                        const deadlineChanged = (existing.attendance_deadline ? existing.attendance_deadline.substring(0, 16) : '') !== (deadline ? deadline.substring(0, 16) : '');
+                        
+                        const existingGroupIds = existing.target_group_ids || (existing.target_group_id ? [existing.target_group_id] : []);
+                        const groupChanged = JSON.stringify([...existingGroupIds].sort()) !== JSON.stringify([...target_group_ids].sort());
+
+                        if (titleChanged || catChanged || locChanged || descChanged || startChanged || endChanged || allDayChanged || reqAttChanged || reqDetChanged || deadlineChanged || groupChanged) {
+                            updateList.push(item);
+                        }
+                    }
+                } else {
+                    if (!isDelete) {
+                        addList.push(item);
+                    }
+                }
+            }
+
+            hideLoading();
+            let warningMsg = '';
+            if (deleteList.length > 0) {
+                warningMsg = `⚠️ 警告: ${deleteList.length}件の予定が削除されます。予定を削除すると、その予定に紐づいているメンバー全員の出欠データや配車データも自動的に削除されます。`;
+            }
+            window.showCSVConfirmModal('events', addList, updateList, deleteList, '予定CSVインポート確認', warningMsg);
+        } catch (err) {
+            console.error(err);
+            alert('CSVの解析に失敗しました: ' + err.message);
+            hideLoading();
+        }
+    };
+    reader.readAsText(file);
+}
+
+async function executeEventsImport() {
+    const { add, update, delete: delList } = csvImportState;
+    showLoading('予定データを保存中...');
+    try {
+        // 1. 削除処理
+        if (delList.length > 0) {
+            const delIds = delList.map(e => e.id);
+            const { error: delErr } = await supabaseClient.from('events').delete().in('id', delIds);
+            if (delErr) throw delErr;
+            await logAction('IMPORT_EVENTS_DELETE', `${delList.length}件の予定をインポートで削除しました`);
+        }
+
+        // 2. 新規追加
+        if (add.length > 0) {
+            const insertPayload = add.map(e => ({
+                title: e.title,
+                category: e.category,
+                location: e.location,
+                start_time: e.start_time,
+                end_time: e.end_time,
+                description: e.description,
+                is_all_day: e.is_all_day,
+                requires_attendance: e.requires_attendance,
+                require_detailed_attendance: e.requires_attendance ? e.require_detailed_attendance : false,
+                attendance_deadline: e.attendance_deadline,
+                target_group_ids: e.target_group_ids.length > 0 ? e.target_group_ids : null,
+                created_by: currentUser?.email
+            }));
+            const { error: addErr } = await supabaseClient.from('events').insert(insertPayload);
+            if (addErr) throw addErr;
+            await logAction('IMPORT_EVENTS_ADD', `${add.length}件の予定をインポートで追加しました`);
+        }
+
+        // 3. 更新
+        if (update.length > 0) {
+            for (let e of update) {
+                const { error: updErr } = await supabaseClient.from('events').update({
+                    title: e.title,
+                    category: e.category,
+                    location: e.location,
+                    start_time: e.start_time,
+                    end_time: e.end_time,
+                    description: e.description,
+                    is_all_day: e.is_all_day,
+                    requires_attendance: e.requires_attendance,
+                    require_detailed_attendance: e.requires_attendance ? e.require_detailed_attendance : false,
+                    attendance_deadline: e.attendance_deadline,
+                    target_group_ids: e.target_group_ids.length > 0 ? e.target_group_ids : null
+                }).eq('id', e.id);
+                if (updErr) throw updErr;
+            }
+            await logAction('IMPORT_EVENTS_UPDATE', `${update.length}件の予定をインポートで更新しました`);
+        }
+
+        alert('予定のインポートが完了しました。');
+        window.closeCSVConfirmModal();
+        await loadData();
+        renderCalendar();
+        if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
+    } catch (err) {
+        console.error(err);
+        alert('予定データの保存に失敗しました: ' + err.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+window.executeEventsImport = executeEventsImport;
+
+function downloadEventsCSVSample() {
+    const headers = ['ID', 'タイトル', 'カテゴリ', '場所', '開始日時', '終了日時', '説明', '終日(1/0)', '出欠回答要(1/0)', '詳細回答要(1/0)', '回答期限', '対象グループ名', '削除(1/0)'];
+    const rows = [
+        headers,
+        ['', '土曜練習', '練習', '第一グラウンド', '2026-06-20 09:00', '2026-06-20 12:00', '通常練習を行います。', '0', '1', '1', '2026-06-19 18:00', '選手・保護者', '0'],
+        ['', '練習試合(イーグルス戦)', '試合', 'イーグルス球場', '2026-06-21 13:00', '2026-06-21 16:00', '遠征試合です。車出しをお願いします。', '0', '1', '1', '2026-06-20 12:00', '選手・保護者', '0']
+    ];
+
+    const csvContent = rows.map(r => r.map(window.escapeCSV).join(',')).join('\n');
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'schedule_sample.csv';
+    link.click();
 }

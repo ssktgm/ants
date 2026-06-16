@@ -190,6 +190,17 @@ function initAppDOM() {
         document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
         document.getElementById('btn-save-all-users')?.addEventListener('click', saveAllAdminUsers);
 
+        // CSVエクスポート・インポート
+        document.getElementById('btn-export-users')?.addEventListener('click', exportUsersCSV);
+        document.getElementById('btn-import-users')?.addEventListener('click', () => document.getElementById('input-import-users-csv').click());
+        document.getElementById('btn-download-users-sample')?.addEventListener('click', downloadUsersCSVSample);
+        document.getElementById('input-import-users-csv')?.addEventListener('change', handleImportUsersCSVFile);
+
+        // CSV共通確認モーダル
+        document.getElementById('btn-close-csv-modal')?.addEventListener('click', closeCSVConfirmModal);
+        document.getElementById('btn-close-csv-modal-x')?.addEventListener('click', closeCSVConfirmModal);
+        document.getElementById('btn-execute-csv-import')?.addEventListener('click', executeCSVImport);
+
         // 管理画面にダミーユーザー追加ボタンを動的に挿入
         const btnAdminAddUser = document.getElementById('btn-admin-add-user');
         if (btnAdminAddUser && !document.getElementById('btn-admin-add-dummy-user')) {
@@ -3040,5 +3051,441 @@ function showMasterMessage(msg, type='info') {
     if(masterMessageTimer) clearTimeout(masterMessageTimer); masterMessageTimer = setTimeout(hideMasterMessage, 5000);
 }
 function hideMasterMessage() { document.getElementById('master-message').classList.add('hidden'); }
+
+// =====================================
+// CSVインポート・エクスポート共通処理
+// =====================================
+let csvImportState = {
+    type: '', // 'users' または 'events'
+    add: [],
+    update: [],
+    delete: []
+};
+
+function showCSVConfirmModal(type, addList, updateList, deleteList, title, warningMsg = '') {
+    csvImportState = { type, add: addList, update: updateList, delete: deleteList };
+    
+    document.getElementById('csv-confirm-title').textContent = title;
+    document.getElementById('csv-add-count').textContent = addList.length;
+    document.getElementById('csv-update-count').textContent = updateList.length;
+    document.getElementById('csv-delete-count').textContent = deleteList.length;
+    
+    const warningEl = document.getElementById('csv-confirm-warning');
+    if (warningMsg) {
+        warningEl.innerHTML = warningMsg;
+        warningEl.classList.remove('hidden');
+    } else {
+        warningEl.classList.add('hidden');
+    }
+
+    // タブのクリック設定
+    document.getElementById('tab-csv-add').onclick = () => switchCSVTab('add');
+    document.getElementById('tab-csv-update').onclick = () => switchCSVTab('update');
+    document.getElementById('tab-csv-delete').onclick = () => switchCSVTab('delete');
+
+    // 初期表示タブの切り替え
+    if (addList.length > 0) switchCSVTab('add');
+    else if (updateList.length > 0) switchCSVTab('update');
+    else switchCSVTab('delete');
+
+    document.getElementById('csv-confirm-modal').classList.remove('hidden');
+}
+
+function closeCSVConfirmModal() {
+    document.getElementById('csv-confirm-modal').classList.add('hidden');
+    const uInput = document.getElementById('input-import-users-csv');
+    if (uInput) uInput.value = '';
+    const eInput = document.getElementById('input-import-events-csv');
+    if (eInput) eInput.value = '';
+}
+
+function switchCSVTab(tabName) {
+    const tabs = ['add', 'update', 'delete'];
+    tabs.forEach(t => {
+        const btn = document.getElementById(`tab-csv-${t}`);
+        if (t === tabName) {
+            btn.classList.add('text-blue-600', 'border-blue-600');
+            btn.classList.remove('text-gray-500', 'border-transparent');
+        } else {
+            btn.classList.remove('text-blue-600', 'border-blue-600');
+            btn.classList.add('text-gray-500', 'border-transparent');
+        }
+    });
+
+    renderCSVTabContent(tabName);
+}
+
+function renderCSVTabContent(tabName) {
+    const contentEl = document.getElementById('csv-confirm-content');
+    const list = csvImportState[tabName];
+    
+    if (!list || list.length === 0) {
+        contentEl.innerHTML = `<p class="text-gray-500 p-4">対象のデータはありません。</p>`;
+        return;
+    }
+
+    let html = '';
+    if (csvImportState.type === 'users') {
+        html += `
+        <div class="overflow-x-auto border rounded">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">氏名</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">メールアドレス</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">役割</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">グループ</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">属性</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    ${list.map(u => `
+                        <tr>
+                            <td class="px-3 py-2 whitespace-nowrap">${u.name}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${u.email}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${u.role === 'admin' ? '管理者' : (u.role === 'leader' ? 'リーダー' : '一般')}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${u.group_name || 'なし'}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${u.attribute_name || 'なし'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    } else if (csvImportState.type === 'events') {
+        html += `
+        <div class="overflow-x-auto border rounded">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">タイトル</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">カテゴリ</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">場所</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">開始日時</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">対象グループ</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200">
+                    ${list.map(ev => `
+                        <tr>
+                            <td class="px-3 py-2 whitespace-nowrap font-bold text-gray-900">${ev.title}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${ev.category || ''}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${ev.location || ''}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${ev.start_time.replace('T', ' ')}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${ev.target_group_name || '全体'}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>`;
+    }
+
+    contentEl.innerHTML = html;
+}
+
+function parseCSV(text) {
+    const result = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (inQuotes) {
+            if (char === '"') {
+                if (i + 1 < text.length && text[i + 1] === '"') { field += '"'; i++; }
+                else { inQuotes = false; }
+            } else { field += char; }
+        } else {
+            if (char === '"') { inQuotes = true; }
+            else if (char === ',') { row.push(field); field = ''; }
+            else if (char === '\n' || char === '\r') {
+                row.push(field); result.push(row); row = []; field = '';
+                if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
+            } else { field += char; }
+        }
+    }
+    if (field || row.length > 0) { row.push(field); result.push(row); }
+    return result;
+}
+
+function escapeCSV(val) {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return '"' + str.replace(/"/g, '""') + '"';
+    }
+    return str;
+}
+
+async function exportUsersCSV() {
+    showLoading('メンバー情報をエクスポート中...');
+    try {
+        const { data: users } = await supabaseClient.from('app_users').select('*').order('created_at', { ascending: false });
+        const { data: userGroups } = await supabaseClient.from('user_groups').select('*');
+        const { data: groups } = await supabaseClient.from('groups').select('*');
+        const { data: attributes } = await supabaseClient.from('user_attributes').select('*');
+
+        const groupMap = new Map(groups.map(g => [g.id, g.name]));
+        const attrMap = new Map(attributes.map(a => [a.id, a.name]));
+        const userGroupMap = new Map(userGroups.map(ug => [ug.user_email, ug.group_id]));
+
+        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '削除(1/0)'];
+        const rows = [headers];
+
+        users.forEach(u => {
+            const roleJp = u.role === 'admin' ? '管理者' : (u.role === 'leader' ? 'リーダー' : '一般ユーザー');
+            const gId = userGroupMap.get(u.email);
+            const groupName = gId ? (groupMap.get(gId) || '') : '';
+            const attrName = u.attribute_id ? (attrMap.get(u.attribute_id) || '') : '';
+            
+            rows.push([
+                u.email,
+                u.name || '',
+                roleJp,
+                groupName,
+                attrName,
+                u.can_use_dispatch !== false ? '1' : '0',
+                u.can_use_dashboard !== false ? '1' : '0',
+                u.can_use_attendance !== false ? '1' : '0',
+                '0'
+            ]);
+        });
+
+        const csvContent = rows.map(r => r.map(escapeCSV).join(',')).join('\n');
+        const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `members_${new Date().toISOString().split('T')[0]}.csv`;
+        link.click();
+    } catch (e) {
+        console.error(e);
+        alert('エクスポートに失敗しました: ' + e.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function handleImportUsersCSVFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showLoading('CSVファイルを解析中...');
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        try {
+            const text = event.target.result;
+            const rows = parseCSV(text);
+            if (rows.length < 2) {
+                alert('有効なデータがありません。');
+                hideLoading();
+                return;
+            }
+
+            const headers = rows[0].map(h => h.trim());
+            const emailIdx = headers.indexOf('メールアドレス');
+            const nameIdx = headers.indexOf('氏名');
+            const roleIdx = headers.indexOf('役割');
+            const groupIdx = headers.indexOf('所属グループ名');
+            const attrIdx = headers.indexOf('ユーザー属性名');
+            const dispatchIdx = headers.findIndex(h => h.includes('配車'));
+            const dashboardIdx = headers.findIndex(h => h.includes('成績'));
+            const attendanceIdx = headers.findIndex(h => h.includes('出欠'));
+            const deleteIdx = headers.findIndex(h => h.includes('削除'));
+
+            if (emailIdx === -1 || nameIdx === -1) {
+                alert('「メールアドレス」および「氏名」列は必須です。');
+                hideLoading();
+                return;
+            }
+
+            const { data: dbUsers } = await supabaseClient.from('app_users').select('*');
+            const { data: dbUserGroups } = await supabaseClient.from('user_groups').select('*');
+            const { data: groups } = await supabaseClient.from('groups').select('*');
+            const { data: attributes } = await supabaseClient.from('user_attributes').select('*');
+
+            const groupMap = new Map(groups.map(g => [g.name, g.id]));
+            const attrMap = new Map(attributes.map(a => [a.name, a.id]));
+            const existingUsers = new Map(dbUsers.map(u => [u.email, u]));
+            const existingUserGroups = new Map(dbUserGroups.map(ug => [ug.user_email, ug.group_id]));
+
+            const addList = [];
+            const updateList = [];
+            const deleteList = [];
+
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                if (row.length < 2) continue;
+
+                const email = (row[emailIdx] || '').trim();
+                const name = (row[nameIdx] || '').trim();
+                if (!email || !name) continue;
+
+                const rawRole = (row[roleIdx] || '').trim();
+                let role = 'user';
+                if (rawRole === '管理者' || rawRole === 'admin') role = 'admin';
+                else if (rawRole === 'リーダー' || rawRole === 'leader') role = 'leader';
+
+                const groupName = groupIdx !== -1 ? (row[groupIdx] || '').trim() : '';
+                const group_id = groupName ? (groupMap.get(groupName) || null) : null;
+
+                const attrName = attrIdx !== -1 ? (row[attrIdx] || '').trim() : '';
+                const attribute_id = attrName ? (attrMap.get(attrName) || null) : null;
+
+                const canUseDispatch = dispatchIdx !== -1 ? (row[dispatchIdx] === '0' || row[dispatchIdx] === 'false' ? false : true) : true;
+                const canUseDashboard = dashboardIdx !== -1 ? (row[dashboardIdx] === '0' || row[dashboardIdx] === 'false' ? false : true) : true;
+                const canUseAttendance = attendanceIdx !== -1 ? (row[attendanceIdx] === '0' || row[attendanceIdx] === 'false' ? false : true) : true;
+                const isDelete = deleteIdx !== -1 ? (row[deleteIdx] === '1' || row[deleteIdx] === '削除' ? true : false) : false;
+
+                const item = {
+                    email, name, role, group_id, group_name: groupName, attribute_id, attribute_name: attrName,
+                    can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance
+                };
+
+                const existing = existingUsers.get(email);
+                if (existing) {
+                    if (isDelete) {
+                        deleteList.push(item);
+                    } else {
+                        const groupChanged = existingUserGroups.get(email) !== group_id;
+                        const roleChanged = existing.role !== role;
+                        const nameChanged = existing.name !== name;
+                        const attrChanged = existing.attribute_id !== attribute_id;
+                        const dispatchChanged = (existing.can_use_dispatch !== false) !== canUseDispatch;
+                        const dashboardChanged = (existing.can_use_dashboard !== false) !== canUseDashboard;
+                        const attendanceChanged = (existing.can_use_attendance !== false) !== canUseAttendance;
+
+                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged) {
+                            updateList.push(item);
+                        }
+                    }
+                } else {
+                    if (!isDelete) {
+                        addList.push(item);
+                    }
+                }
+            }
+
+            hideLoading();
+            showCSVConfirmModal('users', addList, updateList, deleteList, 'メンバーCSVインポート確認');
+        } catch (err) {
+            console.error(err);
+            alert('CSVの解析に失敗しました: ' + err.message);
+            hideLoading();
+        }
+    };
+    reader.readAsText(file);
+}
+
+async function executeCSVImport() {
+    if (csvImportState.type === 'users') {
+        await executeUsersImport();
+    } else if (csvImportState.type === 'events') {
+        if (typeof window.executeEventsImport === 'function') {
+            await window.executeEventsImport();
+        }
+    }
+}
+
+async function executeUsersImport() {
+    showLoading('インポートデータを保存中...');
+    try {
+        const { add, update, delete: delList } = csvImportState;
+
+        // 1. 削除処理
+        if (delList.length > 0) {
+            const delEmails = delList.map(u => u.email);
+            const { error: delErr } = await supabaseClient.from('app_users').delete().in('email', delEmails);
+            if (delErr) throw delErr;
+            await logAction('IMPORT_USERS_DELETE', `${delList.length}件のユーザーをインポートで削除しました`);
+        }
+
+        // 2. 新規追加
+        if (add.length > 0) {
+            const insertPayload = add.map(u => ({
+                email: u.email,
+                name: u.name,
+                role: u.role,
+                attribute_id: u.attribute_id,
+                can_use_dispatch: u.can_use_dispatch,
+                can_use_dashboard: u.can_use_dashboard,
+                can_use_attendance: u.can_use_attendance
+            }));
+            const { error: addErr } = await supabaseClient.from('app_users').insert(insertPayload);
+            if (addErr) throw addErr;
+
+            const groupPayloads = add.filter(u => u.group_id).map(u => ({
+                user_email: u.email,
+                group_id: u.group_id
+            }));
+            if (groupPayloads.length > 0) {
+                const { error: gAddErr } = await supabaseClient.from('user_groups').insert(groupPayloads);
+                if (gAddErr) throw gAddErr;
+            }
+            await logAction('IMPORT_USERS_ADD', `${add.length}件のユーザーをインポートで追加しました`);
+        }
+
+        // 3. 更新
+        if (update.length > 0) {
+            for (let u of update) {
+                const { error: updErr } = await supabaseClient.from('app_users').update({
+                    name: u.name,
+                    role: u.role,
+                    attribute_id: u.attribute_id,
+                    can_use_dispatch: u.can_use_dispatch,
+                    can_use_dashboard: u.can_use_dashboard,
+                    can_use_attendance: u.can_use_attendance
+                }).eq('email', u.email);
+                if (updErr) throw updErr;
+
+                const { data: existingGroups } = await supabaseClient.from('user_groups').select('*').eq('user_email', u.email);
+                if (u.group_id) {
+                    if (existingGroups && existingGroups.length > 0) {
+                        const { error: gUpdErr } = await supabaseClient.from('user_groups').update({ group_id: u.group_id }).eq('user_email', u.email);
+                        if (gUpdErr) throw gUpdErr;
+                    } else {
+                        const { error: gInsErr } = await supabaseClient.from('user_groups').insert([{ user_email: u.email, group_id: u.group_id }]);
+                        if (gInsErr) throw gInsErr;
+                    }
+                } else {
+                    if (existingGroups && existingGroups.length > 0) {
+                        const { error: gDelErr } = await supabaseClient.from('user_groups').delete().eq('user_email', u.email);
+                        if (gDelErr) throw gDelErr;
+                    }
+                }
+            }
+            await logAction('IMPORT_USERS_UPDATE', `${update.length}件のユーザーをインポートで更新しました`);
+        }
+
+        alert('インポートが完了しました。');
+        closeCSVConfirmModal();
+        await loadAdminUsersData();
+    } catch (e) {
+        console.error(e);
+        alert('保存に失敗しました: ' + e.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+// 他モジュールへの関数グローバル公開
+window.showCSVConfirmModal = showCSVConfirmModal;
+window.closeCSVConfirmModal = closeCSVConfirmModal;
+window.parseCSV = parseCSV;
+window.escapeCSV = escapeCSV;
+
+function downloadUsersCSVSample() {
+    const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '削除(1/0)'];
+    const rows = [
+        headers,
+        ['sample_user1@example.com', '山田 太郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '1', '1', '0'],
+        ['sample_user2@example.com', '佐藤 次郎', 'リーダー', '監督・コーチ等', 'B軍', '1', '0', '1', '0']
+    ];
+
+    const csvContent = rows.map(r => r.map(escapeCSV).join(',')).join('\n');
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'members_sample.csv';
+    link.click();
+}
 
 export { supabaseClient, currentUser, currentUserRole, showLoading, hideLoading, forceHideLoading, logAction, withLoading, goToUsersAdmin, openChangePasswordModal };

@@ -432,7 +432,13 @@
                 <button id="btn-reload-users" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm font-bold shadow">再読込</button>
             </div>
             <div id="allowed-users-list" class="space-y-2"></div>
-            <div class="mt-4 flex justify-end">
+            <div class="mt-4 flex justify-between items-center flex-wrap gap-2">
+                <div class="flex gap-2 items-center flex-wrap">
+                    <button id="btn-export-users" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow text-sm transition">CSVエクスポート</button>
+                    <button id="btn-import-users" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm transition">CSVインポート</button>
+                    <button id="btn-download-users-sample" class="bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 font-bold py-2 px-4 rounded shadow text-sm transition">サンプルCSV</button>
+                    <input type="file" id="input-import-users-csv" accept=".csv" class="hidden">
+                </div>
                 <button id="btn-save-all-users" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow-lg text-base transition">全メンバー設定を一括保存</button>
             </div>
         </section>
@@ -483,7 +489,11 @@
                     <button id="tab-calendar" class="bg-green-600 text-white font-bold py-2 px-4 rounded shadow">カレンダー</button>
                     <button id="tab-list" class="bg-white text-green-600 border border-green-600 font-bold py-2 px-4 rounded shadow hover:bg-green-50">一覧表示</button>
                 </div>
-                <div class="flex space-x-2">
+                <div class="flex flex-wrap gap-2 justify-end items-center">
+                    <button id="btn-export-events" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow text-sm">予定をエクスポート</button>
+                    <button id="btn-import-events" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm">予定をインポート</button>
+                    <button id="btn-download-events-sample" class="bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 font-bold py-2 px-4 rounded shadow text-sm transition">サンプルCSV</button>
+                    <input type="file" id="input-import-events-csv" accept=".csv" class="hidden">
                     <button id="btn-group-manage" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow text-sm">所属グループ管理</button>
                     <button id="btn-toggle-multiselect" class="bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-2 rounded shadow-sm font-bold text-xs md:text-sm transition">📅 日程複数選択</button>
                     <button id="btn-add-event" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm">＋ 新規イベント</button>
@@ -581,6 +591,37 @@
                     <button id="btn-close-filter-modal" class="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">キャンセル</button>
                     <button id="btn-apply-filter" class="px-5 py-2 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow transition-colors">適用する</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSVインポート確認モーダル -->
+    <div id="csv-confirm-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] hidden">
+        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 p-6 overflow-hidden flex flex-col max-h-[85vh]">
+            <div class="flex justify-between items-center border-b pb-3 mb-4">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    📊 <span id="csv-confirm-title">CSVインポートの確認</span>
+                </h3>
+                <button id="btn-close-csv-modal-x" class="text-gray-400 hover:text-gray-600 text-2xl font-semibold leading-none">&times;</button>
+            </div>
+            
+            <div class="flex border-b mb-4" id="csv-confirm-tabs">
+                <button id="tab-csv-add" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap">新規追加 (<span id="csv-add-count">0</span>)</button>
+                <button id="tab-csv-update" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap">更新 (<span id="csv-update-count">0</span>)</button>
+                <button id="tab-csv-delete" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap">削除 (<span id="csv-delete-count">0</span>)</button>
+            </div>
+
+            <div id="csv-confirm-content" class="flex-1 overflow-y-auto pr-1 text-sm">
+                <!-- テーブルプレビューがJSで動的生成される -->
+            </div>
+            
+            <div id="csv-confirm-warning" class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-yellow-800 text-xs hidden font-bold">
+                <!-- 警告メッセージ -->
+            </div>
+
+            <div class="mt-6 pt-3 border-t flex justify-end gap-3 shrink-0">
+                <button id="btn-close-csv-modal" class="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">キャンセル</button>
+                <button id="btn-execute-csv-import" class="px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow transition-colors">この内容で登録を実行する</button>
             </div>
         </div>
     </div>
