@@ -298,10 +298,18 @@ function openFilterModal() {
     // グループセクション
     html += '<div class="mb-2">';
     html += '<h4 class="text-xs font-bold text-gray-400 tracking-wider uppercase mb-2">対象グループ（複数選択）</h4>';
-    if (groups.length === 0) {
-        html += '<p class="text-xs text-gray-400">グループが登録されていません</p>';
-    } else {
-        html += '<div class="grid grid-cols-2 gap-2">';
+    html += '<div class="grid grid-cols-2 gap-2">';
+    
+    // 「全体（全員対象）」のチェックボックスを先頭に追加
+    const allChecked = window.att_selectedGroups.has('all') ? 'checked' : '';
+    html += `
+        <label class="flex items-center space-x-2 text-sm text-gray-700 cursor-pointer hover:bg-gray-50 p-1.5 rounded transition font-medium">
+            <input type="checkbox" class="filter-group-checkbox w-4 h-4 rounded text-green-600 focus:ring-green-500 border-gray-300" value="all" ${allChecked}>
+            <span class="select-none font-semibold text-gray-900">全体（全員対象）</span>
+        </label>
+    `;
+
+    if (groups.length > 0) {
         groups.forEach(g => {
             const checked = window.att_selectedGroups.has(g.id) ? 'checked' : '';
             html += `
@@ -311,8 +319,8 @@ function openFilterModal() {
                 </label>
             `;
         });
-        html += '</div>';
     }
+    html += '</div>';
     html += '</div>';
     
     container.innerHTML = html;
@@ -415,9 +423,14 @@ function getFilteredEvents() {
         if (window.att_selectedCategories && window.att_selectedCategories.size > 0 && !window.att_selectedCategories.has(e.category)) return false;
         if (window.att_selectedGroups && window.att_selectedGroups.size > 0) {
             const groupInfo = getEventTargetGroupsInfo(e);
-            if (groupInfo.ids.length === 0) return false;
-            const hasMatchingGroup = groupInfo.ids.some(id => window.att_selectedGroups.has(id));
-            if (!hasMatchingGroup) return false;
+            if (groupInfo.ids.length === 0) {
+                // 全体予定の場合、フィルターで「全体 (all)」が選択されていれば表示する
+                if (!window.att_selectedGroups.has('all')) return false;
+            } else {
+                // 特定グループ予定の場合、選択されたグループIDのいずれかと一致すれば表示する
+                const hasMatchingGroup = groupInfo.ids.some(id => window.att_selectedGroups.has(id));
+                if (!hasMatchingGroup) return false;
+            }
         }
         return true;
     });
