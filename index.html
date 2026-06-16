@@ -525,17 +525,16 @@
             
             <!-- リストビュー -->
             <div id="list-container" class="hidden bg-white p-4 mx-2 md:mx-0 md:rounded-lg shadow">
-                <div class="mb-4 flex space-x-2">
-                    <select id="filter-category" class="border p-2 rounded text-sm focus:ring-green-500">
-                        <option value="">すべてのカテゴリ</option>
-                        <option value="練習">練習</option>
-                        <option value="試合">試合</option>
-                        <option value="イベント">イベント</option>
-                    </select>
-                    <select id="filter-group" class="border p-2 rounded text-sm focus:ring-green-500">
-                        <option value="">すべてのグループ</option>
-                        <!-- グループ一覧がJSで挿入される -->
-                    </select>
+                <div class="mb-4 flex items-center space-x-3">
+                    <button id="btn-list-filter" class="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-800 transition-colors relative flex items-center justify-center border border-gray-300 shadow-sm" title="フィルター">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                        </svg>
+                        <span id="list-filter-badge" class="absolute -top-1 -right-1 bg-green-600 text-white rounded-full text-[10px] w-4 h-4 flex items-center justify-center hidden font-bold">0</span>
+                    </button>
+                    <button id="btn-list-filter-clear" class="text-xs text-red-600 hover:text-red-800 font-bold hidden transition-colors" title="フィルターをクリア">
+                        ✕ 解除
+                    </button>
                 </div>
                 <div id="event-list-content" class="space-y-4">
                     <!-- リストがJSで挿入される -->

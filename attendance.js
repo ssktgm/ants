@@ -121,16 +121,6 @@ function setupEventListeners() {
     const manageBtn = document.getElementById('btn-group-manage');
     if(manageBtn) manageBtn.style.display = 'none';
 
-    // リストフィルター
-    document.getElementById('filter-category')?.addEventListener('change', () => {
-        renderList();
-        renderCalendar();
-    });
-    document.getElementById('filter-group')?.addEventListener('change', () => {
-        renderList();
-        renderCalendar();
-    });
-    
     document.getElementById('btn-toggle-multiselect')?.addEventListener('click', function() {
         window.att_multiSelectMode = !window.att_multiSelectMode;
         if (!window.att_multiSelectMode) {
@@ -145,9 +135,11 @@ function setupEventListeners() {
         window.att_updateMultiselectBar();
     });
 
-    // カレンダー用フィルター
+    // カレンダーおよびリスト用フィルター
     document.getElementById('btn-cal-filter')?.addEventListener('click', openFilterModal);
     document.getElementById('btn-cal-filter-clear')?.addEventListener('click', clearFilters);
+    document.getElementById('btn-list-filter')?.addEventListener('click', openFilterModal);
+    document.getElementById('btn-list-filter-clear')?.addEventListener('click', clearFilters);
     document.getElementById('btn-close-filter-modal-x')?.addEventListener('click', closeFilterModal);
     document.getElementById('btn-close-filter-modal')?.addEventListener('click', closeFilterModal);
     document.getElementById('btn-apply-filter')?.addEventListener('click', applyFilters);
@@ -180,11 +172,11 @@ async function loadData() {
     
     try {
         // グループ読み込み
-        const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
+        const { data: gData } = await supabaseClient.from('groups').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
         if (gData) groups = gData;
 
         // カテゴリ読み込み
-        const { data: cData } = await supabaseClient.from('event_categories').select('*').order('created_at');
+        const { data: cData } = await supabaseClient.from('event_categories').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
         if (cData && cData.length > 0) {
             categories = cData;
         } else {
@@ -209,12 +201,12 @@ async function loadData() {
         if (uData) appUsers = uData;
 
         // ユーザー属性情報（出欠集計用）
-        const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
+        const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
         if (attrData) userAttributes = attrData;
 
         // 場所情報（場所マスタ）
         try {
-            const { data: locData } = await supabaseClient.from('event_locations').select('*').order('name');
+            const { data: locData } = await supabaseClient.from('event_locations').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
             if (locData) eventLocations = locData;
         } catch (e) {
             console.warn("event_locations table might not exist yet:", e);
@@ -347,6 +339,7 @@ function applyFilters() {
     
     updateFilterUI();
     renderCalendar();
+    renderList();
     closeFilterModal();
 }
 
@@ -356,38 +349,60 @@ function clearFilters() {
     
     updateFilterUI();
     renderCalendar();
+    renderList();
     closeFilterModal();
 }
 
 function updateFilterUI() {
     const totalFilters = window.att_selectedCategories.size + window.att_selectedGroups.size;
-    const badge = document.getElementById('cal-filter-badge');
-    const clearBtn = document.getElementById('btn-cal-filter-clear');
+    
+    // カレンダー用 UI
+    const calBadge = document.getElementById('cal-filter-badge');
+    const calClearBtn = document.getElementById('btn-cal-filter-clear');
+    const calFilterBtn = document.getElementById('btn-cal-filter');
+    
+    // リスト用 UI
+    const listBadge = document.getElementById('list-filter-badge');
+    const listClearBtn = document.getElementById('btn-list-filter-clear');
+    const listFilterBtn = document.getElementById('btn-list-filter');
     
     if (totalFilters > 0) {
-        if (badge) {
-            badge.textContent = totalFilters;
-            badge.classList.remove('hidden');
+        // カレンダー側更新
+        if (calBadge) {
+            calBadge.textContent = totalFilters;
+            calBadge.classList.remove('hidden');
         }
-        if (clearBtn) {
-            clearBtn.classList.remove('hidden');
+        if (calClearBtn) calClearBtn.classList.remove('hidden');
+        if (calFilterBtn) {
+            calFilterBtn.classList.remove('bg-[#e6e5dd]', 'hover:bg-[#dcdad2]', 'text-slate-800');
+            calFilterBtn.classList.add('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
         }
-        const filterBtn = document.getElementById('btn-cal-filter');
-        if (filterBtn) {
-            filterBtn.classList.remove('bg-[#e6e5dd]', 'hover:bg-[#dcdad2]', 'text-slate-800');
-            filterBtn.classList.add('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
+        
+        // リスト側更新
+        if (listBadge) {
+            listBadge.textContent = totalFilters;
+            listBadge.classList.remove('hidden');
+        }
+        if (listClearBtn) listClearBtn.classList.remove('hidden');
+        if (listFilterBtn) {
+            listFilterBtn.classList.remove('bg-gray-100', 'hover:bg-gray-200', 'text-gray-800');
+            listFilterBtn.classList.add('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
         }
     } else {
-        if (badge) {
-            badge.classList.add('hidden');
+        // カレンダー側更新
+        if (calBadge) calBadge.classList.add('hidden');
+        if (calClearBtn) calClearBtn.classList.add('hidden');
+        if (calFilterBtn) {
+            calFilterBtn.classList.remove('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
+            calFilterBtn.classList.add('bg-[#e6e5dd]', 'hover:bg-[#dcdad2]', 'text-slate-800');
         }
-        if (clearBtn) {
-            clearBtn.classList.add('hidden');
-        }
-        const filterBtn = document.getElementById('btn-cal-filter');
-        if (filterBtn) {
-            filterBtn.classList.remove('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
-            filterBtn.classList.add('bg-[#e6e5dd]', 'hover:bg-[#dcdad2]', 'text-slate-800');
+        
+        // リスト側更新
+        if (listBadge) listBadge.classList.add('hidden');
+        if (listClearBtn) listClearBtn.classList.add('hidden');
+        if (listFilterBtn) {
+            listFilterBtn.classList.remove('bg-green-100', 'hover:bg-green-200', 'text-green-800', 'border-green-300');
+            listFilterBtn.classList.add('bg-gray-100', 'hover:bg-gray-200', 'text-gray-800');
         }
     }
 }
@@ -396,33 +411,16 @@ function updateFilterUI() {
 // カレンダー・リスト 描画
 // =====================================
 function getFilteredEvents() {
-    const isCalendarActive = !document.getElementById('calendar-container')?.classList.contains('hidden');
-    
-    if (isCalendarActive) {
-        return events.filter(e => {
-            if (window.att_selectedCategories && window.att_selectedCategories.size > 0 && !window.att_selectedCategories.has(e.category)) return false;
-            if (window.att_selectedGroups && window.att_selectedGroups.size > 0) {
-                const groupInfo = getEventTargetGroupsInfo(e);
-                if (groupInfo.ids.length === 0) return false;
-                const hasMatchingGroup = groupInfo.ids.some(id => window.att_selectedGroups.has(id));
-                if (!hasMatchingGroup) return false;
-            }
-            return true;
-        });
-    } else {
-        const catFilter = document.getElementById('filter-category')?.value;
-        const groupFilter = document.getElementById('filter-group')?.value;
-        
-        return events.filter(e => {
-            if (catFilter && e.category !== catFilter) return false;
-            if (groupFilter) {
-                const groupInfo = getEventTargetGroupsInfo(e);
-                if (groupInfo.ids.length === 0) return false;
-                if (!groupInfo.ids.includes(groupFilter)) return false;
-            }
-            return true;
-        });
-    }
+    return events.filter(e => {
+        if (window.att_selectedCategories && window.att_selectedCategories.size > 0 && !window.att_selectedCategories.has(e.category)) return false;
+        if (window.att_selectedGroups && window.att_selectedGroups.size > 0) {
+            const groupInfo = getEventTargetGroupsInfo(e);
+            if (groupInfo.ids.length === 0) return false;
+            const hasMatchingGroup = groupInfo.ids.some(id => window.att_selectedGroups.has(id));
+            if (!hasMatchingGroup) return false;
+        }
+        return true;
+    });
 }
 
 function renderCalendar() {
@@ -769,6 +767,7 @@ function renderList() {
                 <!-- カード中部（カテゴリと詳細） -->
                 <div class="flex flex-wrap items-center gap-2 text-[11px] md:text-xs text-gray-600">
                     <span class="px-2 py-0.5 rounded text-[10px] font-bold" style="background-color: ${categoryColor}; color: #1f2937">${e.category || 'イベント'}</span>
+                    ${generateGroupTagsHtml(groupInfo)}
                     <span class="flex items-center space-x-1">
                         <span>🕒</span>
                         <span>${dt}</span>
@@ -1678,7 +1677,7 @@ window.att_openEventDetail = window.openEventDetailModal = function(eventId, act
                         <p><strong>日時:</strong> ${dt}</p>
                         <p><strong>場所:</strong> ${formatLocationHtml(ev.location)}</p>
                         <p class="flex items-center gap-1 mt-1"><strong>カテゴリ:</strong> <span class="px-2 py-0.5 rounded text-xs text-gray-800 shadow-sm" style="background-color: ${categoryColor}">${ev.category || '未設定'}</span></p>
-                        <p class="flex items-center gap-1 mt-1"><strong>対象:</strong> <span class="px-2 py-0.5 rounded text-xs border border-gray-300 text-gray-800 shadow-sm" style="background-color: ${groupColor}">${groupName}</span></p>
+                        <p class="flex items-center gap-1 mt-1"><strong>対象:</strong> ${generateGroupTagsHtml(groupInfo)}</p>
                         <p class="mt-2 whitespace-pre-wrap border p-2 bg-gray-50 rounded min-h-[60px] text-gray-800">${ev.description || '説明なし'}</p>
                     </div>
                 ` : activeTab === 'attendance' ? `
@@ -2169,7 +2168,7 @@ async function registerNewLocation() {
         const { error } = await supabaseClient.from('event_locations').insert({ name, url: url || null });
         if (error) throw error;
         
-        const { data: locData } = await supabaseClient.from('event_locations').select('*').order('name');
+        const { data: locData } = await supabaseClient.from('event_locations').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
         if (locData) eventLocations = locData;
         
         const selectEl = document.getElementById('ev-location-select');

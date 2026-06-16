@@ -1023,16 +1023,16 @@ async function loadAdminUsersData() {
         let userAttributesData = [];
         let eventLocationsData = [];
         try {
-            const { data: gData } = await supabaseClient.from('groups').select('*').order('created_at');
+            const { data: gData } = await supabaseClient.from('groups').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
             if (gData) groupsData = gData;
             const { data: ugData } = await supabaseClient.from('user_groups').select('*');
             if (ugData) userGroupsData = ugData;
-            const { data: catData } = await supabaseClient.from('event_categories').select('*').order('created_at');
+            const { data: catData } = await supabaseClient.from('event_categories').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
             if (catData) categoriesData = catData;
-            const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('created_at');
+            const { data: attrData } = await supabaseClient.from('user_attributes').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
             if (attrData) userAttributesData = attrData;
             try {
-                const { data: locData } = await supabaseClient.from('event_locations').select('*').order('name');
+                const { data: locData } = await supabaseClient.from('event_locations').select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
                 if (locData) eventLocationsData = locData;
             } catch (e) {
                 console.warn("event_locations table not created yet:", e);
@@ -1050,9 +1050,9 @@ async function loadAdminUsersData() {
         let attributeMasterHtml = `
         <div class="mb-6 p-4 bg-orange-50 border border-orange-200 rounded shadow-sm">
             <h3 class="font-bold text-orange-800 mb-2">ユーザー属性の管理</h3>
-            <div class="flex flex-wrap gap-2 mb-3">
+            <div id="admin-attribute-list" class="flex flex-wrap gap-2 mb-3">
                 ${userAttributesData.length === 0 ? '<span class="text-sm text-gray-500">属性なし</span>' : ''}
-                ${userAttributesData.map(a => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><span class="mr-2 font-bold">${a.name}</span><button onclick="renameUserAttributeAdmin('${a.id}', '${a.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteUserAttributeAdmin('${a.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+                ${userAttributesData.map(a => `<div data-id="${a.id}" draggable="true" class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit cursor-move select-none hover:shadow-sm"><span class="mr-2 font-bold">${a.name}</span><button onclick="renameUserAttributeAdmin('${a.id}', '${a.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteUserAttributeAdmin('${a.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
             </div>
             <div class="flex space-x-2 items-center">
                 <input type="text" id="admin-new-attribute-name" placeholder="新しい属性名" class="border p-1 rounded text-sm w-48">
@@ -1065,9 +1065,9 @@ async function loadAdminUsersData() {
         let categoryMasterHtml = `
         <div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded shadow-sm">
             <h3 class="font-bold text-blue-800 mb-2">イベントカテゴリの管理</h3>
-            <div class="flex flex-wrap gap-2 mb-3">
+            <div id="admin-category-list" class="flex flex-wrap gap-2 mb-3">
                 ${categoriesData.length === 0 ? '<span class="text-sm text-gray-500">カテゴリなし</span>' : ''}
-                ${categoriesData.map(c => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${c.color || '#bfdbfe'}" onchange="updateCategoryColorAdmin('${c.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+                ${categoriesData.map(c => `<div data-id="${c.id}" draggable="true" class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit cursor-move select-none hover:shadow-sm"><input type="color" value="${c.color || '#bfdbfe'}" onchange="updateCategoryColorAdmin('${c.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${c.name}</span><button onclick="renameCategoryAdmin('${c.id}', '${c.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteCategoryAdmin('${c.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
             </div>
             <div class="flex space-x-2 items-center">
                 <input type="color" id="admin-new-category-color" value="#bfdbfe" class="w-8 h-8 border p-0 rounded cursor-pointer" title="カテゴリの色">
@@ -1081,9 +1081,9 @@ async function loadAdminUsersData() {
         let groupMasterHtml = `
         <div class="mb-6 p-4 bg-purple-50 border border-purple-200 rounded shadow-sm">
             <h3 class="font-bold text-purple-800 mb-2">出欠グループの管理</h3>
-            <div class="flex flex-col gap-2 mb-3">
+            <div id="admin-group-list" class="flex flex-wrap gap-2 mb-3">
                 ${groupsData.length === 0 ? '<span class="text-sm text-gray-500">グループなし</span>' : ''}
-                ${groupsData.map(g => `<div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit"><input type="color" value="${g.color || '#d1fae5'}" onchange="updateGroupColorAdmin('${g.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${g.name}</span><button onclick="renameGroupAdmin('${g.id}', '${g.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
+                ${groupsData.map(g => `<div data-id="${g.id}" draggable="true" class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit cursor-move select-none hover:shadow-sm"><input type="color" value="${g.color || '#d1fae5'}" onchange="updateGroupColorAdmin('${g.id}', this.value)" class="w-6 h-6 mr-2 border-0 p-0 cursor-pointer" title="色を変更"><span class="mr-2 font-bold">${g.name}</span><button onclick="renameGroupAdmin('${g.id}', '${g.name}')" class="text-blue-500 hover:text-blue-700 mr-2 font-bold" title="名称変更">✎</button><button onclick="deleteGroupAdmin('${g.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button></div>`).join('')}
             </div>
             <div class="flex space-x-2 items-center">
                 <input type="color" id="admin-new-group-color" value="#d1fae5" class="w-8 h-8 border p-0 rounded cursor-pointer" title="グループの色">
@@ -1097,13 +1097,13 @@ async function loadAdminUsersData() {
         let locationMasterHtml = `
         <div class="mb-6 p-4 bg-teal-50 border border-teal-200 rounded shadow-sm">
             <h3 class="font-bold text-teal-800 mb-2">場所マスタの管理</h3>
-            <div class="flex flex-col gap-2 mb-3">
+            <div id="admin-location-list" class="flex flex-wrap gap-2 mb-3">
                 ${eventLocationsData.length === 0 ? '<span class="text-sm text-gray-500">登録済みの場所はありません</span>' : ''}
                 ${eventLocationsData.map(loc => `
-                    <div class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit gap-2">
+                    <div data-id="${loc.id}" draggable="true" class="bg-white border rounded px-2 py-1 flex items-center text-sm w-fit gap-2 cursor-move select-none hover:shadow-sm">
                         <span class="font-bold text-teal-900">${loc.name}</span>
                         ${loc.url ? `<a href="${loc.url}" target="_blank" class="text-blue-500 text-xs hover:underline truncate max-w-xs">${loc.url}</a>` : ''}
-                        <button onclick="renameLocationAdmin('${loc.id}', '${loc.name}', '${loc.url || ''}')" class="text-blue-500 hover:text-blue-700 font-bold ml-2" title="名称変更">✎</button>
+                        <button onclick="renameLocationAdmin('${loc.id}')" class="text-blue-500 hover:text-blue-700 font-bold ml-2" title="名称変更">✎</button>
                         <button onclick="deleteLocationAdmin('${loc.id}')" class="text-red-500 hover:text-red-700 font-bold" title="削除">×</button>
                     </div>
                 `).join('')}
@@ -1186,6 +1186,12 @@ async function loadAdminUsersData() {
         const masterListEl = document.getElementById('admin-master-list');
         if (masterListEl) {
             masterListEl.innerHTML = attributeMasterHtml + categoryMasterHtml + groupMasterHtml + locationMasterHtml;
+            
+            // ドラッグ＆ドロップ並び替えのバインド
+            makeDraggable('admin-attribute-list', 'user_attributes', loadAdminUsersData);
+            makeDraggable('admin-category-list', 'event_categories', loadAdminUsersData);
+            makeDraggable('admin-group-list', 'groups', loadAdminUsersData);
+            makeDraggable('admin-location-list', 'event_locations', loadAdminUsersData);
         }
     
         // 2. 申請待ち一覧の取得
@@ -1564,21 +1570,64 @@ window.deleteLocationAdmin = async function(id) {
     }
 };
 
-window.renameLocationAdmin = async function(id, currentName, currentUrl) {
-    const newName = prompt('新しい場所名を入力してください:', currentName);
-    if (newName === null) return;
-    const newUrl = prompt('新しいURLを入力してください (空にする場合はそのまま確定):', currentUrl);
-    if (newUrl === null) return;
+window.renameLocationAdmin = async function(id) {
+    showLoading('場所データ読み込み中...');
+    try {
+        const { data, error } = await supabaseClient.from('event_locations').select('*').eq('id', id).single();
+        if (error) throw error;
+        
+        const oldModal = document.getElementById('admin-edit-location-modal');
+        if (oldModal) oldModal.remove();
+        
+        const currentName = data.name || '';
+        const currentUrl = data.url || '';
+        
+        const modalHtml = `
+        <div id="admin-edit-location-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]">
+            <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 flex flex-col">
+                <h3 class="text-lg font-bold text-teal-800 mb-4">場所情報の編集</h3>
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">場所の名前</label>
+                        <input type="text" id="edit-location-name" value="${currentName}" class="w-full border p-2 rounded text-sm focus:ring-teal-500 focus:border-teal-500 text-gray-800">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-1">URL (任意)</label>
+                        <input type="text" id="edit-location-url" value="${currentUrl}" class="w-full border p-2 rounded text-sm focus:ring-teal-500 focus:border-teal-500 text-gray-800">
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button onclick="document.getElementById('admin-edit-location-modal').remove()" class="px-4 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded transition">キャンセル</button>
+                    <button onclick="saveLocationEditAdmin('${id}')" class="px-4 py-2 text-sm font-bold text-white bg-teal-600 hover:bg-teal-700 rounded shadow transition">保存する</button>
+                </div>
+            </div>
+        </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    } catch (e) {
+        alert('読み込みエラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message));
+    } finally {
+        hideLoading();
+    }
+};
+
+window.saveLocationEditAdmin = async function(id) {
+    const newName = document.getElementById('edit-location-name').value.trim();
+    const newUrl = document.getElementById('edit-location-url').value.trim();
     
-    if (newName.trim() === '' && newUrl.trim() === '') return;
+    if (newName === '') {
+        return alert('場所の名前は必須項目です。');
+    }
     
     showLoading('場所マスタ更新中...');
     try {
         const { error } = await supabaseClient.from('event_locations').update({
-            name: newName.trim() || currentName,
-            url: newUrl.trim() || null
+            name: newName,
+            url: newUrl || null
         }).eq('id', id);
         if (error) throw error;
+        const modal = document.getElementById('admin-edit-location-modal');
+        if (modal) modal.remove();
         await loadAdminUsersData();
     } catch (e) {
         alert('更新エラー: ' + (e.message === 'Load failed' || e.message === 'Failed to fetch' ? '通信に失敗しました。' : e.message));
@@ -1586,6 +1635,58 @@ window.renameLocationAdmin = async function(id, currentName, currentUrl) {
         hideLoading();
     }
 };
+
+function makeDraggable(containerId, tableName, onSortedCallback) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    let dragEl = null;
+    
+    Array.from(container.children).forEach(child => {
+        child.setAttribute('draggable', 'true');
+        child.classList.add('cursor-move', 'select-none');
+        
+        child.addEventListener('dragstart', (e) => {
+            dragEl = child;
+            e.dataTransfer.effectAllowed = 'move';
+            child.classList.add('opacity-50');
+        });
+        
+        child.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const target = e.target.closest('[draggable="true"]');
+            if (target && target !== dragEl && target.parentNode === container) {
+                const rect = target.getBoundingClientRect();
+                const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+                container.insertBefore(dragEl, next ? target.nextSibling : target);
+            }
+        });
+        
+        child.addEventListener('dragend', async () => {
+            child.classList.remove('opacity-50');
+            dragEl = null;
+            
+            const children = Array.from(container.children);
+            const updates = children.map((item, index) => {
+                const id = item.dataset.id;
+                return supabaseClient.from(tableName).update({ sort_order: index }).eq('id', id);
+            });
+            
+            showLoading('順序を保存中...');
+            try {
+                await Promise.all(updates);
+                if (onSortedCallback) await onSortedCallback();
+            } catch (err) {
+                console.error("Sort order save error:", err);
+                alert("順序の保存に失敗しました。");
+            } finally {
+                hideLoading();
+            }
+        });
+    });
+}
 
 window.saveNewUserAttributeAdmin = async function() {
     const name = document.getElementById('admin-new-attribute-name').value.trim();
