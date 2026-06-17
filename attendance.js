@@ -3111,9 +3111,9 @@ function renderICSImportTable(parsedEvents) {
         const startStr = formatDateTimeLocal(ev.start);
         const endStr = formatDateTimeLocal(ev.end || (ev.start ? new Date(ev.start.getTime() + 2 * 60 * 60 * 1000) : null)); // デフォルトは2時間
         
-        let deadlineDate = ev.start ? new Date(ev.start.getTime() - 24 * 60 * 60 * 1000) : null;
+        let deadlineDate = ev.start ? new Date(ev.start.getTime() - 3 * 24 * 60 * 60 * 1000) : null;
         if (deadlineDate) {
-            deadlineDate.setHours(18, 0, 0, 0); // 前日18:00
+            deadlineDate.setHours(12, 0, 0, 0); // 3日前の12:00
         }
         const deadlineStr = formatDateTimeLocal(deadlineDate);
 
