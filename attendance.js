@@ -125,6 +125,18 @@ function setupEventListeners() {
     document.getElementById('btn-close-ics-modal-x')?.addEventListener('click', closeICSModal);
     document.getElementById('btn-close-ics-modal')?.addEventListener('click', closeICSModal);
     document.getElementById('btn-execute-ics-import')?.addEventListener('click', executeICSImport);
+    document.getElementById('ics-import-list')?.addEventListener('change', (e) => {
+        if (e.target && e.target.classList.contains('ics-row-location-select')) {
+            const select = e.target;
+            const textInput = select.closest('.ics-row').querySelector('.ics-row-location');
+            if (select.value && select.value !== 'custom') {
+                textInput.value = select.value;
+            } else if (select.value === 'custom') {
+                textInput.value = '';
+                textInput.focus();
+            }
+        }
+    });
     
     // 古いグループ管理ボタンは非表示化
     const manageBtn = document.getElementById('btn-group-manage');
@@ -3058,10 +3070,13 @@ async function handleImportEventsICSFile(e) {
 }
 
 function renderICSImportTable(parsedEvents) {
-    const tbody = document.getElementById('ics-import-tbody');
-    if (!tbody) return;
+    const listContainer = document.getElementById('ics-import-list');
+    if (!listContainer) return;
 
-    tbody.innerHTML = parsedEvents.map((ev, idx) => {
+    const countEl = document.getElementById('ics-import-count');
+    if (countEl) countEl.textContent = parsedEvents.length;
+
+    listContainer.innerHTML = parsedEvents.map((ev, idx) => {
         // カテゴリの自動推測
         const title = ev.title || '';
         const lowerTitle = title.toLowerCase();
@@ -3082,6 +3097,17 @@ function renderICSImportTable(parsedEvents) {
             }
         }
 
+        // 場所の自動推測とオプション生成
+        let guessedLocationSelectVal = '';
+        if (ev.location) {
+            const matchedLoc = eventLocations.find(l => l.name === ev.location);
+            if (matchedLoc) {
+                guessedLocationSelectVal = matchedLoc.name;
+            } else {
+                guessedLocationSelectVal = 'custom';
+            }
+        }
+
         const startStr = formatDateTimeLocal(ev.start);
         const endStr = formatDateTimeLocal(ev.end || (ev.start ? new Date(ev.start.getTime() + 2 * 60 * 60 * 1000) : null)); // デフォルトは2時間
         
@@ -3092,49 +3118,95 @@ function renderICSImportTable(parsedEvents) {
         const deadlineStr = formatDateTimeLocal(deadlineDate);
 
         return `
-            <tr class="ics-row hover:bg-gray-50/50 transition" data-idx="${idx}">
-                <td class="px-3 py-2 text-center border-b">
-                    <input type="checkbox" class="ics-row-select h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                </td>
-                <td class="px-3 py-2 border-b">
-                    <input type="text" class="ics-row-title w-full border p-1 rounded font-bold text-xs" value="${title}">
-                </td>
-                <td class="px-3 py-2 border-b">
-                    <select class="ics-row-category w-full border p-1 rounded font-semibold text-xs">
-                        ${categories.map(c => `<option value="${c.name}" ${c.name === guessedCategory ? 'selected' : ''}>${c.name}</option>`).join('')}
-                    </select>
-                </td>
-                <td class="px-3 py-2 border-b">
-                    <input type="text" class="ics-row-location w-full border p-1 rounded text-xs" value="${ev.location || ''}">
-                </td>
-                <td class="px-3 py-2 border-b space-y-1">
-                    <div class="flex items-center text-[10px] text-gray-500"><span class="w-8 shrink-0">開始:</span><input type="datetime-local" class="ics-row-start border p-0.5 rounded text-[10px] w-36" value="${startStr}"></div>
-                    <div class="flex items-center text-[10px] text-gray-500"><span class="w-8 shrink-0">終了:</span><input type="datetime-local" class="ics-row-end border p-0.5 rounded text-[10px] w-36" value="${endStr}"></div>
-                    <label class="inline-flex items-center text-[10px] text-gray-500 font-semibold mt-1"><input type="checkbox" class="ics-row-allday mr-1 h-3.5 w-3.5 rounded border-gray-300" ${ev.isAllDay ? 'checked' : ''}>終日</label>
-                </td>
-                <td class="px-3 py-2 border-b">
-                    <div class="flex flex-col gap-1 text-[10px] max-h-24 overflow-y-auto border p-1 bg-gray-50 rounded">
-                        ${groups.map(g => `
-                            <label class="inline-flex items-center gap-1">
-                                <input type="checkbox" class="ics-row-group-cb h-3.5 w-3.5 rounded border-gray-300" value="${g.id}">
-                                <span>${g.name}</span>
-                            </label>
-                        `).join('')}
+            <div class="ics-row p-4 border border-gray-200 rounded-xl bg-gray-50/30 hover:bg-gray-50/70 transition flex gap-4" data-idx="${idx}">
+                <!-- 左側: 選択チェックボックス -->
+                <div class="flex items-start pt-2 justify-center shrink-0 w-8">
+                    <input type="checkbox" class="ics-row-select h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                </div>
+                
+                <!-- 右側: フィールド群 -->
+                <div class="flex-1 space-y-3">
+                    <!-- 1行目: タイトル, カテゴリ, 場所 -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">タイトル *</label>
+                            <input type="text" class="ics-row-title w-full border p-2 rounded-lg font-bold text-sm bg-white focus:ring-2 focus:ring-blue-500" value="${title}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">カテゴリ</label>
+                            <select class="ics-row-category w-full border p-2 rounded-lg font-semibold text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                                ${categories.map(c => `<option value="${c.name}" ${c.name === guessedCategory ? 'selected' : ''}>${c.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">場所</label>
+                            <div class="flex gap-2">
+                                <select class="ics-row-location-select w-1/2 border p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                                    <option value="">(登録場所から選択...)</option>
+                                    ${eventLocations.map(l => `<option value="${l.name}" ${l.name === guessedLocationSelectVal ? 'selected' : ''}>${l.name}</option>`).join('')}
+                                    <option value="custom" ${guessedLocationSelectVal === 'custom' ? 'selected' : ''}>直接入力...</option>
+                                </select>
+                                <input type="text" class="ics-row-location w-1/2 border p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" placeholder="直接入力" value="${ev.location || ''}">
+                            </div>
+                        </div>
                     </div>
-                </td>
-                <td class="px-3 py-2 text-center border-b">
-                    <input type="checkbox" class="ics-row-req-att h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
-                </td>
-                <td class="px-3 py-2 text-center border-b">
-                    <input type="checkbox" class="ics-row-req-det h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                </td>
-                <td class="px-3 py-2 border-b">
-                    <input type="datetime-local" class="ics-row-deadline border p-0.5 rounded text-[10px] w-36" value="${deadlineStr}">
-                </td>
-                <td class="px-3 py-2 border-b">
-                    <input type="text" class="ics-row-description w-full border p-1 rounded text-xs" value="${ev.description || ''}">
-                </td>
-            </tr>
+
+                    <!-- 2行目: 日時 (開始, 終了, 終日) -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">開始日時</label>
+                            <input type="datetime-local" class="ics-row-start w-full border p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" value="${startStr}">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">終了日時</label>
+                            <input type="datetime-local" class="ics-row-end w-full border p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" value="${endStr}">
+                        </div>
+                        <div class="flex items-end pb-2">
+                            <label class="inline-flex items-center text-sm font-semibold text-gray-700 cursor-pointer select-none">
+                                <input type="checkbox" class="ics-row-allday mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" ${ev.isAllDay ? 'checked' : ''}>
+                                終日イベント
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 3行目: 出欠要否, 詳細回答, 回答期限 -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div class="flex items-center gap-4">
+                            <label class="inline-flex items-center text-sm font-semibold text-gray-700 cursor-pointer select-none">
+                                <input type="checkbox" class="ics-row-req-att mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                                出欠回答を求める
+                            </label>
+                            <label class="inline-flex items-center text-sm font-semibold text-gray-700 cursor-pointer select-none">
+                                <input type="checkbox" class="ics-row-req-det mr-2 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                詳細回答 (車・同伴等)
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">回答期限</label>
+                            <input type="datetime-local" class="ics-row-deadline w-full border p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" value="${deadlineStr}">
+                        </div>
+                    </div>
+
+                    <!-- 4行目: 対象グループ (横並び) -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">対象グループ</label>
+                        <div class="flex flex-wrap gap-3 p-2.5 bg-white border rounded-lg max-h-28 overflow-y-auto">
+                            ${groups.map(g => `
+                                <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-700 cursor-pointer select-none mr-2">
+                                    <input type="checkbox" class="ics-row-group-cb h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" value="${g.id}">
+                                    <span>${g.name}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                    </div>
+
+                    <!-- 5行目: 説明 (複数行) -->
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">説明 (詳細・連絡事項など)</label>
+                        <textarea class="ics-row-description w-full border p-2 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" rows="2" placeholder="改行を含む説明文を入力できます">${ev.description || ''}</textarea>
+                    </div>
+                </div>
+            </div>
         `;
     }).join('');
 
