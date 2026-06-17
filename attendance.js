@@ -1,4 +1,4 @@
-import { supabaseClient, currentUser, showLoading, hideLoading, forceHideLoading, currentUserRole, openChangePasswordModal, logAction } from './main.js';
+import { supabaseClient, currentUser, showLoading, hideLoading, forceHideLoading, currentUserRole, openChangePasswordModal, logAction, csvImportState } from './main.js';
 
 let currentDate = new Date();
 let events = [];
