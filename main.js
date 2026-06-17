@@ -2620,6 +2620,24 @@ function handleToggleDetails() { const b=document.getElementById('toggle-details
 
 // --- Data Save / Load ---
 function getCurrentState() {
+    eventInfo = { 
+        date: document.getElementById('event-date')?.value || '', 
+        name: document.getElementById('event-name')?.value || '', 
+        timeline: document.getElementById('event-timeline')?.value || '', 
+        notes: document.getElementById('event-notes')?.value || '' 
+    };
+    parkingInfo = { 
+        groundName: document.getElementById('ground-name')?.value || '', 
+        designated: { 
+            name: document.getElementById('parking-designated-name')?.value || '指定駐車場', 
+            limit: parseInt(document.getElementById('parking-designated-limit')?.value) || 999, 
+            memo: document.getElementById('parking-designated-memo')?.value || '' 
+        }, 
+        other: { 
+            name: document.getElementById('parking-other-name')?.value || '指定以外', 
+            memo: document.getElementById('parking-other-memo')?.value || '' 
+        } 
+    };
     return { selectedParticipantIds:Array.from(selectedParticipantIds), selectedCarIds:Array.from(selectedCarIds), selectedDrivers:Array.from(selectedDrivers.entries()), selectedLuggage:Array.from(selectedLuggage), excludedParticipantIds:Array.from(excludedParticipantIds), participantData:Array.from(participantData.entries()), currentAssignments, parkingInfo, eventInfo };
 }
 function restoreState(s) {
