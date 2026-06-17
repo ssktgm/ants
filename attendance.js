@@ -118,8 +118,13 @@ function setupEventListeners() {
     document.getElementById('btn-add-event')?.addEventListener('click', () => openAddEventModal());
     document.getElementById('btn-export-events')?.addEventListener('click', exportEventsCSV);
     document.getElementById('btn-import-events')?.addEventListener('click', () => document.getElementById('input-import-events-csv').click());
+    document.getElementById('btn-import-ics-events')?.addEventListener('click', () => document.getElementById('input-import-events-ics').click());
     document.getElementById('btn-download-events-sample')?.addEventListener('click', downloadEventsCSVSample);
     document.getElementById('input-import-events-csv')?.addEventListener('change', handleImportEventsCSVFile);
+    document.getElementById('input-import-events-ics')?.addEventListener('change', handleImportEventsICSFile);
+    document.getElementById('btn-close-ics-modal-x')?.addEventListener('click', closeICSModal);
+    document.getElementById('btn-close-ics-modal')?.addEventListener('click', closeICSModal);
+    document.getElementById('btn-execute-ics-import')?.addEventListener('click', executeICSImport);
     
     // 古いグループ管理ボタンは非表示化
     const manageBtn = document.getElementById('btn-group-manage');
@@ -2931,7 +2936,292 @@ window.att_exportParticipantList = function(eventId) {
     const cleanTitle = ev.title.replace(/[\/\\?%*:|"<>]/g, '_');
     link.href = URL.createObjectURL(blob);
     link.setAttribute('download', `参加者リスト_${cleanTitle}_${window.att_statusFilter}.csv`);
-    document.body.appendChild(link);
-    link.click();
     document.body.removeChild(link);
 };
+
+// =====================================
+// ICS (iCalendar) インポート処理
+// =====================================
+function formatDateTimeLocal(date) {
+    if (!date || isNaN(date.getTime())) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const min = String(date.getMinutes()).padStart(2, '0');
+    return `${y}-${m}-${d}T${h}:${min}`;
+}
+
+function parseICS(text) {
+    const lines = text.split(/\r?\n/);
+    const parsedEvents = [];
+    let currentEvent = null;
+    let inEvent = false;
+
+    // 行連結処理 (前行がスペース/タブで始まっている場合、前行の続きとする)
+    const unfoldedLines = [];
+    for (let line of lines) {
+        if (line.startsWith(' ') || line.startsWith('\t')) {
+            if (unfoldedLines.length > 0) {
+                unfoldedLines[unfoldedLines.length - 1] += line.substring(1);
+            }
+        } else {
+            unfoldedLines.push(line);
+        }
+    }
+
+    for (let line of unfoldedLines) {
+        const cleanLine = line.trim();
+        if (!cleanLine) continue;
+
+        if (cleanLine === 'BEGIN:VEVENT') {
+            currentEvent = { title: '', description: '', location: '', start: null, end: null, isAllDay: false };
+            inEvent = true;
+        } else if (cleanLine === 'END:VEVENT') {
+            if (currentEvent) parsedEvents.push(currentEvent);
+            inEvent = false;
+            currentEvent = null;
+        } else if (inEvent && currentEvent) {
+            const colonIndex = cleanLine.indexOf(':');
+            if (colonIndex === -1) continue;
+            const namePart = cleanLine.substring(0, colonIndex);
+            const valuePart = cleanLine.substring(colonIndex + 1);
+
+            const name = namePart.split(';')[0];
+            const params = namePart.split(';').slice(1);
+
+            if (name === 'SUMMARY') {
+                currentEvent.title = cleanICSValue(valuePart);
+            } else if (name === 'DESCRIPTION') {
+                currentEvent.description = cleanICSValue(valuePart);
+            } else if (name === 'LOCATION') {
+                currentEvent.location = cleanICSValue(valuePart);
+            } else if (name === 'DTSTART') {
+                const isDateOnly = params.some(p => p.toUpperCase() === 'VALUE=DATE');
+                currentEvent.start = parseICSDateTime(valuePart, isDateOnly);
+                if (isDateOnly) currentEvent.isAllDay = true;
+            } else if (name === 'DTEND') {
+                const isDateOnly = params.some(p => p.toUpperCase() === 'VALUE=DATE');
+                currentEvent.end = parseICSDateTime(valuePart, isDateOnly);
+            }
+        }
+    }
+    return parsedEvents;
+}
+
+function cleanICSValue(val) {
+    return val.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\');
+}
+
+function parseICSDateTime(str, isDateOnly) {
+    if (!str) return null;
+    const year = parseInt(str.substring(0, 4));
+    const month = parseInt(str.substring(4, 6)) - 1;
+    const day = parseInt(str.substring(6, 8));
+    if (isDateOnly || str.indexOf('T') === -1) return new Date(year, month, day);
+    
+    const tIndex = str.indexOf('T');
+    const hour = parseInt(str.substring(tIndex + 1, tIndex + 3));
+    const min = parseInt(str.substring(tIndex + 3, tIndex + 5));
+    const sec = parseInt(str.substring(tIndex + 5, tIndex + 7)) || 0;
+    
+    if (str.endsWith('Z')) return new Date(Date.UTC(year, month, day, hour, min, sec));
+    return new Date(year, month, day, hour, min, sec);
+}
+
+async function handleImportEventsICSFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    showLoading('ICSファイルを解析中...');
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+        try {
+            const text = ev.target.result;
+            const parsedEvents = parseICS(text);
+            hideLoading();
+
+            if (parsedEvents.length === 0) {
+                alert('ICSファイルから有効な予定が見つかりませんでした。');
+                return;
+            }
+
+            renderICSImportTable(parsedEvents);
+        } catch (err) {
+            console.error(err);
+            alert('ICSファイルの解析に失敗しました: ' + err.message);
+            hideLoading();
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // リセット
+}
+
+function renderICSImportTable(parsedEvents) {
+    const tbody = document.getElementById('ics-import-tbody');
+    if (!tbody) return;
+
+    tbody.innerHTML = parsedEvents.map((ev, idx) => {
+        // カテゴリの自動推測
+        const title = ev.title || '';
+        const lowerTitle = title.toLowerCase();
+        let guessedCategory = categories[0]?.name || '練習';
+        for (let c of categories) {
+            if (lowerTitle.includes(c.name)) {
+                guessedCategory = c.name;
+                break;
+            }
+        }
+        if (guessedCategory === categories[0]?.name) {
+            if (lowerTitle.includes('試合') || lowerTitle.includes('vs') || lowerTitle.includes('戦')) {
+                const gameCat = categories.find(c => c.name === '試合');
+                if (gameCat) guessedCategory = '試合';
+            } else if (lowerTitle.includes('イベント') || lowerTitle.includes('会') || lowerTitle.includes('式') || lowerTitle.includes('フェス')) {
+                const evCat = categories.find(c => c.name === 'イベント');
+                if (evCat) guessedCategory = 'イベント';
+            }
+        }
+
+        const startStr = formatDateTimeLocal(ev.start);
+        const endStr = formatDateTimeLocal(ev.end || (ev.start ? new Date(ev.start.getTime() + 2 * 60 * 60 * 1000) : null)); // デフォルトは2時間
+        
+        let deadlineDate = ev.start ? new Date(ev.start.getTime() - 24 * 60 * 60 * 1000) : null;
+        if (deadlineDate) {
+            deadlineDate.setHours(18, 0, 0, 0); // 前日18:00
+        }
+        const deadlineStr = formatDateTimeLocal(deadlineDate);
+
+        return `
+            <tr class="ics-row hover:bg-gray-50/50 transition" data-idx="${idx}">
+                <td class="px-3 py-2 text-center border-b">
+                    <input type="checkbox" class="ics-row-select h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                </td>
+                <td class="px-3 py-2 border-b">
+                    <input type="text" class="ics-row-title w-full border p-1 rounded font-bold text-xs" value="${title}">
+                </td>
+                <td class="px-3 py-2 border-b">
+                    <select class="ics-row-category w-full border p-1 rounded font-semibold text-xs">
+                        ${categories.map(c => `<option value="${c.name}" ${c.name === guessedCategory ? 'selected' : ''}>${c.name}</option>`).join('')}
+                    </select>
+                </td>
+                <td class="px-3 py-2 border-b">
+                    <input type="text" class="ics-row-location w-full border p-1 rounded text-xs" value="${ev.location || ''}">
+                </td>
+                <td class="px-3 py-2 border-b space-y-1">
+                    <div class="flex items-center text-[10px] text-gray-500"><span class="w-8 shrink-0">開始:</span><input type="datetime-local" class="ics-row-start border p-0.5 rounded text-[10px] w-36" value="${startStr}"></div>
+                    <div class="flex items-center text-[10px] text-gray-500"><span class="w-8 shrink-0">終了:</span><input type="datetime-local" class="ics-row-end border p-0.5 rounded text-[10px] w-36" value="${endStr}"></div>
+                    <label class="inline-flex items-center text-[10px] text-gray-500 font-semibold mt-1"><input type="checkbox" class="ics-row-allday mr-1 h-3.5 w-3.5 rounded border-gray-300" ${ev.isAllDay ? 'checked' : ''}>終日</label>
+                </td>
+                <td class="px-3 py-2 border-b">
+                    <div class="flex flex-col gap-1 text-[10px] max-h-24 overflow-y-auto border p-1 bg-gray-50 rounded">
+                        ${groups.map(g => `
+                            <label class="inline-flex items-center gap-1">
+                                <input type="checkbox" class="ics-row-group-cb h-3.5 w-3.5 rounded border-gray-300" value="${g.id}">
+                                <span>${g.name}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </td>
+                <td class="px-3 py-2 text-center border-b">
+                    <input type="checkbox" class="ics-row-req-att h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" checked>
+                </td>
+                <td class="px-3 py-2 text-center border-b">
+                    <input type="checkbox" class="ics-row-req-det h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                </td>
+                <td class="px-3 py-2 border-b">
+                    <input type="datetime-local" class="ics-row-deadline border p-0.5 rounded text-[10px] w-36" value="${deadlineStr}">
+                </td>
+                <td class="px-3 py-2 border-b">
+                    <input type="text" class="ics-row-description w-full border p-1 rounded text-xs" value="${ev.description || ''}">
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const selectAllCb = document.getElementById('ics-select-all');
+    if (selectAllCb) {
+        selectAllCb.checked = true;
+        selectAllCb.onclick = (e) => {
+            document.querySelectorAll('.ics-row-select').forEach(cb => cb.checked = e.target.checked);
+        };
+    }
+
+    const modal = document.getElementById('ics-import-modal');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeICSModal() {
+    document.getElementById('ics-import-modal')?.classList.add('hidden');
+}
+
+async function executeICSImport() {
+    const rows = document.querySelectorAll('.ics-row');
+    const importPayload = [];
+
+    rows.forEach(row => {
+        const selectCb = row.querySelector('.ics-row-select');
+        if (!selectCb || !selectCb.checked) return;
+
+        const title = row.querySelector('.ics-row-title')?.value || '';
+        if (!title) return;
+
+        const category = row.querySelector('.ics-row-category')?.value || '';
+        const location = row.querySelector('.ics-row-location')?.value || '';
+        const startVal = row.querySelector('.ics-row-start')?.value || '';
+        const endVal = row.querySelector('.ics-row-end')?.value || '';
+        const isAllDay = row.querySelector('.ics-row-allday')?.checked || false;
+        
+        const target_group_ids = [];
+        row.querySelectorAll('.ics-row-group-cb:checked').forEach(cb => {
+            target_group_ids.push(cb.value);
+        });
+
+        const requires_attendance = row.querySelector('.ics-row-req-att')?.checked || false;
+        const require_detailed_attendance = row.querySelector('.ics-row-req-det')?.checked || false;
+        const deadlineVal = row.querySelector('.ics-row-deadline')?.value || '';
+        const description = row.querySelector('.ics-row-description')?.value || '';
+
+        const formatISO = (val) => {
+            if (!val) return null;
+            return new Date(val).toISOString();
+        };
+
+        importPayload.push({
+            title,
+            category,
+            location,
+            start_time: formatISO(startVal),
+            end_time: formatISO(endVal),
+            is_all_day: isAllDay,
+            target_group_ids: target_group_ids.length > 0 ? target_group_ids : null,
+            requires_attendance,
+            require_detailed_attendance: requires_attendance ? require_detailed_attendance : false,
+            attendance_deadline: requires_attendance ? formatISO(deadlineVal) : null,
+            description,
+            created_by: currentUser?.email
+        });
+    });
+
+    if (importPayload.length === 0) {
+        alert('登録対象の予定が選択されていません。');
+        return;
+    }
+
+    showLoading('予定データを登録中...');
+    try {
+        const { error } = await supabaseClient.from('events').insert(importPayload);
+        if (error) throw error;
+
+        await logAction('IMPORT_ICS_EVENTS', `${importPayload.length}件の予定をICSファイルから一括登録しました`);
+        alert(`${importPayload.length}件の予定を登録しました。`);
+        closeICSModal();
+        await loadData();
+        renderCalendar();
+        if (!document.getElementById('list-container').classList.contains('hidden')) renderList();
+    } catch (err) {
+        console.error(err);
+        alert('予定の登録に失敗しました: ' + err.message);
+    } finally {
+        hideLoading();
+    }
+}

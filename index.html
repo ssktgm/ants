@@ -492,8 +492,10 @@
                 <div class="flex flex-wrap gap-2 justify-end items-center">
                     <button id="btn-export-events" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow text-sm">予定をエクスポート</button>
                     <button id="btn-import-events" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm">予定をインポート</button>
+                    <button id="btn-import-ics-events" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded shadow text-sm">ICSインポート</button>
                     <button id="btn-download-events-sample" class="bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-300 font-bold py-2 px-4 rounded shadow text-sm transition">サンプルCSV</button>
                     <input type="file" id="input-import-events-csv" accept=".csv" class="hidden">
+                    <input type="file" id="input-import-events-ics" accept=".ics" class="hidden">
                     <button id="btn-group-manage" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded shadow text-sm">所属グループ管理</button>
                     <button id="btn-toggle-multiselect" class="bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-100 px-3 py-2 rounded shadow-sm font-bold text-xs md:text-sm transition">📅 日程複数選択</button>
                     <button id="btn-add-event" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow text-sm">＋ 新規イベント</button>
@@ -622,6 +624,45 @@
             <div class="mt-6 pt-3 border-t flex justify-end gap-3 shrink-0">
                 <button id="btn-close-csv-modal" class="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">キャンセル</button>
                 <button id="btn-execute-csv-import" class="px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow transition-colors">この内容で登録を実行する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ICSインポート確認モーダル -->
+    <div id="ics-import-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] hidden">
+        <div class="bg-white rounded-xl shadow-2xl w-[95vw] max-w-6xl p-6 overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center border-b pb-3 mb-4 shrink-0">
+                <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                    📅 <span>ICSファイルから予定を一括登録</span>
+                </h3>
+                <button id="btn-close-ics-modal-x" class="text-gray-400 hover:text-gray-600 text-2xl font-semibold leading-none">&times;</button>
+            </div>
+            
+            <div class="flex-1 overflow-auto pr-1 text-sm">
+                <table class="min-w-full divide-y divide-gray-200 text-xs border border-gray-200 rounded-lg">
+                    <thead class="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                            <th class="px-3 py-2 text-center font-bold text-gray-600 w-12"><input type="checkbox" id="ics-select-all" checked></th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600">タイトル</th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600 w-24">カテゴリ</th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600 w-32">場所</th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600 w-52">日時</th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600 w-44">対象グループ</th>
+                            <th class="px-3 py-2 text-center font-bold text-gray-600 w-16">出欠要</th>
+                            <th class="px-3 py-2 text-center font-bold text-gray-600 w-16">詳細回答</th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600 w-44">回答期限</th>
+                            <th class="px-3 py-2 text-left font-bold text-gray-600">説明</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ics-import-tbody" class="divide-y divide-gray-100 bg-white">
+                        <!-- 動的生成 -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t flex justify-end gap-3 shrink-0">
+                <button id="btn-close-ics-modal" class="px-4 py-2 text-sm font-bold text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">キャンセル</button>
+                <button id="btn-execute-ics-import" class="px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow transition-colors">選択した予定を登録する</button>
             </div>
         </div>
     </div>
