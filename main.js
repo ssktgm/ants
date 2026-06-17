@@ -3154,6 +3154,7 @@ function renderCSVTabContent(tabName) {
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">役割</th>
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">グループ</th>
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">属性</th>
+                        <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">代行入力先</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -3164,6 +3165,7 @@ function renderCSVTabContent(tabName) {
                             <td class="px-3 py-2 whitespace-nowrap">${u.role === 'admin' ? '管理者' : (u.role === 'leader' ? 'リーダー' : '一般')}</td>
                             <td class="px-3 py-2 whitespace-nowrap">${u.group_name || 'なし'}</td>
                             <td class="px-3 py-2 whitespace-nowrap">${u.attribute_name || 'なし'}</td>
+                            <td class="px-3 py-2 whitespace-nowrap">${u.delegations !== null ? (u.delegations.length > 0 ? u.delegations.join(', ') : 'なし') : '-(変更なし)'}</td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -3246,7 +3248,15 @@ async function exportUsersCSV() {
         const attrMap = new Map(attributes.map(a => [a.id, a.name]));
         const userGroupMap = new Map(userGroups.map(ug => [ug.user_email, ug.group_id]));
 
-        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '削除(1/0)'];
+        // 代行権限の取得
+        let delegations = window.adminDelegations;
+        if (!delegations) {
+            const { data: mdData } = await supabaseClient.from('master_data').select('*').eq('key', 'ATTENDANCE_DELEGATIONS').single();
+            delegations = mdData && mdData.data ? mdData.data : {};
+            window.adminDelegations = delegations;
+        }
+
+        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '削除(1/0)'];
         const rows = [headers];
 
         users.forEach(u => {
@@ -3254,6 +3264,7 @@ async function exportUsersCSV() {
             const gId = userGroupMap.get(u.email);
             const groupName = gId ? (groupMap.get(gId) || '') : '';
             const attrName = u.attribute_id ? (attrMap.get(u.attribute_id) || '') : '';
+            const uDelegations = delegations[u.email] ? delegations[u.email].join(',') : '';
             
             rows.push([
                 u.email,
@@ -3264,6 +3275,7 @@ async function exportUsersCSV() {
                 u.can_use_dispatch !== false ? '1' : '0',
                 u.can_use_dashboard !== false ? '1' : '0',
                 u.can_use_attendance !== false ? '1' : '0',
+                uDelegations,
                 '0'
             ]);
         });
@@ -3307,6 +3319,7 @@ async function handleImportUsersCSVFile(e) {
             const dispatchIdx = headers.findIndex(h => h.includes('配車'));
             const dashboardIdx = headers.findIndex(h => h.includes('成績'));
             const attendanceIdx = headers.findIndex(h => h.includes('出欠'));
+            const delegationIdx = headers.findIndex(h => h.includes('代行入力先'));
             const deleteIdx = headers.findIndex(h => h.includes('削除'));
 
             if (emailIdx === -1 || nameIdx === -1) {
@@ -3319,6 +3332,14 @@ async function handleImportUsersCSVFile(e) {
             const { data: dbUserGroups } = await supabaseClient.from('user_groups').select('*');
             const { data: groups } = await supabaseClient.from('groups').select('*');
             const { data: attributes } = await supabaseClient.from('user_attributes').select('*');
+
+            // 代行権限の取得
+            let delegations = window.adminDelegations;
+            if (!delegations) {
+                const { data: mdData } = await supabaseClient.from('master_data').select('*').eq('key', 'ATTENDANCE_DELEGATIONS').single();
+                delegations = mdData && mdData.data ? mdData.data : {};
+                window.adminDelegations = delegations;
+            }
 
             const groupMap = new Map(groups.map(g => [g.name, g.id]));
             const attrMap = new Map(attributes.map(a => [a.name, a.id]));
@@ -3353,9 +3374,18 @@ async function handleImportUsersCSVFile(e) {
                 const canUseAttendance = attendanceIdx !== -1 ? (row[attendanceIdx] === '0' || row[attendanceIdx] === 'false' ? false : true) : true;
                 const isDelete = deleteIdx !== -1 ? (row[deleteIdx] === '1' || row[deleteIdx] === '削除' ? true : false) : false;
 
+                let userDelegations = null;
+                if (delegationIdx !== -1) {
+                    const rawDelegationStr = row[delegationIdx] || '';
+                    userDelegations = rawDelegationStr.split(',')
+                        .map(e => e.trim())
+                        .filter(Boolean);
+                }
+
                 const item = {
                     email, name, role, group_id, group_name: groupName, attribute_id, attribute_name: attrName,
-                    can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance
+                    can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance,
+                    delegations: userDelegations
                 };
 
                 const existing = existingUsers.get(email);
@@ -3371,12 +3401,24 @@ async function handleImportUsersCSVFile(e) {
                         const dashboardChanged = (existing.can_use_dashboard !== false) !== canUseDashboard;
                         const attendanceChanged = (existing.can_use_attendance !== false) !== canUseAttendance;
 
-                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged) {
+                        let delegationChanged = false;
+                        if (userDelegations !== null) {
+                            const existingUserDelegations = delegations[email] || [];
+                            const sortedNew = [...userDelegations].sort().join(',');
+                            const sortedExisting = [...existingUserDelegations].sort().join(',');
+                            if (sortedNew !== sortedExisting) {
+                                delegationChanged = true;
+                            }
+                        }
+
+                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || delegationChanged) {
                             updateList.push(item);
                         }
                     }
                 } else {
                     if (!isDelete) {
+                        // For new users, default delegations to [] if not provided in CSV
+                        if (item.delegations === null) item.delegations = [];
                         addList.push(item);
                     }
                 }
@@ -3408,11 +3450,30 @@ async function executeUsersImport() {
     try {
         const { add, update, delete: delList } = csvImportState;
 
+        // Ensure window.adminDelegations is loaded
+        let delegations = window.adminDelegations;
+        if (!delegations) {
+            const { data: mdData } = await supabaseClient.from('master_data').select('*').eq('key', 'ATTENDANCE_DELEGATIONS').single();
+            delegations = mdData && mdData.data ? mdData.data : {};
+            window.adminDelegations = delegations;
+        }
+
         // 1. 削除処理
         if (delList.length > 0) {
             const delEmails = delList.map(u => u.email);
             const { error: delErr } = await supabaseClient.from('app_users').delete().in('email', delEmails);
             if (delErr) throw delErr;
+
+            // Remove delegation keys for deleted users and filter out deleted users from others' list
+            delEmails.forEach(email => {
+                delete window.adminDelegations[email];
+            });
+            Object.keys(window.adminDelegations).forEach(parentEmail => {
+                window.adminDelegations[parentEmail] = (window.adminDelegations[parentEmail] || []).filter(
+                    childEmail => !delEmails.includes(childEmail)
+                );
+            });
+
             await logAction('IMPORT_USERS_DELETE', `${delList.length}件のユーザーをインポートで削除しました`);
         }
 
@@ -3438,6 +3499,14 @@ async function executeUsersImport() {
                 const { error: gAddErr } = await supabaseClient.from('user_groups').insert(groupPayloads);
                 if (gAddErr) throw gAddErr;
             }
+
+            // Update delegation mapping
+            add.forEach(u => {
+                if (u.delegations) {
+                    window.adminDelegations[u.email] = u.delegations;
+                }
+            });
+
             await logAction('IMPORT_USERS_ADD', `${add.length}件のユーザーをインポートで追加しました`);
         }
 
@@ -3469,9 +3538,18 @@ async function executeUsersImport() {
                         if (gDelErr) throw gDelErr;
                     }
                 }
+
+                // Update delegation mapping if provided
+                if (u.delegations !== null) {
+                    window.adminDelegations[u.email] = u.delegations;
+                }
             }
             await logAction('IMPORT_USERS_UPDATE', `${update.length}件のユーザーをインポートで更新しました`);
         }
+
+        // 4. 代行権限の保存
+        const { error: delgErr } = await supabaseClient.from('master_data').upsert({ key: 'ATTENDANCE_DELEGATIONS', data: window.adminDelegations });
+        if (delgErr) throw delgErr;
 
         alert('インポートが完了しました。');
         closeCSVConfirmModal();
@@ -3491,11 +3569,12 @@ window.parseCSV = parseCSV;
 window.escapeCSV = escapeCSV;
 
 function downloadUsersCSVSample() {
-    const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '削除(1/0)'];
+    const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '削除(1/0)'];
     const rows = [
         headers,
-        ['sample_user1@example.com', '山田 太郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '1', '1', '0'],
-        ['sample_user2@example.com', '佐藤 次郎', 'リーダー', '監督・コーチ等', 'B軍', '1', '0', '1', '0']
+        ['sample_parent@example.com', '山田 太郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '1', '1', 'sample_child1@example.com,sample_child2@example.com', '0'],
+        ['sample_child1@example.com', '山田 一郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '0', '1', '', '0'],
+        ['sample_child2@example.com', '山田 二郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '0', '1', '', '0']
     ];
 
     const csvContent = rows.map(r => r.map(escapeCSV).join(',')).join('\n');
