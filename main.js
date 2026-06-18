@@ -3295,6 +3295,7 @@ function renderCSVTabContent(tabName) {
     let html = '';
     if (csvImportState.type === 'users') {
         const isAddTab = (tabName === 'add');
+        const isUpdateTab = (tabName === 'update');
         html += `
         <div class="overflow-x-auto border rounded">
             <table class="min-w-full divide-y divide-gray-200">
@@ -3307,6 +3308,7 @@ function renderCSVTabContent(tabName) {
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">属性</th>
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">代行入力先</th>
                         ${isAddTab ? `<th class="px-3 py-2 text-left text-xs font-bold text-gray-500">初期パスワード</th>` : ''}
+                        ${isUpdateTab ? `<th class="px-3 py-2 text-left text-xs font-bold text-gray-500">パスワード更新</th>` : ''}
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -3319,6 +3321,7 @@ function renderCSVTabContent(tabName) {
                             <td class="px-3 py-2 whitespace-nowrap">${u.attribute_name || 'なし'}</td>
                             <td class="px-3 py-2 whitespace-nowrap">${u.delegations !== null ? (u.delegations.length > 0 ? u.delegations.join(', ') : 'なし') : '-(変更なし)'}</td>
                             ${isAddTab ? `<td class="px-3 py-2 whitespace-nowrap font-mono text-blue-600 font-bold">${u.is_dummy ? '<span class="text-gray-400 font-normal">不要(代行専用)</span>' : u.initial_password}</td>` : ''}
+                            ${isUpdateTab ? `<td class="px-3 py-2 whitespace-nowrap font-mono text-orange-600 font-bold">${u.initial_password ? u.initial_password : '<span class="text-gray-400 font-normal">変更なし</span>'}</td>` : ''}
                         </tr>
                     `).join('')}
                 </tbody>
@@ -3562,17 +3565,24 @@ async function handleImportUsersCSVFile(e) {
                 }
 
                 let initialPassword = '';
+                let passwordToUpdate = null;
                 if (!isDummy) {
                     const rawPassword = passwordIdx !== -1 ? (row[passwordIdx] || '').trim() : '';
-                    if (rawPassword.length >= 6) {
-                        initialPassword = rawPassword;
-                    } else {
-                        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-                        let generated = 'pw-';
-                        for (let j = 0; j < 6; j++) {
-                            generated += chars.charAt(Math.floor(Math.random() * chars.length));
+                    if (existingUsers.has(email)) {
+                        if (rawPassword.length >= 6) {
+                            passwordToUpdate = rawPassword;
                         }
-                        initialPassword = generated;
+                    } else {
+                        if (rawPassword.length >= 6) {
+                            initialPassword = rawPassword;
+                        } else {
+                            const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                            let generated = 'pw-';
+                            for (let j = 0; j < 6; j++) {
+                                generated += chars.charAt(Math.floor(Math.random() * chars.length));
+                            }
+                            initialPassword = generated;
+                        }
                     }
                 }
 
@@ -3581,7 +3591,7 @@ async function handleImportUsersCSVFile(e) {
                     can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance,
                     delegations: userDelegations,
                     is_dummy: isDummy,
-                    initial_password: initialPassword
+                    initial_password: passwordToUpdate !== null ? passwordToUpdate : initialPassword
                 };
 
                 const existing = existingUsers.get(email);
@@ -3607,7 +3617,12 @@ async function handleImportUsersCSVFile(e) {
                             }
                         }
 
-                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || delegationChanged) {
+                        let passwordChanged = false;
+                        if (passwordToUpdate !== null) {
+                            passwordChanged = true;
+                        }
+
+                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || delegationChanged || passwordChanged) {
                             updateList.push(item);
                         }
                     }
@@ -3738,7 +3753,22 @@ async function executeUsersImport() {
 
         // 3. 更新
         if (update.length > 0) {
+            const pwdErrors = [];
             for (let u of update) {
+                if (u.initial_password) {
+                    try {
+                        const { error: pwdErr } = await supabaseClient.rpc('admin_update_user_password', {
+                            user_email: u.email,
+                            new_password: u.initial_password
+                        });
+                        if (pwdErr) throw pwdErr;
+                        await logAction('ADMIN_CHANGE_PASSWORD', `ユーザー「${u.email}」のパスワードをインポートで変更しました`);
+                    } catch (err) {
+                        console.error(`Failed to update password for ${u.email}:`, err);
+                        pwdErrors.push(`${u.email}: ${err.message}`);
+                    }
+                }
+
                 const { error: updErr } = await supabaseClient.from('app_users').update({
                     name: u.name,
                     role: u.role,
@@ -3770,6 +3800,11 @@ async function executeUsersImport() {
                     window.adminDelegations[u.email] = u.delegations;
                 }
             }
+
+            if (pwdErrors.length > 0) {
+                alert(`一部のパスワード更新に失敗しました。詳細は開発者コンソールを確認してください。\n\n失敗したユーザー:\n${pwdErrors.join('\n')}`);
+            }
+
             await logAction('IMPORT_USERS_UPDATE', `${update.length}件のユーザーをインポートで更新しました`);
         }
 
@@ -3778,15 +3813,24 @@ async function executeUsersImport() {
         if (delgErr) throw delgErr;
 
         let completedMessage = 'インポートが完了しました。';
-        if (add.length > 0) {
-            const addedRealUsers = add.filter(u => !u.is_dummy);
+        const addedRealUsers = add.filter(u => !u.is_dummy);
+        const updatedPasswords = update.filter(u => u.initial_password);
+
+        if (addedRealUsers.length > 0 || updatedPasswords.length > 0) {
+            completedMessage += '\n\n【アカウントのログイン情報・変更内容】';
             if (addedRealUsers.length > 0) {
-                completedMessage += '\n\n【新規アカウントのログイン情報】';
+                completedMessage += '\n[新規アカウントの仮パスワード]';
                 addedRealUsers.forEach(u => {
                     completedMessage += `\n氏名: ${u.name}\nログインID: ${displayLoginId(u.email)}\n仮パスワード: ${u.initial_password}\n------------------------`;
                 });
-                completedMessage += '\n\n※上記情報をコピーし、各ユーザーへお伝えください。';
             }
+            if (updatedPasswords.length > 0) {
+                completedMessage += '\n[更新アカウントの新パスワード]';
+                updatedPasswords.forEach(u => {
+                    completedMessage += `\n氏名: ${u.name}\nログインID: ${displayLoginId(u.email)}\n新パスワード: ${u.initial_password}\n------------------------`;
+                });
+            }
+            completedMessage += '\n\n※上記情報をコピーし、対象のユーザーへお伝えください。';
         }
         alert(completedMessage);
         closeCSVConfirmModal();
