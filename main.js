@@ -3294,6 +3294,7 @@ function renderCSVTabContent(tabName) {
 
     let html = '';
     if (csvImportState.type === 'users') {
+        const isAddTab = (tabName === 'add');
         html += `
         <div class="overflow-x-auto border rounded">
             <table class="min-w-full divide-y divide-gray-200">
@@ -3305,6 +3306,7 @@ function renderCSVTabContent(tabName) {
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">グループ</th>
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">属性</th>
                         <th class="px-3 py-2 text-left text-xs font-bold text-gray-500">代行入力先</th>
+                        ${isAddTab ? `<th class="px-3 py-2 text-left text-xs font-bold text-gray-500">初期パスワード</th>` : ''}
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
@@ -3316,6 +3318,7 @@ function renderCSVTabContent(tabName) {
                             <td class="px-3 py-2 whitespace-nowrap">${u.group_name || 'なし'}</td>
                             <td class="px-3 py-2 whitespace-nowrap">${u.attribute_name || 'なし'}</td>
                             <td class="px-3 py-2 whitespace-nowrap">${u.delegations !== null ? (u.delegations.length > 0 ? u.delegations.join(', ') : 'なし') : '-(変更なし)'}</td>
+                            ${isAddTab ? `<td class="px-3 py-2 whitespace-nowrap font-mono text-blue-600 font-bold">${u.is_dummy ? '<span class="text-gray-400 font-normal">不要(代行専用)</span>' : u.initial_password}</td>` : ''}
                         </tr>
                     `).join('')}
                 </tbody>
@@ -3406,7 +3409,7 @@ async function exportUsersCSV() {
             window.adminDelegations = delegations;
         }
 
-        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '削除(1/0)'];
+        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '代行専用(1/0)', '初期パスワード', '削除(1/0)'];
         const rows = [headers];
 
         users.forEach(u => {
@@ -3415,6 +3418,7 @@ async function exportUsersCSV() {
             const groupName = gId ? (groupMap.get(gId) || '') : '';
             const attrName = u.attribute_id ? (attrMap.get(u.attribute_id) || '') : '';
             const uDelegations = delegations[u.email] ? delegations[u.email].join(',') : '';
+            const isDummy = u.email.endsWith('@local.dummy');
             
             rows.push([
                 u.email,
@@ -3426,6 +3430,8 @@ async function exportUsersCSV() {
                 u.can_use_dashboard !== false ? '1' : '0',
                 u.can_use_attendance !== false ? '1' : '0',
                 uDelegations,
+                isDummy ? '1' : '0',
+                '',
                 '0'
             ]);
         });
@@ -3470,6 +3476,8 @@ async function handleImportUsersCSVFile(e) {
             const dashboardIdx = headers.findIndex(h => h.includes('成績'));
             const attendanceIdx = headers.findIndex(h => h.includes('出欠'));
             const delegationIdx = headers.findIndex(h => h.includes('代行入力先'));
+            const dummyIdx = headers.findIndex(h => h.includes('代行専用'));
+            const passwordIdx = headers.findIndex(h => h.includes('初期パスワード'));
             const deleteIdx = headers.findIndex(h => h.includes('削除'));
 
             if (emailIdx === -1 || nameIdx === -1) {
@@ -3504,9 +3512,30 @@ async function handleImportUsersCSVFile(e) {
                 const row = rows[i];
                 if (row.length < 2) continue;
 
-                const email = (row[emailIdx] || '').trim();
                 const name = (row[nameIdx] || '').trim();
-                if (!email || !name) continue;
+                if (!name) continue;
+
+                let email = (row[emailIdx] || '').trim();
+                
+                const isDummyDesignated = dummyIdx !== -1 ? (row[dummyIdx] === '1' || row[dummyIdx] === 'true' || row[dummyIdx] === '代行専用') : false;
+                const isEmailDummy = email.endsWith('@local.dummy');
+                const isDummy = isDummyDesignated || isEmailDummy;
+
+                if (!email) {
+                    if (isDummy) {
+                        email = `dummy_${Date.now()}_${i}@local.dummy`;
+                    } else {
+                        continue;
+                    }
+                } else if (isDummy && !isEmailDummy) {
+                    if (email.includes('@')) {
+                        email = email.split('@')[0] + '@local.dummy';
+                    } else {
+                        email = email + '@local.dummy';
+                    }
+                }
+
+                email = formatLoginId(email);
 
                 const rawRole = (row[roleIdx] || '').trim();
                 let role = 'user';
@@ -3532,10 +3561,27 @@ async function handleImportUsersCSVFile(e) {
                         .filter(Boolean);
                 }
 
+                let initialPassword = '';
+                if (!isDummy) {
+                    const rawPassword = passwordIdx !== -1 ? (row[passwordIdx] || '').trim() : '';
+                    if (rawPassword.length >= 6) {
+                        initialPassword = rawPassword;
+                    } else {
+                        const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+                        let generated = 'pw-';
+                        for (let j = 0; j < 6; j++) {
+                            generated += chars.charAt(Math.floor(Math.random() * chars.length));
+                        }
+                        initialPassword = generated;
+                    }
+                }
+
                 const item = {
                     email, name, role, group_id, group_name: groupName, attribute_id, attribute_name: attrName,
                     can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance,
-                    delegations: userDelegations
+                    delegations: userDelegations,
+                    is_dummy: isDummy,
+                    initial_password: initialPassword
                 };
 
                 const existing = existingUsers.get(email);
@@ -3567,7 +3613,6 @@ async function handleImportUsersCSVFile(e) {
                     }
                 } else {
                     if (!isDelete) {
-                        // For new users, default delegations to [] if not provided in CSV
                         if (item.delegations === null) item.delegations = [];
                         addList.push(item);
                     }
@@ -3629,6 +3674,37 @@ async function executeUsersImport() {
 
         // 2. 新規追加
         if (add.length > 0) {
+            // Sign up real users in Supabase Auth
+            const signUpErrors = [];
+            for (let u of add) {
+                if (!u.is_dummy) {
+                    try {
+                        const tempSupabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                            auth: {
+                                persistSession: false,
+                                autoRefreshToken: false
+                            }
+                        });
+                        const { error: authError } = await tempSupabase.auth.signUp({
+                            email: u.email,
+                            password: u.initial_password
+                        });
+                        if (authError) {
+                            throw new Error(`Auth作成失敗: ${authError.message}`);
+                        }
+                    } catch (authErr) {
+                        console.error(`Sign up error for ${u.email}:`, authErr);
+                        signUpErrors.push(`${u.email}: ${authErr.message}`);
+                    }
+                }
+            }
+
+            if (signUpErrors.length > 0) {
+                if (!confirm(`一部のアカウント払い出し（Auth）に失敗しました。データベース登録を続行しますか？\n\nエラー内容:\n${signUpErrors.join('\n')}`)) {
+                    throw new Error("インポート処理を中断しました。");
+                }
+            }
+
             const insertPayload = add.map(u => ({
                 email: u.email,
                 name: u.name,
@@ -3701,7 +3777,18 @@ async function executeUsersImport() {
         const { error: delgErr } = await supabaseClient.from('master_data').upsert({ key: 'ATTENDANCE_DELEGATIONS', data: window.adminDelegations });
         if (delgErr) throw delgErr;
 
-        alert('インポートが完了しました。');
+        let completedMessage = 'インポートが完了しました。';
+        if (add.length > 0) {
+            const addedRealUsers = add.filter(u => !u.is_dummy);
+            if (addedRealUsers.length > 0) {
+                completedMessage += '\n\n【新規アカウントのログイン情報】';
+                addedRealUsers.forEach(u => {
+                    completedMessage += `\n氏名: ${u.name}\nログインID: ${displayLoginId(u.email)}\n仮パスワード: ${u.initial_password}\n------------------------`;
+                });
+                completedMessage += '\n\n※上記情報をコピーし、各ユーザーへお伝えください。';
+            }
+        }
+        alert(completedMessage);
         closeCSVConfirmModal();
         await loadAdminUsersData();
     } catch (e) {
@@ -3719,12 +3806,13 @@ window.parseCSV = parseCSV;
 window.escapeCSV = escapeCSV;
 
 function downloadUsersCSVSample() {
-    const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '削除(1/0)'];
+    const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '代行専用(1/0)', '初期パスワード', '削除(1/0)'];
     const rows = [
         headers,
-        ['sample_parent@example.com', '山田 太郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '1', '1', 'sample_child1@example.com,sample_child2@example.com', '0'],
-        ['sample_child1@example.com', '山田 一郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '0', '1', '', '0'],
-        ['sample_child2@example.com', '山田 二郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '0', '1', '', '0']
+        ['sample_parent@example.com', '山田 太郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '1', '1', 'sample_child1@example.com,sample_child2@example.com', '0', 'tempPw123', '0'],
+        ['sample_child1@example.com', '山田 一郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '0', '1', '', '0', 'tempPw123', '0'],
+        ['sample_child2@example.com', '山田 二郎', '一般ユーザー', '選手・保護者', 'A軍', '1', '0', '1', '', '0', 'tempPw123', '0'],
+        ['', '代行専用の子ども', '一般ユーザー', '選手・保護者', 'A軍', '0', '0', '1', '', '1', '', '0']
     ];
 
     const csvContent = rows.map(r => r.map(escapeCSV).join(',')).join('\n');
