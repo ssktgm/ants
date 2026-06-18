@@ -189,6 +189,10 @@ function initAppDOM() {
         document.getElementById('btn-admin-add-user')?.addEventListener('click', adminAddUser);
         document.getElementById('btn-reload-users')?.addEventListener('click', loadAdminUsersData);
         document.getElementById('btn-save-all-users')?.addEventListener('click', saveAllAdminUsers);
+        document.getElementById('admin-users-sort')?.addEventListener('change', (e) => {
+            localStorage.setItem('admin_users_sort', e.target.value);
+            loadAdminUsersData();
+        });
 
         // CSVエクスポート・インポート
         document.getElementById('btn-export-users')?.addEventListener('click', exportUsersCSV);
@@ -1054,6 +1058,71 @@ async function loadAdminUsersData() {
             if (mdData && mdData.data) window.adminDelegations = mdData.data;
             else window.adminDelegations = {};
         } catch (e) { console.error("Groups DB Error:", e); }
+
+        // ユーザーリストの並べ替え
+        const currentSort = localStorage.getItem('admin_users_sort') || 'created_desc';
+        const sortSelect = document.getElementById('admin-users-sort');
+        if (sortSelect) sortSelect.value = currentSort;
+
+        if (usersData && usersData.length > 0) {
+            const groupMap = new Map(groupsData.map(g => [g.id, g.name]));
+            const attrMap = new Map(userAttributesData.map(a => [a.id, a.name]));
+            const userGroupMap = new Map(userGroupsData.map(ug => [ug.user_email, ug.group_id]));
+
+            if (currentSort === 'manual') {
+                let manualOrder = [];
+                try {
+                    const stored = localStorage.getItem('admin_users_manual_order');
+                    if (stored) manualOrder = JSON.parse(stored);
+                } catch (e) {
+                    console.error("Failed to parse manual user order:", e);
+                }
+                usersData.sort((a, b) => {
+                    let idxA = manualOrder.indexOf(a.email);
+                    let idxB = manualOrder.indexOf(b.email);
+                    if (idxA === -1) idxA = 999999;
+                    if (idxB === -1) idxB = 999999;
+                    if (idxA !== idxB) return idxA - idxB;
+                    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+                });
+            } else if (currentSort === 'created_desc') {
+                usersData.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+            } else if (currentSort === 'created_asc') {
+                usersData.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+            } else if (currentSort === 'name_asc') {
+                usersData.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ja'));
+            } else if (currentSort === 'name_desc') {
+                usersData.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'ja'));
+            } else if (currentSort === 'email_asc') {
+                usersData.sort((a, b) => (a.email || '').localeCompare(b.email || '', 'en'));
+            } else if (currentSort === 'email_desc') {
+                usersData.sort((a, b) => (b.email || '').localeCompare(a.email || '', 'en'));
+            } else if (currentSort === 'role_desc') {
+                const rolePriority = { 'admin': 3, 'leader': 2, 'user': 1 };
+                usersData.sort((a, b) => {
+                    const aPriority = rolePriority[a.role] || 0;
+                    const bPriority = rolePriority[b.role] || 0;
+                    if (aPriority !== bPriority) return bPriority - aPriority;
+                    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+                });
+            } else if (currentSort === 'group_asc') {
+                usersData.sort((a, b) => {
+                    const aGroup = groupMap.get(userGroupMap.get(a.email)) || '';
+                    const bGroup = groupMap.get(userGroupMap.get(b.email)) || '';
+                    if (!aGroup && bGroup) return 1;
+                    if (aGroup && !bGroup) return -1;
+                    return aGroup.localeCompare(bGroup, 'ja');
+                });
+            } else if (currentSort === 'attribute_asc') {
+                usersData.sort((a, b) => {
+                    const aAttr = attrMap.get(a.attribute_id) || '';
+                    const bAttr = attrMap.get(b.attribute_id) || '';
+                    if (!aAttr && bAttr) return 1;
+                    if (aAttr && !bAttr) return -1;
+                    return aAttr.localeCompare(bAttr, 'ja');
+                });
+            }
+        }
     
         const allowedListEl = document.getElementById('allowed-users-list');
         
@@ -1149,43 +1218,53 @@ async function loadAdminUsersData() {
                 </label>
             `).join('');
 
+            const showDragHandle = (currentSort === 'manual');
+            const dragHandleHtml = showDragHandle ? `
+                <div class="user-drag-handle cursor-grab select-none text-gray-400 hover:text-gray-600 px-2 flex items-center justify-center text-xl font-bold border-r border-gray-100 mr-2" title="ドラッグして並べ替え">
+                    ⋮⋮
+                </div>
+            ` : '';
+
             return `
-            <div class="user-admin-card flex flex-col p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition" data-email="${u.email}" data-index="${i}" data-old-role="${u.role}">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
-                    <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
-                    <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
-                    <input type="text" id="edit-email-${i}" value="${displayLoginId(u.email)}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email || isDummy ? 'disabled' : ''}>
-                    <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
-                        <option value="">属性なし</option>
-                        ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
-                    </select>
-                    <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
-                        <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
-                        <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
-                        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
-                    </select>
-                    <div class="flex items-center space-x-3 ml-2 border-l pl-2">
-                        <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dispatch-${i}" class="rounded text-blue-600" ${u.can_use_dispatch !== false ? 'checked' : ''}><span>配車可</span></label>
-                        <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
-                        <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-attendance-${i}" class="rounded text-blue-600" ${u.can_use_attendance !== false ? 'checked' : ''}><span>出欠可</span></label>
+            <div class="user-admin-card flex items-stretch p-3 bg-white border rounded shadow-sm mb-2 hover:bg-gray-50 transition" data-email="${u.email}" data-index="${i}" data-old-role="${u.role}">
+                ${dragHandleHtml}
+                <div class="flex-grow flex flex-col">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-gray-100 pb-2 mb-2">
+                        <div class="flex-grow flex flex-col md:flex-row md:items-center gap-2">
+                        <input type="text" id="edit-name-${i}" value="${u.name || ''}" placeholder="氏名" class="border p-1 rounded text-sm w-32 font-bold">
+                        <input type="text" id="edit-email-${i}" value="${displayLoginId(u.email)}" class="border p-1 rounded text-sm w-48 font-bold" ${u.email === currentUser.email || isDummy ? 'disabled' : ''}>
+                        <select id="edit-attribute-${i}" class="border p-1 rounded text-sm w-28">
+                            <option value="">属性なし</option>
+                            ${userAttributesData.map(a => `<option value="${a.id}" ${u.attribute_id === a.id ? 'selected' : ''}>${a.name}</option>`).join('')}
+                        </select>
+                        <select id="edit-role-${i}" class="border p-1 rounded text-sm" ${u.email === currentUser.email ? 'disabled' : ''}>
+                            <option value="user" ${u.role === 'user' ? 'selected' : ''}>一般ユーザー</option>
+                            <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
+                            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
+                        </select>
+                        <div class="flex items-center space-x-3 ml-2 border-l pl-2">
+                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dispatch-${i}" class="rounded text-blue-600" ${u.can_use_dispatch !== false ? 'checked' : ''}><span>配車可</span></label>
+                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
+                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-attendance-${i}" class="rounded text-blue-600" ${u.can_use_attendance !== false ? 'checked' : ''}><span>出欠可</span></label>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2 shrink-0">
+                        ${!isDummy ? `<button onclick="adminChangeUserPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">パスワード変更</button>` : ''}
+                        ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
                     </div>
                 </div>
-                <div class="flex items-center space-x-2 shrink-0">
-                    ${!isDummy ? `<button onclick="adminChangeUserPassword('${u.email}')" class="text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded shadow">パスワード変更</button>` : ''}
-                    ${u.email !== currentUser.email ? `<button onclick="deleteAdminUser('${u.email}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-2 py-1 rounded shadow">削除</button>` : ''}
-                </div>
-            </div>
-                <div class="flex flex-col md:flex-row md:items-start justify-between gap-2">
-                    <div class="flex-grow">
-                        <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
-                        <div id="group-container-${i}">${groupSelectHtml}</div>
-                    </div>
-                    <div class="flex-grow mt-2 md:mt-0 border-t md:border-t-0 md:border-l border-gray-200 pt-2 md:pt-0 md:pl-4">
-                        <div class="text-xs font-bold text-gray-500 mb-1">代行権限 (他メンバーの出欠を代理で入力できる権限):</div>
-                        <details class="text-xs border p-2 bg-gray-50 rounded shadow-inner">
-                            <summary class="cursor-pointer text-gray-700 font-bold">代行入力できるメンバーを選択 (複数可)</summary>
-                            <div class="flex flex-wrap mt-2 max-h-32 overflow-y-auto border-t border-gray-200 pt-2">${delegationCheckboxes || '<span class="text-gray-400">他のメンバーがいません</span>'}</div>
-                        </details>
+                    <div class="flex flex-col md:flex-row md:items-start justify-between gap-2">
+                        <div class="flex-grow">
+                            <div class="text-xs font-bold text-gray-500 mb-1">所属グループ:</div>
+                            <div id="group-container-${i}">${groupSelectHtml}</div>
+                        </div>
+                        <div class="flex-grow mt-2 md:mt-0 border-t md:border-t-0 md:border-l border-gray-200 pt-2 md:pt-0 md:pl-4">
+                            <div class="text-xs font-bold text-gray-500 mb-1">代行権限 (他メンバーの出欠を代理で入力できる権限):</div>
+                            <details class="text-xs border p-2 bg-gray-50 rounded shadow-inner">
+                                <summary class="cursor-pointer text-gray-700 font-bold">代行入力できるメンバーを選択 (複数可)</summary>
+                                <div class="flex flex-wrap mt-2 max-h-32 overflow-y-auto border-t border-gray-200 pt-2">${delegationCheckboxes || '<span class="text-gray-400">他のメンバーがいません</span>'}</div>
+                            </details>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1193,6 +1272,7 @@ async function loadAdminUsersData() {
         }).join('');
     
         allowedListEl.innerHTML = usersHtml;
+        makeUserCardsDraggable();
     
         const masterListEl = document.getElementById('admin-master-list');
         if (masterListEl) {
@@ -1695,6 +1775,76 @@ function makeDraggable(containerId, tableName, onSortedCallback) {
             } finally {
                 hideLoading();
             }
+        });
+    });
+}
+
+function makeUserCardsDraggable() {
+    const container = document.getElementById('allowed-users-list');
+    if (!container) return;
+
+    const currentSort = localStorage.getItem('admin_users_sort') || 'created_desc';
+    if (currentSort !== 'manual') {
+        Array.from(container.children).forEach(child => {
+            child.removeAttribute('draggable');
+            child.classList.remove('cursor-move', 'select-none');
+            const handle = child.querySelector('.user-drag-handle');
+            if (handle) {
+                handle.style.display = 'none';
+            }
+        });
+        return;
+    }
+
+    let dragEl = null;
+
+    Array.from(container.children).forEach(child => {
+        const handle = child.querySelector('.user-drag-handle');
+        if (handle) {
+            handle.style.display = 'flex';
+            
+            // Only make the card draggable when the mouse is down on the handle
+            handle.addEventListener('mousedown', () => {
+                child.setAttribute('draggable', 'true');
+            });
+            handle.addEventListener('mouseup', () => {
+                child.removeAttribute('draggable');
+            });
+        } else {
+            child.setAttribute('draggable', 'true');
+        }
+
+        child.addEventListener('dragstart', (e) => {
+            if (child.getAttribute('draggable') !== 'true') {
+                e.preventDefault();
+                return;
+            }
+            dragEl = child;
+            e.dataTransfer.effectAllowed = 'move';
+            child.classList.add('opacity-50');
+        });
+
+        child.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            const target = e.target.closest('.user-admin-card');
+            if (target && target !== dragEl && target.parentNode === container) {
+                const rect = target.getBoundingClientRect();
+                const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+                container.insertBefore(dragEl, next ? target.nextSibling : target);
+            }
+        });
+
+        child.addEventListener('dragend', () => {
+            child.classList.remove('opacity-50');
+            child.removeAttribute('draggable');
+            dragEl = null;
+
+            // Save manual order
+            const children = Array.from(container.children);
+            const emails = children.map(item => item.getAttribute('data-email')).filter(Boolean);
+            localStorage.setItem('admin_users_manual_order', JSON.stringify(emails));
         });
     });
 }

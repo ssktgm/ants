@@ -427,9 +427,24 @@
             </section>
 
         <section class="mb-6">
-            <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-xl font-semibold">ユーザー・メンバー管理</h3>
-                <button id="btn-reload-users" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm font-bold shadow">再読込</button>
+            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+                <h3 class="text-xl font-semibold">ユーザー・メンバー管理</h3>
+                <div class="flex items-center space-x-2">
+                    <label for="admin-users-sort" class="text-sm text-gray-600 font-bold">並べ替え:</label>
+                    <select id="admin-users-sort" class="border p-1 rounded text-sm bg-white font-semibold text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                        <option value="created_desc">登録日（新しい順）</option>
+                        <option value="created_asc">登録日（古い順）</option>
+                        <option value="name_asc">氏名（昇順）</option>
+                        <option value="name_desc">氏名（降順）</option>
+                        <option value="email_asc">ログインID（昇順）</option>
+                        <option value="email_desc">ログインID（降順）</option>
+                        <option value="role_desc">役割（管理者優先）</option>
+                        <option value="group_asc">グループ順</option>
+                        <option value="attribute_asc">属性順</option>
+                        <option value="manual">手動並べ替え（ドラッグ）</option>
+                    </select>
+                    <button id="btn-reload-users" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-3 py-1 rounded text-sm font-bold shadow">再読込</button>
+                </div>
             </div>
             <div id="allowed-users-list" class="space-y-2"></div>
             <div class="mt-4 flex justify-between items-center flex-wrap gap-2">
