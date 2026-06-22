@@ -2576,8 +2576,19 @@ function handleAssignment() {
         }
     });
     
-    // 乗り切れなかったメンバーを別便に追加する
-    rem.forEach(p => {
+    // 実際に通常の車（およびドライバー）に割り当てられたメンバーのIDを集める
+    const finalAssignedIds = new Set(dIds);
+    ass.forEach(c => {
+        c.members.forEach(m => {
+            if (m) finalAssignedIds.add(m.id);
+        });
+    });
+
+    // 参加者のうち、通常の車に割り当てられておらず、かつ除外チェックも入っていないメンバーが「あふれた人」
+    const overflowedMembers = parts.filter(p => !finalAssignedIds.has(p.id) && !excludedParticipantIds.has(p.id));
+
+    // あふれたメンバーを別便（exPs）に追加する
+    overflowedMembers.forEach(p => {
         if (!exPs.some(x => x.id === p.id)) {
             exPs.push(p);
         }
