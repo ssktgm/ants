@@ -2515,8 +2515,6 @@ function handleAssignment() {
     let currentTotalCapacity = ass.reduce((s,c)=>s+c.capacity,0);
     let currentAssignedCount = ass.reduce((s,c)=>s+c.members.length,0);
     
-    if(toAss.length > currentTotalCapacity - currentAssignedCount) showDispatchMessage('定員オーバーです','warning'); else hideDispatchMessage();
-    
     let rem = [...toAss];
     const pType = {'保護者':1,'兄弟':2,'選手':3,'その他':4};
 
@@ -2578,6 +2576,13 @@ function handleAssignment() {
         }
     });
     
+    // 乗り切れなかったメンバーを別便に追加する
+    rem.forEach(p => {
+        if (!exPs.some(x => x.id === p.id)) {
+            exPs.push(p);
+        }
+    });
+    
     ass.push({id:'excluded-car', name:'別便', capacity:999, baseCapacity:999, driver:null, members:exPs, hasLuggage:false, assignedParking:'excluded'});
     
     currentAssignments = ass;
@@ -2588,7 +2593,11 @@ function renderResults() {
     const resultsEl = document.getElementById('results');
     if (!resultsEl) return;
     resultsEl.innerHTML = ''; selectedSwapItems = {car:null, seat:null};
-    if(currentAssignments.length===0) return resultsEl.innerHTML='<p class="text-gray-500 bg-white p-4 rounded shadow">結果なし</p>';
+    if(currentAssignments.length===0) {
+        resultsEl.innerHTML='<p class="text-gray-500 bg-white p-4 rounded shadow">結果なし</p>';
+        updateCapacityWarning();
+        return;
+    }
     
     if(eventInfo.name||eventInfo.date) resultsEl.innerHTML+=`<h2 class="text-2xl font-bold mb-2">${eventInfo.date} ${eventInfo.name} ${parkingInfo.groundName?`@${parkingInfo.groundName}`:''}</h2>`;
     
@@ -2598,6 +2607,7 @@ function renderResults() {
     resultsEl.innerHTML += sec('designated', parkingInfo.designated, dc);
     resultsEl.innerHTML += sec('other', parkingInfo.other, oc);
     if(ec[0].members.length>0) resultsEl.innerHTML += sec('excluded', {name:'別便',memo:''}, ec);
+    updateCapacityWarning();
 }
 
 function createCarCardHtml(car) {
@@ -3000,11 +3010,57 @@ window.clearCurrentInputs = function() {
 };
 
 function showDispatchMessage(msg, type='info') {
-    const mc = document.getElementById('dispatch-message'); mc.className = `p-4 h-full border rounded-lg ${type==='error'?'bg-red-100 text-red-700':(type==='success'?'bg-green-100 text-green-700':'bg-blue-100 text-blue-700')}`;
+    const mc = document.getElementById('dispatch-message');
+    let colorClass = 'bg-blue-100 text-blue-700 border-blue-200';
+    if (type === 'error') {
+        colorClass = 'bg-red-100 text-red-700 border-red-200';
+    } else if (type === 'success') {
+        colorClass = 'bg-green-100 text-green-700 border-green-200';
+    } else if (type === 'warning') {
+        colorClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    }
+    mc.className = `p-4 h-full border rounded-lg ${colorClass}`;
     document.getElementById('dispatch-message-text').innerHTML = msg; mc.classList.remove('hidden');
-    if(dispatchMessageTimer) clearTimeout(dispatchMessageTimer); dispatchMessageTimer = setTimeout(hideDispatchMessage, 5000);
+    if (dispatchMessageTimer) clearTimeout(dispatchMessageTimer);
+    if (type !== 'warning') {
+        dispatchMessageTimer = setTimeout(hideDispatchMessage, 5000);
+    }
 }
 function hideDispatchMessage() { document.getElementById('dispatch-message').classList.add('hidden'); }
+
+function checkCapacityOver() {
+    if (!currentAssignments || currentAssignments.length === 0) return false;
+    
+    // 1. 各車の総定員オーバーチェック
+    for (const c of currentAssignments) {
+        if (c.id === 'excluded-car') continue;
+        const totalOccupants = (c.driver ? 1 : 0) + c.members.filter(p => p !== null).length;
+        if (totalOccupants > c.baseCapacity) {
+            return true;
+        }
+    }
+    
+    // 2. 全体の人数超過（あふれた人）チェック
+    // 除外指定されていないのに別便（excluded-car）に入っている人がいるか？
+    const exCar = currentAssignments.find(c => c.id === 'excluded-car');
+    if (exCar) {
+        return exCar.members.some(p => p && !excludedParticipantIds.has(p.id));
+    }
+    
+    return false;
+}
+
+function updateCapacityWarning() {
+    if (checkCapacityOver()) {
+        showDispatchMessage('定員オーバーです。車の台数が足りないか、定員を超過している車があります。', 'warning');
+    } else {
+        const mc = document.getElementById('dispatch-message');
+        const textEl = document.getElementById('dispatch-message-text');
+        if (mc && !mc.classList.contains('hidden') && textEl && textEl.innerHTML.includes('定員オーバー')) {
+            hideDispatchMessage();
+        }
+    }
+}
 
 // ==========================================
 // View: Master ロジック
