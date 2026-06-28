@@ -80,6 +80,7 @@ function setupDashboardUI() {
                 <button data-tab="test-mode" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">テストモード</button>
                 <button data-tab="settings" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">設定</button>
                 <button data-tab="import-data" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">データインポート</button>
+                <button data-tab="detail-analysis" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">詳細分析（工事中）</button>
             </div>
             
             <div id="tab-content-team-summary">
@@ -292,6 +293,53 @@ function setupDashboardUI() {
                 </div>
                 <div id="import-result-msg" class="mt-4 text-sm font-bold hidden"></div>
             </div>
+
+            <div id="tab-content-detail-analysis" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
+                <h3 class="text-lg font-bold mb-4 border-b pb-2">詳細分析（工事中）</h3>
+                <p class="text-sm text-gray-600 mb-4">
+                    scorer_data.txt などの詳細なスコアデータを読み込んで、より細かい打席結果や投球・守備イベントの分析を行います。
+                </p>
+                <div class="space-y-4 border p-4 rounded bg-gray-50">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">scorer_data.txt ファイルを選択</label>
+                        <input type="file" id="detail-analysis-file" accept=".txt,.json" class="w-full border p-1.5 rounded bg-white">
+                    </div>
+                    <button id="btn-load-detail-data" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded shadow font-bold disabled:bg-gray-400">
+                        データを読み込む
+                    </button>
+                </div>
+                
+                <div id="detail-analysis-result" class="mt-6 space-y-4 hidden">
+                    <div class="bg-green-50 border border-green-200 text-green-800 p-4 rounded font-bold text-sm">
+                        ✅ データの読み込みに成功しました！
+                    </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="bg-gray-100 p-3 rounded text-center">
+                            <div class="text-gray-500 text-xs font-bold">成績記録(cat)数</div>
+                            <div class="text-xl font-bold text-gray-800" id="detail-stats-cat-count">0</div>
+                        </div>
+                        <div class="bg-gray-100 p-3 rounded text-center">
+                            <div class="text-gray-500 text-xs font-bold">システム設定(sys)数</div>
+                            <div class="text-xl font-bold text-gray-800" id="detail-stats-sys-count">0</div>
+                        </div>
+                        <div class="bg-gray-100 p-3 rounded text-center">
+                            <div class="text-gray-500 text-xs font-bold">試合詳細ログ(sysdata23)</div>
+                            <div class="text-xl font-bold text-gray-800" id="detail-stats-has-pcl">-</div>
+                        </div>
+                        <div class="bg-gray-100 p-3 rounded text-center">
+                            <div class="text-gray-500 text-xs font-bold">グラウンド数</div>
+                            <div class="text-xl font-bold text-gray-800" id="detail-stats-ground-count">0</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-blue-50 border border-blue-200 p-4 rounded text-sm text-blue-900">
+                        <h4 class="font-bold mb-2 text-base">📊 詳細データから分析可能な項目（ご提案）</h4>
+                        <ul class="list-disc pl-5 space-y-1" id="detail-analysis-suggestions">
+                            <!-- 提案事項がここに表示される -->
+                        </ul>
+                    </div>
+                </div>
+            </div>
         `;
         document.getElementById('app-view')?.parentNode.appendChild(container);
         
@@ -301,6 +349,7 @@ function setupDashboardUI() {
         });
 
         document.getElementById('btn-exec-csv-import').addEventListener('click', handleCsvImport);
+        document.getElementById('btn-load-detail-data')?.addEventListener('click', handleDetailDataLoad);
 
         // タブ切り替え制御
         document.querySelectorAll('#dashboard-tabs button').forEach(btn => {
@@ -309,7 +358,7 @@ function setupDashboardUI() {
                     b.classList.remove('text-blue-600', 'border-blue-600');
                     b.classList.add('text-gray-500', 'border-transparent');
                 });
-                ['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'settings', 'import-data'].forEach(t => document.getElementById(`tab-content-${t}`)?.classList.add('hidden'));
+                ['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'settings', 'import-data', 'detail-analysis'].forEach(t => document.getElementById(`tab-content-${t}`)?.classList.add('hidden'));
 
                 const target = e.currentTarget;
                 target.classList.remove('text-gray-500', 'border-transparent');
@@ -1202,6 +1251,68 @@ async function handleCsvImport() {
             msgEl.classList.remove('hidden');
         } finally {
             hideLoading();
+        }
+    };
+    reader.readAsText(file);
+}
+
+function handleDetailDataLoad() {
+    const fileInput = document.getElementById('detail-analysis-file');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert('ファイルを選択してください。');
+        return;
+    }
+    const file = fileInput.files[0];
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            
+            // 簡易検証
+            const catCount = (data.cat && Array.isArray(data.cat)) ? data.cat.length : 0;
+            const sysCount = (data.sys && Array.isArray(data.sys)) ? data.sys.length : 0;
+            
+            let hasPcl = 'なし';
+            let groundCount = 0;
+            
+            if (data.sys) {
+                const sys23 = data.sys.find(s => s.ke === 'sysdata23');
+                if (sys23 && sys23.va) {
+                    try {
+                        const pclData = JSON.parse(sys23.va);
+                        if (pclData && pclData.pcl) {
+                            hasPcl = `${pclData.pcl.length} 件のイベント`;
+                        }
+                    } catch(ex) {
+                        hasPcl = '解析失敗';
+                    }
+                }
+                const sys12 = data.sys.find(s => s.ke === 'sysdata12');
+                if (sys12 && sys12.va) {
+                    groundCount = sys12.va.split(',').length;
+                }
+            }
+            
+            document.getElementById('detail-stats-cat-count').textContent = catCount;
+            document.getElementById('detail-stats-sys-count').textContent = sysCount;
+            document.getElementById('detail-stats-has-pcl').textContent = hasPcl;
+            document.getElementById('detail-stats-ground-count').textContent = groundCount;
+            
+            // 提案を表示
+            const suggs = [
+                "<strong>イニング別の詳細スコア分析</strong>: イニングごとの詳細なプレイ記録から得点パターン（何回の攻撃が得点に結びつきやすいか、どのようなアウトの取られ方をしているか）を可視化できます。",
+                "<strong>打撃イベント分析（アウトの種類・打球方向）</strong>: プレイログの「サードゴロ」「レフトヒット」などの実況テキストをパースし、各打者の打球方向やアウトの種類の割合を集計できます。",
+                "<strong>走塁・盗塁成否分析</strong>: プレイログから「盗塁成功」「盗塁失敗」などのイベントを検出し、選手ごとの走塁成功率やシチュエーションごとの傾向を分析できます。",
+                "<strong>エラー発生状況の分析</strong>: 実況テキストに含まれる送球エラーや落球などのキーワードから、守備位置ごとのエラー数やエラーの起こりやすいタイミングを特定します。",
+                "<strong>連続打席・チャンス時の打撃結果</strong>: ランナーがいる場面での打撃内容や、打席ごとの一球単位のボールカウント（ストライク・ボール推移）に応じた結果の相関関係を分析できます。"
+            ];
+            
+            document.getElementById('detail-analysis-suggestions').innerHTML = suggs.map(s => `<li>${s}</li>`).join('');
+            document.getElementById('detail-analysis-result').classList.remove('hidden');
+            
+        } catch (err) {
+            console.error(err);
+            alert('JSONデータのパースに失敗しました。ファイルの形式が正しいか確認してください。');
         }
     };
     reader.readAsText(file);
