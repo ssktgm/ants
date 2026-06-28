@@ -13,6 +13,8 @@ let comparisonCharts = {};
 let testModeCharts = {};
 let currentRankingData = { batter: [], pitcher: [] };
 let rankingSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
+let parsedDetailData = null;
+let detailCharts = {};
 
 export async function initDashboardApp() {
     if (!isDashboardInitialized) {
@@ -295,7 +297,7 @@ function setupDashboardUI() {
             </div>
 
             <div id="tab-content-detail-analysis" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
-                <h3 class="text-lg font-bold mb-4 border-b pb-2">詳細分析（工事中）</h3>
+                <h3 class="text-lg font-bold mb-4 border-b pb-2">詳細分析</h3>
                 <p class="text-sm text-gray-600 mb-4">
                     scorer_data.txt などの詳細なスコアデータを読み込んで、より細かい打席結果や投球・守備イベントの分析を行います。
                 </p>
@@ -333,10 +335,118 @@ function setupDashboardUI() {
                     </div>
                     
                     <div class="bg-blue-50 border border-blue-200 p-4 rounded text-sm text-blue-900">
-                        <h4 class="font-bold mb-2 text-base">📊 詳細データから分析可能な項目（ご提案）</h4>
+                        <h4 class="font-bold mb-2 text-base">📊 詳細データから分析可能な項目</h4>
                         <ul class="list-disc pl-5 space-y-1" id="detail-analysis-suggestions">
                             <!-- 提案事項がここに表示される -->
                         </ul>
+                    </div>
+                </div>
+
+                <div id="detail-analysis-dashboard" class="mt-8 space-y-6 hidden">
+                    <div class="flex border-b overflow-x-auto space-x-2" id="detail-analysis-tabs">
+                        <button data-detail-tab="inning" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap transition-colors">イニング別分析</button>
+                        <button data-detail-tab="batting" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">打撃イベント分析</button>
+                        <button data-detail-tab="steals" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">走塁・盗塁分析</button>
+                        <button data-detail-tab="errors" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">エラー分析</button>
+                        <button data-detail-tab="chance" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">カウント・チャンス分析</button>
+                    </div>
+
+                    <!-- 各分析のコンテンツエリア -->
+                    <div id="detail-tab-content-inning" class="space-y-4">
+                        <h4 class="font-bold text-gray-700 text-sm">イニング別の得点とアウト構成の推移</h4>
+                        <div class="bg-white p-4 rounded shadow border min-h-[300px] md:min-h-[400px]">
+                            <canvas id="chart-detail-inning"></canvas>
+                        </div>
+                    </div>
+
+                    <div id="detail-tab-content-batting" class="space-y-4 hidden">
+                        <div class="flex items-center space-x-4 mb-4">
+                            <label class="font-bold text-sm text-gray-600">選手選択:</label>
+                            <select id="detail-batting-player-select" class="border p-2 rounded text-sm w-48 bg-white"></select>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded shadow border min-h-[300px]">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">打球方向の割合</h5>
+                                <canvas id="chart-detail-batting-direction"></canvas>
+                            </div>
+                            <div class="bg-white p-4 rounded shadow border">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">打席結果の内訳</h5>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm text-left border">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="p-2 border-b">結果</th>
+                                                <th class="p-2 border-b text-right">件数</th>
+                                                <th class="p-2 border-b text-right">割合</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detail-batting-stats-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="detail-tab-content-steals" class="space-y-4 hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded shadow border min-h-[300px]">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">盗塁成否数 (企図数順)</h5>
+                                <canvas id="chart-detail-steals"></canvas>
+                            </div>
+                            <div class="bg-white p-4 rounded shadow border">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">盗塁成功率ランキング</h5>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm text-left border">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="p-2 border-b">選手名</th>
+                                                <th class="p-2 border-b text-right">成功</th>
+                                                <th class="p-2 border-b text-right">失敗</th>
+                                                <th class="p-2 border-b text-right">企図数</th>
+                                                <th class="p-2 border-b text-right">成功率</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detail-steals-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="detail-tab-content-errors" class="space-y-4 hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded shadow border min-h-[300px]">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">ポジション別エラー発生件数</h5>
+                                <canvas id="chart-detail-errors-pos"></canvas>
+                            </div>
+                            <div class="bg-white p-4 rounded shadow border">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">イニング別エラー発生件数</h5>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm text-left border">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="p-2 border-b">イニング</th>
+                                                <th class="p-2 border-b text-right">エラー数</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="detail-errors-inning-tbody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="detail-tab-content-chance" class="space-y-4 hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded shadow border min-h-[300px]">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">通常安打率 vs 得点圏安打率 (打席基準)</h5>
+                                <canvas id="chart-detail-chance-avg"></canvas>
+                            </div>
+                            <div class="bg-white p-4 rounded shadow border min-h-[300px]">
+                                <h5 class="font-bold text-gray-700 text-sm text-center mb-4">カウント別安打数・打席数</h5>
+                                <canvas id="chart-detail-count-stats"></canvas>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1293,6 +1403,12 @@ function handleDetailDataLoad() {
                 }
             }
             
+            parsedDetailData = parseScorerData(data);
+            if (!parsedDetailData) {
+                alert('詳細データのパースに失敗しました。sysdata23 が見つかりません。');
+                return;
+            }
+            
             document.getElementById('detail-stats-cat-count').textContent = catCount;
             document.getElementById('detail-stats-sys-count').textContent = sysCount;
             document.getElementById('detail-stats-has-pcl').textContent = hasPcl;
@@ -1300,15 +1416,19 @@ function handleDetailDataLoad() {
             
             // 提案を表示
             const suggs = [
-                "<strong>イニング別の詳細スコア分析</strong>: イニングごとの詳細なプレイ記録から得点パターン（何回の攻撃が得点に結びつきやすいか、どのようなアウトの取られ方をしているか）を可視化できます。",
-                "<strong>打撃イベント分析（アウトの種類・打球方向）</strong>: プレイログの「サードゴロ」「レフトヒット」などの実況テキストをパースし、各打者の打球方向やアウトの種類の割合を集計できます。",
-                "<strong>走塁・盗塁成否分析</strong>: プレイログから「盗塁成功」「盗塁失敗」などのイベントを検出し、選手ごとの走塁成功率やシチュエーションごとの傾向を分析できます。",
-                "<strong>エラー発生状況の分析</strong>: 実況テキストに含まれる送球エラーや落球などのキーワードから、守備位置ごとのエラー数やエラーの起こりやすいタイミングを特定します。",
-                "<strong>連続打席・チャンス時の打撃結果</strong>: ランナーがいる場面での打撃内容や、打席ごとの一球単位のボールカウント（ストライク・ボール推移）に応じた結果の相関関係を分析できます。"
+                "<strong>イニング別の詳細スコア分析</strong>: イニングごとの詳細なプレイ記録から得点パターン（何回の攻撃が得点に結びつきやすいか、どのようなアウトの取られ方をしているか）を可視化しました。",
+                "<strong>打撃イベント分析（アウトの種類・打球方向）</strong>: プレイログの「サードゴロ」「レフトヒット」などの実況テキストをパースし、各打者の打球方向やアウトの種類の割合を集計しました。",
+                "<strong>走塁・盗塁成否分析</strong>: プレイログから「盗塁成功」「盗塁失敗」などのイベントを検出し、選手ごとの走塁成功率やシチュエーションごとの傾向を分析しました。",
+                "<strong>エラー発生状況の分析</strong>: 実況テキストに含まれる送球エラーや落球などのキーワードから、守備位置ごとのエラー数やエラーの起こりやすいタイミングを特定しました。",
+                "<strong>連続打席・チャンス時の打撃結果</strong>: ランナーがいる場面での打撃内容や、打席ごとの一球単位のボールカウント（ストライク・ボール推移）に応じた結果の相関関係を分析しました。"
             ];
             
             document.getElementById('detail-analysis-suggestions').innerHTML = suggs.map(s => `<li>${s}</li>`).join('');
             document.getElementById('detail-analysis-result').classList.remove('hidden');
+            document.getElementById('detail-analysis-dashboard').classList.remove('hidden');
+            
+            // 各セレクトボックス等の初期化と初回描画
+            initDetailAnalysisUI();
             
         } catch (err) {
             console.error(err);
@@ -1316,4 +1436,448 @@ function handleDetailDataLoad() {
         }
     };
     reader.readAsText(file);
+}
+
+function parseScorerData(data) {
+    const sys23 = data.sys ? data.sys.find(s => s.ke === 'sysdata23') : null;
+    if (!sys23 || !sys23.va) return null;
+    
+    let pcl = [];
+    try {
+        const pclData = JSON.parse(sys23.va);
+        pcl = pclData.pcl || [];
+    } catch(e) {
+        console.error("Failed to parse sysdata23.va", e);
+        return null;
+    }
+
+    const result = {
+        innings: {},
+        batters: {},
+        steals: {},
+        errors: {
+            byInning: {},
+            byPosition: {}
+        },
+        counts: {}
+    };
+
+    let currentInning = "1回表";
+    let currentBatter = null;
+    const isScoringPosition = (rnr) => [2, 3, 4, 5, 6, 7].includes(rnr);
+
+    pcl.forEach(play => {
+        const rnr = play.rnr;
+        const ball = play.ball;
+        const strk = play.strk;
+        
+        if (!play.codes) return;
+        
+        play.codes.forEach(c => {
+            if (!c.pli || !c.pli.sPlay) return;
+            const text = c.pli.sPlay.trim();
+            const code = c.cd || "";
+            
+            const innMatch = text.match(/^(\d+回(?:表|ｳﾗ|裏))/);
+            if (innMatch) {
+                currentInning = innMatch[1];
+                if (!result.innings[currentInning]) {
+                    result.innings[currentInning] = { runs: 0, outs: { strikeout: 0, groundout: 0, flyout: 0, other: 0 } };
+                }
+            }
+
+            const batterMatch = text.match(/^\d+番(.+?)(?:#\d+)?$/);
+            if (batterMatch) {
+                currentBatter = batterMatch[1].trim();
+                if (!result.batters[currentBatter]) {
+                    result.batters[currentBatter] = {
+                        pa: 0, ab: 0, hits: 0, strikeout: 0, walk: 0,
+                        groundout: 0, flyout: 0, otherout: 0, rbi: 0,
+                        chances: { pa: 0, hits: 0, rbi: 0 },
+                        directions: { left: 0, center: 0, right: 0, inner: 0, other: 0 }
+                    };
+                }
+                result.batters[currentBatter].pa++;
+                if (isScoringPosition(rnr)) {
+                    result.batters[currentBatter].chances.pa++;
+                }
+            }
+
+            if (text.includes("生還") || text.includes("本塁生還") || text.includes("ホームイン")) {
+                if (result.innings[currentInning]) {
+                    result.innings[currentInning].runs++;
+                }
+                if (currentBatter) {
+                    result.batters[currentBatter].rbi++;
+                    if (isScoringPosition(rnr)) {
+                        result.batters[currentBatter].chances.rbi++;
+                    }
+                }
+            }
+
+            if (text.includes("盗塁")) {
+                const runnerMatch = text.match(/(?:ランナー|打者)(.+?)(?:\d+塁|本塁|$)/);
+                if (runnerMatch) {
+                    const runnerName = runnerMatch[1].replace(/\d+$/, "").trim();
+                    if (runnerName && runnerName !== "打者") {
+                        if (!result.steals[runnerName]) {
+                            result.steals[runnerName] = { attempts: 0, success: 0, fail: 0 };
+                        }
+                        result.steals[runnerName].attempts++;
+                        if (text.includes("失敗") || text.includes("アウト")) {
+                            result.steals[runnerName].fail++;
+                        } else {
+                            result.steals[runnerName].success++;
+                        }
+                    }
+                }
+            }
+
+            if (text.includes("エラー") || text.includes("失策")) {
+                result.errors.byInning[currentInning] = (result.errors.byInning[currentInning] || 0) + 1;
+                const posMatch = text.match(/(ピッチャー|キャッチャー|ファースト|セカンド|サード|ショート|レフト|センター|ライト)/);
+                if (posMatch) {
+                    result.errors.byPosition[posMatch[1]] = (result.errors.byPosition[posMatch[1]] || 0) + 1;
+                } else {
+                    result.errors.byPosition["その他"] = (result.errors.byPosition["その他"] || 0) + 1;
+                }
+            }
+
+            if (currentBatter) {
+                const bData = result.batters[currentBatter];
+                const isAtBatEnd = code.startsWith("H") || code.startsWith("Go") || code.startsWith("Fo") || code.startsWith("Ko") || code.startsWith("Bb");
+                if (isAtBatEnd) {
+                    const countKey = `${ball}-${strk}`;
+                    if (!result.counts[countKey]) {
+                        result.counts[countKey] = { pa: 0, hits: 0 };
+                    }
+                    result.counts[countKey].pa++;
+                    if (code.startsWith("H")) {
+                        result.counts[countKey].hits++;
+                    }
+                }
+
+                if (text.includes("ヒット") || text.includes("安打") || text.includes("ツーベース") || text.includes("スリーベース") || text.includes("ホームラン") || text.includes("本塁打")) {
+                    bData.hits++;
+                    bData.ab++;
+                    if (isScoringPosition(rnr)) bData.chances.hits++;
+                    if (text.includes("レフト")) bData.directions.left++;
+                    else if (text.includes("センター")) bData.directions.center++;
+                    else if (text.includes("ライト")) bData.directions.right++;
+                    else if (text.includes("内野")) bData.directions.inner++;
+                    else bData.directions.other++;
+                } else if (text.includes("フォアボール") || text.includes("デッドボール") || text.includes("四球") || text.includes("死球")) {
+                    bData.walk++;
+                } else if (text.includes("三振")) {
+                    bData.strikeout++;
+                    bData.ab++;
+                    if (result.innings[currentInning]) result.innings[currentInning].outs.strikeout++;
+                } else if (text.includes("ゴロ")) {
+                    bData.groundout++;
+                    bData.ab++;
+                    if (result.innings[currentInning]) result.innings[currentInning].outs.groundout++;
+                    if (text.includes("サード") || text.includes("ショート")) bData.directions.left++;
+                    else if (text.includes("セカンド") || text.includes("ファースト")) bData.directions.right++;
+                    else bData.directions.inner++;
+                } else if (text.includes("フライ") || text.includes("ライナー")) {
+                    bData.flyout++;
+                    bData.ab++;
+                    if (result.innings[currentInning]) result.innings[currentInning].outs.flyout++;
+                    if (text.includes("レフト")) bData.directions.left++;
+                    else if (text.includes("センター")) bData.directions.center++;
+                    else if (text.includes("ライト")) bData.directions.right++;
+                    else bData.directions.inner++;
+                } else if (text.includes("アウト") && (text.includes("打者") || text.includes("バッター"))) {
+                    bData.otherout++;
+                    bData.ab++;
+                    if (result.innings[currentInning]) result.innings[currentInning].outs.other++;
+                }
+            }
+        });
+    });
+
+    return result;
+}
+
+function initDetailAnalysisUI() {
+    if (!parsedDetailData) return;
+    
+    const playerSelect = document.getElementById('detail-batting-player-select');
+    if (playerSelect) {
+        const sortedBatters = Object.keys(parsedDetailData.batters).sort();
+        playerSelect.innerHTML = sortedBatters.map(name => `<option value="${name}">${name}</option>`).join('');
+        playerSelect.addEventListener('change', renderDetailBattingAnalysis);
+    }
+    
+    document.querySelectorAll('#detail-analysis-tabs button').forEach(btn => {
+        btn.onclick = function(e) {
+            document.querySelectorAll('#detail-analysis-tabs button').forEach(b => {
+                b.classList.remove('text-blue-600', 'border-blue-600');
+                b.classList.add('text-gray-500', 'border-transparent');
+            });
+            ['inning', 'batting', 'steals', 'errors', 'chance'].forEach(t => document.getElementById(`detail-tab-content-${t}`)?.classList.add('hidden'));
+
+            const target = e.currentTarget;
+            target.classList.remove('text-gray-500', 'border-transparent');
+            target.classList.add('text-blue-600', 'border-blue-600');
+            const tabName = target.dataset.detailTab;
+            document.getElementById(`detail-tab-content-${tabName}`).classList.remove('hidden');
+            
+            renderDetailTab(tabName);
+        };
+    });
+    
+    renderDetailTab('inning');
+}
+
+async function renderDetailTab(tabName) {
+    await loadChartJs();
+    if (detailCharts[tabName]) {
+        detailCharts[tabName].destroy();
+        detailCharts[tabName] = null;
+    }
+    
+    if (tabName === 'inning') renderDetailInningAnalysis();
+    else if (tabName === 'batting') renderDetailBattingAnalysis();
+    else if (tabName === 'steals') renderDetailStealsAnalysis();
+    else if (tabName === 'errors') renderDetailErrorsAnalysis();
+    else if (tabName === 'chance') renderDetailChanceAnalysis();
+}
+
+function renderDetailInningAnalysis() {
+    const inningsData = parsedDetailData.innings;
+    const sortedInnings = Object.keys(inningsData).sort((a,b) => {
+        const parseInn = (s) => {
+            const m = s.match(/(\d+)回(表|裏|ｳﾗ)/);
+            if (!m) return 0;
+            return parseInt(m[1]) * 2 + (m[2] === '表' ? 0 : 1);
+        };
+        return parseInn(a) - parseInn(b);
+    });
+    
+    const runs = sortedInnings.map(inn => inningsData[inn].runs);
+    const strikeouts = sortedInnings.map(inn => inningsData[inn].outs.strikeout);
+    const groundouts = sortedInnings.map(inn => inningsData[inn].outs.groundout);
+    const flyouts = sortedInnings.map(inn => inningsData[inn].outs.flyout);
+    const otherouts = sortedInnings.map(inn => inningsData[inn].outs.other);
+    
+    const ctx = document.getElementById('chart-detail-inning').getContext('2d');
+    detailCharts.inning = new window.Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedInnings,
+            datasets: [
+                { label: '得点数', type: 'line', data: runs, borderColor: 'rgba(255, 99, 132, 1)', backgroundColor: 'rgba(255, 99, 132, 0.2)', borderWidth: 3, yAxisID: 'y1' },
+                { label: '三振アウト', data: strikeouts, backgroundColor: 'rgba(54, 162, 235, 0.8)', stack: 'outs' },
+                { label: 'ゴロアウト', data: groundouts, backgroundColor: 'rgba(255, 206, 86, 0.8)', stack: 'outs' },
+                { label: 'フライアウト', data: flyouts, backgroundColor: 'rgba(75, 192, 192, 0.8)', stack: 'outs' },
+                { label: 'その他アウト', data: otherouts, backgroundColor: 'rgba(153, 102, 255, 0.8)', stack: 'outs' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: { stacked: true, position: 'left', beginAtZero: true, title: { display: true, text: 'アウト数' } },
+                y1: { position: 'right', beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: '得点数' } }
+            }
+        }
+    });
+}
+
+function renderDetailBattingAnalysis() {
+    const playerSelect = document.getElementById('detail-batting-player-select');
+    if (!playerSelect) return;
+    const name = playerSelect.value;
+    if (!name || !parsedDetailData.batters[name]) return;
+    
+    const bData = parsedDetailData.batters[name];
+    if (detailCharts.battingDirection) detailCharts.battingDirection.destroy();
+    
+    const dirData = [bData.directions.left, bData.directions.center, bData.directions.right, bData.directions.inner, bData.directions.other];
+    const ctx = document.getElementById('chart-detail-batting-direction').getContext('2d');
+    detailCharts.battingDirection = new window.Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['レフト方向', 'センター方向', 'ライト方向', '内野/投手', 'その他'],
+            datasets: [{
+                data: dirData,
+                backgroundColor: ['rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)', 'rgba(255, 206, 86, 0.8)', 'rgba(75, 192, 192, 0.8)', 'rgba(153, 102, 255, 0.8)']
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+    
+    const tbody = document.getElementById('detail-batting-stats-tbody');
+    if (tbody) {
+        const total = bData.hits + bData.strikeout + bData.groundout + bData.flyout + (bData.walk || 0) + bData.otherout;
+        const getPct = (val) => total > 0 ? (val / total * 100).toFixed(1) + '%' : '0%';
+        const rows = [
+            { label: '安打(Hit)', count: bData.hits },
+            { label: '三振(K)', count: bData.strikeout },
+            { label: 'ゴロアウト(Ground)', count: bData.groundout },
+            { label: 'フライアウト(Fly)', count: bData.flyout },
+            { label: '四死球(Walk)', count: bData.walk || 0 },
+            { label: 'その他', count: bData.otherout }
+        ];
+        tbody.innerHTML = rows.map(r => `
+            <tr>
+                <td class="p-2 border-b">${r.label}</td>
+                <td class="p-2 border-b text-right">${r.count}</td>
+                <td class="p-2 border-b text-right">${getPct(r.count)}</td>
+            </tr>
+        `).join('');
+    }
+}
+
+function renderDetailStealsAnalysis() {
+    const steals = parsedDetailData.steals;
+    const sortedRunners = Object.keys(steals).sort((a,b) => steals[b].attempts - steals[a].attempts);
+    
+    const success = sortedRunners.map(name => steals[name].success);
+    const fails = sortedRunners.map(name => steals[name].fail);
+    
+    const ctx = document.getElementById('chart-detail-steals').getContext('2d');
+    detailCharts.steals = new window.Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedRunners,
+            datasets: [
+                { label: '盗塁成功', data: success, backgroundColor: 'rgba(75, 192, 192, 0.8)', stack: 'steals' },
+                { label: '盗塁失敗', data: fails, backgroundColor: 'rgba(255, 99, 132, 0.8)', stack: 'steals' }
+            ]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { stacked: true, beginAtZero: true, title: { display: true, text: '盗塁企図数' } },
+                y: { stacked: true }
+            }
+        }
+    });
+    
+    const tbody = document.getElementById('detail-steals-tbody');
+    if (tbody) {
+        const sortedByRate = [...sortedRunners].sort((a,b) => {
+            const rateA = steals[a].attempts > 0 ? steals[a].success / steals[a].attempts : 0;
+            const rateB = steals[b].attempts > 0 ? steals[b].success / steals[b].attempts : 0;
+            return rateB - rateA || steals[b].attempts - steals[a].attempts;
+        });
+        
+        tbody.innerHTML = sortedByRate.map(name => {
+            const s = steals[name];
+            const pct = s.attempts > 0 ? (s.success / s.attempts * 100).toFixed(1) + '%' : '0.0%';
+            return `
+                <tr>
+                    <td class="p-2 border-b font-semibold text-gray-800">${name}</td>
+                    <td class="p-2 border-b text-right text-green-600 font-bold">${s.success}</td>
+                    <td class="p-2 border-b text-right text-red-500">${s.fail}</td>
+                    <td class="p-2 border-b text-right">${s.attempts}</td>
+                    <td class="p-2 border-b text-right font-bold text-blue-600">${pct}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+function renderDetailErrorsAnalysis() {
+    const errPos = parsedDetailData.errors.byPosition;
+    const sortedPos = Object.keys(errPos).sort((a,b) => errPos[b] - errPos[a]);
+    const posCounts = sortedPos.map(pos => errPos[pos]);
+    
+    const ctx = document.getElementById('chart-detail-errors-pos').getContext('2d');
+    detailCharts.errors = new window.Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedPos,
+            datasets: [{
+                label: 'エラー数',
+                data: posCounts,
+                backgroundColor: 'rgba(255, 159, 64, 0.8)',
+                borderColor: 'rgba(255, 159, 64, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } }
+        }
+    });
+    
+    const errInn = parsedDetailData.errors.byInning;
+    const tbody = document.getElementById('detail-errors-inning-tbody');
+    if (tbody) {
+        const sortedInnings = Object.keys(errInn).sort();
+        tbody.innerHTML = sortedInnings.map(inn => `
+            <tr>
+                <td class="p-2 border-b font-semibold">${inn}</td>
+                <td class="p-2 border-b text-right text-red-600 font-bold">${errInn[inn]}</td>
+            </tr>
+        `).join('');
+    }
+}
+
+function renderDetailChanceAnalysis() {
+    const batters = parsedDetailData.batters;
+    const sortedBatters = Object.keys(batters)
+        .sort((a,b) => batters[b].pa - batters[a].pa)
+        .slice(0, 10);
+        
+    const normalAvgs = sortedBatters.map(name => {
+        const b = batters[name];
+        return b.ab > 0 ? (b.hits / b.ab) : 0;
+    });
+    
+    const chanceAvgs = sortedBatters.map(name => {
+        const b = batters[name];
+        return b.chances.pa > 0 ? (b.chances.hits / b.chances.pa) : 0;
+    });
+    
+    const ctx = document.getElementById('chart-detail-chance-avg').getContext('2d');
+    detailCharts.chance = new window.Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: sortedBatters,
+            datasets: [
+                { label: '通常安打率(打席基準)', data: normalAvgs, backgroundColor: 'rgba(54, 162, 235, 0.8)' },
+                { label: '得点圏安打率(打席基準)', data: chanceAvgs, backgroundColor: 'rgba(255, 99, 132, 0.8)' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, min: 0, max: 1 } }
+        }
+    });
+    
+    const counts = parsedDetailData.counts;
+    const sortedCounts = Object.keys(counts)
+        .sort((a,b) => counts[b].pa - counts[a].pa)
+        .slice(0, 8);
+        
+    const countPas = sortedCounts.map(c => counts[c].pa);
+    const countHits = sortedCounts.map(c => counts[c].hits);
+    
+    if (detailCharts.countStats) detailCharts.countStats.destroy();
+    
+    const ctxCount = document.getElementById('chart-detail-count-stats').getContext('2d');
+    detailCharts.countStats = new window.Chart(ctxCount, {
+        type: 'bar',
+        data: {
+            labels: sortedCounts.map(c => c + 'カウント'),
+            datasets: [
+                { label: '打席数', data: countPas, backgroundColor: 'rgba(153, 102, 255, 0.6)' },
+                { label: '安打数', data: countHits, backgroundColor: 'rgba(75, 192, 192, 0.8)' }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true } }
+        }
+    });
 }
