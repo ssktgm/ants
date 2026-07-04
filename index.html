@@ -511,11 +511,11 @@
             <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-wrap gap-4 items-center justify-between">
                 <!-- パターン保存・読込 -->
                 <div class="flex items-center gap-2 flex-wrap">
-                    <label for="sim-pattern-select" class="text-sm font-bold text-gray-700">配置パターン:</label>
+                    <label for="sim-pattern-select" class="text-sm font-bold text-gray-700">保存データ:</label>
                     <select id="sim-pattern-select" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 min-w-[200px]">
                         <option value="">新規作成...</option>
                     </select>
-                    <input type="text" id="sim-pattern-name-input" placeholder="パターン名を入力" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                    <input type="text" id="sim-pattern-name-input" placeholder="データ名を入力" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
                     <button id="btn-save-sim-pattern" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition shadow-sm">保存</button>
                     <button id="btn-delete-sim-pattern" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold px-3 py-1.5 rounded-lg text-sm transition">削除</button>
                 </div>
@@ -533,20 +533,14 @@
                 </div>
             </div>
 
-            <!-- メインエリア: 左側グラウンド、右側選手管理 -->
+            <!-- メインエリア: 左側グラウンド・交代アナウンス、右側操作パネル -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow items-stretch">
-                <!-- 左側（2/3）: イニング操作とグラウンド -->
-                <div class="lg:col-span-2 flex flex-col gap-4 bg-white p-4 rounded-xl shadow border border-gray-200">
-                    <!-- イニングタブ -->
-                    <div class="flex items-center justify-between border-b pb-2 flex-wrap gap-2">
-                        <div class="flex items-center gap-1 overflow-x-auto pb-1" id="sim-inning-tabs">
-                            <!-- JSで動的に追加される: 1回、2回... -->
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <button id="btn-add-sim-inning" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold px-3 py-1.5 rounded-lg text-xs transition">＋ 回を追加</button>
-                            <button id="btn-copy-prev-inning" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold px-3 py-1.5 rounded-lg text-xs transition">前の回からコピー</button>
-                            <button id="btn-delete-sim-inning" class="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1.5 rounded-lg transition" title="現在のイニングを削除">🗑️ 削除</button>
-                        </div>
+                <!-- 左側（2/3）: グラウンドと交代アナウンスログ -->
+                <div class="lg:col-span-2 flex flex-col gap-6 bg-white p-4 rounded-xl shadow border border-gray-200">
+                    <!-- グラウンドタイトル -->
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span class="text-sm font-bold text-amber-800 bg-amber-50 px-3 py-1 rounded-full">配置シミュレーション</span>
+                        <div class="text-xs text-gray-500">※基本配置に有効な交代を重ね合わせて描画しています。</div>
                     </div>
 
                     <!-- グラウンド描画コンテナ -->
@@ -581,44 +575,134 @@
                             <!-- 各ポジションが絶対配置される -->
                         </div>
                     </div>
+
+                    <!-- 適用中の交代アナウンスログエリア -->
+                    <div class="mt-4 border-t pt-4">
+                        <h3 class="font-bold text-gray-800 flex items-center gap-2 mb-3">
+                            <span class="text-lg">📢</span><span>適用中の交代アナウンス（概要）</span>
+                        </h3>
+                        <div id="sim-announcement-logs" class="space-y-2 max-h-[150px] overflow-y-auto p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                            <!-- 適用されている交代ログがアナウンス形式で並ぶ -->
+                            <p class="text-xs text-gray-400 text-center py-2">適用中の交代はありません（基本配置のままです）。</p>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- 右側（1/3）: 選手管理 -->
+                <!-- 右側（1/3）: 操作・設定パネル -->
                 <div class="flex flex-col gap-6">
-                    <!-- 選手登録・クイック追加 -->
-                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
-                        <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
-                            <span>👥</span><span>選手登録</span>
-                        </h3>
-                        <div class="flex gap-2">
-                            <input type="text" id="sim-new-player-input" placeholder="選手名を入力" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-grow focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
-                            <button id="btn-add-sim-player" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition">追加</button>
-                        </div>
-                        <p class="text-xs text-gray-400 mt-2">※選手名はブラウザに自動保存されます。</p>
+                    <!-- タブ切り替えボタン -->
+                    <div class="flex border rounded-lg overflow-hidden bg-white shadow-sm shrink-0">
+                        <button id="tab-btn-setup" class="flex-1 py-2 px-3 text-center text-sm font-bold bg-amber-600 text-white transition">スタメン設定</button>
+                        <button id="tab-btn-subrules" class="flex-1 py-2 px-3 text-center text-sm font-bold bg-white text-gray-700 border-l hover:bg-gray-50 transition font-bold">交代ルール管理</button>
                     </div>
 
-                    <!-- 選手リスト・ベンチ -->
-                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col flex-grow">
-                        <div class="flex justify-between items-center mb-3">
-                            <h3 class="font-bold text-gray-800 flex items-center gap-1">
-                                <span>📋</span><span>登録選手一覧</span>
+                    <!-- パネル1: スタメン設定 & 選手一覧 -->
+                    <div id="panel-setup" class="flex flex-col gap-6 flex-grow">
+                        <!-- 選手登録 -->
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                            <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
+                                <span>👥</span><span>選手登録</span>
                             </h3>
-                            <span class="text-xs text-gray-500 font-bold" id="sim-player-count">0 人</span>
+                            <div class="flex gap-2">
+                                <input type="text" id="sim-new-player-input" placeholder="選手名を入力" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-grow focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                                <button id="btn-add-sim-player" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition">追加</button>
+                            </div>
                         </div>
+
                         <!-- 選手一覧リスト -->
-                        <div id="sim-players-list" class="flex flex-wrap gap-2 max-h-[300px] overflow-y-auto p-1 border border-gray-100 rounded-lg flex-grow">
-                            <!-- JSで選手リストが挿入される -->
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col flex-grow min-h-[220px]">
+                            <div class="flex justify-between items-center mb-3">
+                                <h3 class="font-bold text-gray-800 flex items-center gap-1">
+                                    <span>📋</span><span>登録選手一覧</span>
+                                </h3>
+                                <span class="text-xs text-gray-500 font-bold" id="sim-player-count">0 人</span>
+                            </div>
+                            <div id="sim-players-list" class="flex flex-wrap gap-2 max-h-[250px] overflow-y-auto p-1 border border-gray-100 rounded-lg flex-grow">
+                                <!-- 選手リスト -->
+                            </div>
+                            <p class="text-[11px] text-gray-400 mt-2">※選手バッジをドラッグまたはタップして、グラウンド上の守備位置に配置（スタメン決定）します。</p>
                         </div>
-                        <p class="text-xs text-gray-400 mt-2">タップ（またはドラッグ）して守備位置に配置します。名前の右の [×] で削除できます。</p>
+
+                        <!-- ベンチ選手リスト -->
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                            <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
+                                <span>🪑</span><span>ベンチ (控え選手)</span>
+                            </h3>
+                            <div id="sim-bench-list" class="flex flex-wrap gap-2 min-h-[80px] p-2 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                                <!-- 控え選手 -->
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- ベンチ（控え）選手表示エリア -->
-                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
-                        <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
-                            <span>🪑</span><span>ベンチ (控え選手)</span>
-                        </h3>
-                        <div id="sim-bench-list" class="flex flex-wrap gap-2 min-h-[80px] p-2 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                            <!-- 配置されていない選手がここに並ぶ -->
+                    <!-- パネル2: 交代ルール管理 -->
+                    <div id="panel-subrules" class="hidden flex flex-col gap-6 flex-grow">
+                        <!-- 交代ルール追加フォーム -->
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col gap-4">
+                            <h3 class="font-bold text-gray-800 border-b pb-2 flex items-center gap-1">
+                                <span>➕</span><span>交代イベントを定義</span>
+                            </h3>
+                            
+                            <!-- 交代種別セレクト -->
+                            <div>
+                                <label for="rule-type-select" class="block text-xs font-bold text-gray-500 mb-1">交代の種類</label>
+                                <select id="rule-type-select" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                                    <option value="swap">① ポジション入れ替え (2名間)</option>
+                                    <option value="sub">② 選手交代 (スタメン ➔ 控え)</option>
+                                    <option value="rotation">③ 連鎖移動 (ローテーション)</option>
+                                </select>
+                            </div>
+
+                            <!-- 各種別に応じた動的入力フォーム -->
+                            <div class="border-t pt-3 flex flex-col gap-3">
+                                <!-- ①入れ替え(swap)用フォーム -->
+                                <div id="form-swap" class="flex flex-col gap-2">
+                                    <div class="flex gap-2 items-center">
+                                        <select id="swap-pos1" class="flex-1 border rounded p-1.5 text-xs bg-white"></select>
+                                        <span class="text-xs text-gray-500 font-bold">⇔</span>
+                                        <select id="swap-pos2" class="flex-1 border rounded p-1.5 text-xs bg-white"></select>
+                                    </div>
+                                </div>
+
+                                <!-- ②選手交代(sub)用フォーム -->
+                                <div id="form-sub" class="hidden flex flex-col gap-2">
+                                    <div class="flex flex-col gap-1.5">
+                                        <label for="sub-pos" class="text-[11px] font-bold text-gray-500">対象ポジション (退くスタメン選手)</label>
+                                        <select id="sub-pos" class="border rounded p-1.5 text-xs bg-white"></select>
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <label for="sub-player-in" class="text-[11px] font-bold text-gray-500">入る選手 (ベンチから選択)</label>
+                                        <select id="sub-player-in" class="border rounded p-1.5 text-xs bg-white"></select>
+                                    </div>
+                                </div>
+
+                                <!-- ③連鎖移動(rotation)用フォーム -->
+                                <div id="form-rotation" class="hidden flex flex-col gap-2">
+                                    <div class="flex justify-between items-center">
+                                        <span class="text-[11px] font-bold text-gray-500">移動する順序 (玉突き)</span>
+                                        <button id="btn-add-rot-pos" class="bg-gray-100 hover:bg-gray-200 border text-gray-700 px-2 py-0.5 rounded text-[10px] font-bold transition">＋ 位置追加</button>
+                                    </div>
+                                    <div id="rot-pos-list" class="flex flex-col gap-1.5 max-h-[120px] overflow-y-auto border p-2 bg-gray-50 rounded-lg">
+                                        <!-- 動的にポジションセレクトボックスが追加される -->
+                                    </div>
+                                    <span class="text-[10px] text-gray-400">※最後に追加したポジションから最初に追加したポジションに循環移動します (例: 1-4-5-1)。</span>
+                                </div>
+
+                                <button id="btn-create-sub-rule" class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2 rounded-lg text-sm transition mt-2 shadow-sm">
+                                    この交代を追加する
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 交代定義一覧（トグル付き） -->
+                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col flex-grow min-h-[220px]">
+                            <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
+                                <span>🔄</span><span>定義された交代リスト</span>
+                            </h3>
+                            <div id="sim-sub-rules-list" class="flex-grow space-y-2 max-h-[280px] overflow-y-auto p-1">
+                                <!-- 登録された交代定義がON/OFFスイッチ付きで並ぶ -->
+                                <p class="text-xs text-gray-400 text-center py-4">登録された交代はありません。</p>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 border-t pt-2">※チェックを入れると交代が適用されます。競合する交代は同時に有効にできません。</p>
                         </div>
                     </div>
                 </div>

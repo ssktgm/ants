@@ -247,3 +247,120 @@
   color: white;
   box-shadow: 0 2px 4px rgba(245, 158, 11, 0.2);
 }
+
+.sim-player-badge.retired {
+  background-color: #e2e8f0 !important;
+  color: #94a3b8 !important;
+  border-color: #cbd5e1 !important;
+  cursor: not-allowed !important;
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
+.sim-player-badge.retired .sim-player-delete-btn {
+  display: none !important;
+}
+
+/* 交代ルール表示用のカード */
+.sub-rule-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: all 0.2s;
+}
+
+.sub-rule-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.sub-rule-card.active {
+  border-color: #f59e0b; /* amber-500 */
+  background: #fffbeb; /* amber-50 */
+}
+
+/* トグルスイッチ（チェックボックスのカスタムデザイン） */
+.sim-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 22px;
+}
+
+.sim-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.sim-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e1;
+  transition: .3s;
+  border-radius: 34px;
+}
+
+.sim-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .3s;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+input:checked + .sim-slider {
+  background-color: #f59e0b; /* amber-500 */
+}
+
+input:checked + .sim-slider:before {
+  transform: translateX(22px);
+}
+
+input:disabled + .sim-slider {
+  background-color: #e2e8f0;
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 交代アナウンスログ */
+.announcement-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: #78350f; /* amber-900 */
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #fffbeb; /* amber-50 */
+  border-left: 4px solid #f59e0b; /* amber-500 */
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+
+/* ローテーションポジション選択要素 */
+.rot-pos-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  width: 100%;
+}

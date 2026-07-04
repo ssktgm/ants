@@ -6,14 +6,14 @@ import { switchAuthScreen } from './main.js';
 
 // 状態管理
 let players = []; // { id, name }
-let patterns = []; // { id, name, mode (9|10), innings: [{ inningIndex, positions: { p: playerId, ... } }] }
+let patterns = []; // { id, name, mode, basePositions: { p: playerId, ... }, customSubstitutions: [{ id, type, active, details }] }
 let currentPatternId = null;
-let currentInningIndex = 0; // 0-indexed (0 = 1回, 1 = 2回...)
+let activeTab = 'setup'; // 'setup' or 'subrules'
 let selectedPlayerId = null; // タップ選択用 (選手リストまたはグラウンド上のスロット)
-let selectedSourcePos = null; // タップ選択の移動元ポジション ('players-list', 'bench', またはポジション名 'p', '1b'...)
+let selectedSourcePos = null; // タップ選択の移動元
 let simulatorMode = 9; // 9人制または10人制
 
-// ポジション定義
+// 守備位置の日本語ラベル
 const POSITION_LABELS = {
     p: '投手',
     c: '捕手',
@@ -24,13 +24,26 @@ const POSITION_LABELS = {
     lf: '左翼手',
     cf: '中堅手',
     rf: '右翼手',
-    lcf: '左中堅', // 10人制用
-    rcf: '右中堅'  // 10人制用
+    lcf: '左中堅',
+    rcf: '右中堅'
 };
 
-// 9人制で使用するポジション
+// 守備番号 (スコアブック・アナウンス用)
+const POSITION_NUMBERS = {
+    p: '1',
+    c: '2',
+    '1b': '3',
+    '2b': '4',
+    '3b': '5',
+    ss: '6',
+    lf: '7',
+    cf: '8',
+    rf: '9',
+    lcf: '10',
+    rcf: '11'
+};
+
 const POSITIONS_9 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'cf', 'rf'];
-// 10人制で使用するポジション
 const POSITIONS_10 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'lcf', 'rcf', 'rf'];
 
 // LocalStorage キー
@@ -38,13 +51,12 @@ const STORAGE_PLAYERS_KEY = 'ants_sim_players';
 const STORAGE_PATTERNS_KEY = 'ants_sim_patterns';
 
 /**
- * 初期化関数 (main.js から呼び出す)
+ * 初期化関数
  */
 export function initPositionSimulator() {
     loadFromLocalStorage();
     setupEventListeners();
     
-    // 初期表示設定
     if (patterns.length > 0) {
         currentPatternId = patterns[0].id;
         const select = document.getElementById('sim-pattern-select');
@@ -58,6 +70,8 @@ export function initPositionSimulator() {
     }
     
     updateModeUI();
+    switchTab('setup');
+    initRuleFormSelects();
     renderSimulator();
 }
 
@@ -107,24 +121,19 @@ function savePatternsToLocalStorage() {
 }
 
 /**
- * 新規パターンを作成
+ * 新規パターン (保存データ) の作成
  */
 function createNewPattern(name = '') {
     const id = 'pat_' + Date.now();
     const newPat = {
         id: id,
-        name: name || '新規パターン',
+        name: name || '新規データ',
         mode: simulatorMode,
-        innings: [
-            {
-                inningIndex: 0,
-                positions: {} // ポジション名: 選手ID
-            }
-        ]
+        basePositions: {}, // ポジションキー: 選手ID (基本スタメン)
+        customSubstitutions: [] // 交代イベントのリスト
     };
     patterns.push(newPat);
     currentPatternId = id;
-    currentInningIndex = 0;
     savePatternsToLocalStorage();
     updatePatternSelectOptions();
     
@@ -134,16 +143,11 @@ function createNewPattern(name = '') {
     if (nameInput) nameInput.value = newPat.name;
 }
 
-/**
- * パターン選択セレクトボックスの更新
- */
 function updatePatternSelectOptions() {
     const select = document.getElementById('sim-pattern-select');
     if (!select) return;
     
-    // 「新規作成」の選択肢を残してクリア
     select.innerHTML = '<option value="">新規作成...</option>';
-    
     patterns.forEach(p => {
         const option = document.createElement('option');
         option.value = p.id;
@@ -156,9 +160,6 @@ function updatePatternSelectOptions() {
     }
 }
 
-/**
- * 9人制/10人制モードのUI切り替え
- */
 function updateModeUI() {
     const btn9 = document.getElementById('btn-sim-mode-9');
     const btn10 = document.getElementById('btn-sim-mode-10');
@@ -173,48 +174,103 @@ function updateModeUI() {
 }
 
 /**
+ * 交代を重ね合わせた最終的なポジション配置を算出する
+ */
+function getPositionsToDraw(pattern) {
+    const currentPositions = { ...pattern.basePositions };
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    
+    // 現在のモードで使用するポジションのみに制限
+    Object.keys(currentPositions).forEach(k => {
+        if (!activePositions.includes(k)) {
+            delete currentPositions[k];
+        }
+    });
+    
+    // 有効な交代ルールを順次適用
+    const activeSubs = (pattern.customSubstitutions || []).filter(s => s.active);
+    
+    activeSubs.forEach(sub => {
+        if (sub.type === 'swap') {
+            const { pos1, pos2 } = sub.details;
+            if (activePositions.includes(pos1) && activePositions.includes(pos2)) {
+                const temp = currentPositions[pos1];
+                currentPositions[pos1] = currentPositions[pos2];
+                currentPositions[pos2] = temp;
+            }
+        } else if (sub.type === 'sub') {
+            const { pos, inPlayerId } = sub.details;
+            if (activePositions.includes(pos)) {
+                currentPositions[pos] = inPlayerId;
+            }
+        } else if (sub.type === 'rotation') {
+            const keys = sub.details.positions;
+            // モードで有効なポジションのみ処理
+            const validKeys = keys.filter(k => activePositions.includes(k));
+            if (validKeys.length > 1) {
+                const originalVals = validKeys.map(k => currentPositions[k]);
+                for (let i = 0; i < validKeys.length; i++) {
+                    const prevVal = originalVals[(i - 1 + validKeys.length) % validKeys.length];
+                    currentPositions[validKeys[i]] = prevVal;
+                }
+            }
+        }
+    });
+    
+    return currentPositions;
+}
+
+/**
+ * 選手がすでに交代により退いている（再出場不可）かを調べる
+ * 有効な 選手交代 (sub) ルールで 'outPlayerId' になっている選手
+ */
+function getRetiredPlayerIds(pattern) {
+    const retired = new Set();
+    const activeSubs = (pattern.customSubstitutions || []).filter(s => s.active);
+    activeSubs.forEach(sub => {
+        if (sub.type === 'sub') {
+            if (sub.details.outPlayerId) {
+                retired.add(sub.details.outPlayerId);
+            }
+        }
+    });
+    return retired;
+}
+
+/**
  * 全体レンダリング
  */
 function renderSimulator() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
-    // イニングデータの整合性をチェック
-    if (!currentPattern.innings || currentPattern.innings.length === 0) {
-        currentPattern.innings = [{ inningIndex: 0, positions: {} }];
-    }
-    if (currentInningIndex >= currentPattern.innings.length) {
-        currentInningIndex = currentPattern.innings.length - 1;
-    }
+    // 交代適用後のポジション算出
+    const drawPositions = getPositionsToDraw(currentPattern);
+    const retiredPlayerIds = getRetiredPlayerIds(currentPattern);
     
-    const currentInningData = currentPattern.innings[currentInningIndex];
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
-    
-    // 1. 配置済み選手IDのリスト
-    const assignedPlayerIds = new Set();
-    Object.keys(currentInningData.positions).forEach(pos => {
-        if (activePositions.includes(pos) && currentInningData.positions[pos]) {
-            assignedPlayerIds.add(currentInningData.positions[pos]);
-        }
-    });
+    // 1. 配置済み選手IDのリスト (グラウンドに立っている選手)
+    const assignedPlayerIds = new Set(Object.values(drawPositions).filter(Boolean));
     
     // 2. 選手リストの描画
-    renderPlayersList(assignedPlayerIds);
+    renderPlayersList(assignedPlayerIds, retiredPlayerIds);
     
     // 3. ベンチ（控え選手）の描画
-    renderBenchList(assignedPlayerIds);
+    renderBenchList(assignedPlayerIds, retiredPlayerIds);
     
-    // 4. イニングタブの描画
-    renderInningTabs(currentPattern.innings);
+    // 4. グラウンドポジションスロットの描画
+    renderFieldPositions(drawPositions, currentPattern);
     
-    // 5. グラウンドポジションスロットの描画
-    renderFieldPositions(currentInningData, currentPattern);
+    // 5. 交代ルールリストの描画
+    renderSubRulesList(currentPattern);
+    
+    // 6. アナウンスログの描画
+    renderAnnouncementLogs(currentPattern);
 }
 
 /**
  * 登録選手リストの描画
  */
-function renderPlayersList(assignedPlayerIds) {
+function renderPlayersList(assignedPlayerIds, retiredPlayerIds) {
     const listEl = document.getElementById('sim-players-list');
     const countEl = document.getElementById('sim-player-count');
     if (!listEl) return;
@@ -229,29 +285,29 @@ function renderPlayersList(assignedPlayerIds) {
     
     players.forEach(player => {
         const isAssigned = assignedPlayerIds.has(player.id);
+        const isRetired = retiredPlayerIds.has(player.id);
         const isSelected = selectedPlayerId === player.id && selectedSourcePos === 'players-list';
         
         const badge = document.createElement('div');
-        badge.className = `sim-player-badge ${isAssigned ? 'assigned' : ''} ${isSelected ? 'selected' : ''}`;
+        badge.className = `sim-player-badge ${isAssigned ? 'assigned' : ''} ${isRetired ? 'retired' : ''} ${isSelected ? 'selected' : ''}`;
         badge.setAttribute('data-player-id', player.id);
         
-        if (!isAssigned) {
+        if (!isAssigned && !isRetired) {
             badge.setAttribute('draggable', 'true');
             badge.addEventListener('dragstart', handleDragStart);
         }
         
         badge.innerHTML = `
-            <span>${escapeHTML(player.name)}</span>
+            <span>${escapeHTML(player.name)}${isRetired ? ' (交代済)' : ''}</span>
             <span class="sim-player-delete-btn" data-player-id="${player.id}">×</span>
         `;
         
-        // タップ/クリックイベント
         badge.addEventListener('click', (e) => {
             if (e.target.classList.contains('sim-player-delete-btn')) {
                 handleDeletePlayer(player.id);
                 return;
             }
-            if (isAssigned) return;
+            if (isAssigned || isRetired) return;
             handleSelectPlayer(player.id, 'players-list');
         });
         
@@ -262,13 +318,14 @@ function renderPlayersList(assignedPlayerIds) {
 /**
  * ベンチ（控え選手）の描画
  */
-function renderBenchList(assignedPlayerIds) {
+function renderBenchList(assignedPlayerIds, retiredPlayerIds) {
     const benchEl = document.getElementById('sim-bench-list');
     if (!benchEl) return;
     
     benchEl.innerHTML = '';
     
-    const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id));
+    // 現在フィールドに立っておらず、かつ交代で退いてもいない選手
+    const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
     
     if (benchPlayers.length === 0) {
         benchEl.innerHTML = '<span class="text-xs text-gray-400 p-1">控え選手はいません。</span>';
@@ -295,34 +352,9 @@ function renderBenchList(assignedPlayerIds) {
 }
 
 /**
- * イニングタブの描画
- */
-function renderInningTabs(innings) {
-    const container = document.getElementById('sim-inning-tabs');
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    innings.forEach((inn, idx) => {
-        const tab = document.createElement('button');
-        tab.className = `sim-inning-tab ${idx === currentInningIndex ? 'active' : ''}`;
-        tab.textContent = `${idx + 1}回`;
-        
-        tab.addEventListener('click', () => {
-            currentInningIndex = idx;
-            selectedPlayerId = null;
-            selectedSourcePos = null;
-            renderSimulator();
-        });
-        
-        container.appendChild(tab);
-    });
-}
-
-/**
  * グラウンド上のポジションスロットの描画
  */
-function renderFieldPositions(currentInningData, currentPattern) {
+function renderFieldPositions(drawPositions, currentPattern) {
     const container = document.getElementById('sim-field-positions');
     if (!container) return;
     
@@ -331,40 +363,20 @@ function renderFieldPositions(currentInningData, currentPattern) {
     const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
     
     activePositions.forEach(pos => {
-        const playerId = currentInningData.positions[pos];
+        const playerId = drawPositions[pos];
         const player = players.find(p => p.id === playerId);
         
-        // 前のイニングと比較してポジション変更（赤字）判定
-        let isChanged = false;
-        if (currentInningIndex > 0 && playerId) {
-            const prevInningData = currentPattern.innings[currentInningIndex - 1];
-            // 前の回での同じ選手のポジションを調べる
-            let prevPos = null;
-            if (prevInningData && prevInningData.positions) {
-                Object.keys(prevInningData.positions).forEach(k => {
-                    if (prevInningData.positions[k] === playerId) {
-                        prevPos = k;
-                    }
-                });
-            }
-            // 前の回とポジションが異なる場合、赤字にする
-            if (prevPos !== pos) {
-                isChanged = true;
-            }
-        }
-        
+        // 交代適用によって基本スタメンから変更されているかをチェック
+        const isChanged = currentPattern.basePositions[pos] !== playerId && playerId;
         const isSelected = selectedPlayerId && selectedSourcePos === pos;
         
         const slot = document.createElement('div');
         slot.className = `sim-pos-slot pos-${pos} ${isSelected ? 'swap-selected' : ''}`;
         slot.setAttribute('data-position', pos);
         
-        // ドラッグ＆ドロップ用イベント
         slot.addEventListener('dragover', handleDragOver);
         slot.addEventListener('dragleave', handleDragLeave);
         slot.addEventListener('drop', handleDrop);
-        
-        // タップ/クリック用イベント
         slot.addEventListener('click', () => {
             handleFieldSlotClick(pos);
         });
@@ -380,13 +392,615 @@ function renderFieldPositions(currentInningData, currentPattern) {
     });
 }
 
+/**
+ * 交代定義リストの描画
+ */
+function renderSubRulesList(pattern) {
+    const listEl = document.getElementById('sim-sub-rules-list');
+    if (!listEl) return;
+    
+    listEl.innerHTML = '';
+    const rules = pattern.customSubstitutions || [];
+    
+    if (rules.length === 0) {
+        listEl.innerHTML = '<p class="text-xs text-gray-400 text-center py-4">登録された交代はありません。</p>';
+        return;
+    }
+    
+    rules.forEach(rule => {
+        const card = document.createElement('div');
+        card.className = `sub-rule-card ${rule.active ? 'active' : ''}`;
+        
+        const title = getRuleSummaryText(rule, true);
+        
+        card.innerHTML = `
+            <div class="flex items-center gap-2">
+                <label class="sim-switch">
+                    <input type="checkbox" ${rule.active ? 'checked' : ''} data-rule-id="${rule.id}">
+                    <span class="sim-slider"></span>
+                </label>
+                <div class="flex flex-col">
+                    <span class="text-xs font-bold text-gray-800">${title.code}</span>
+                    <span class="text-[11px] text-gray-600 leading-tight">${title.desc}</span>
+                </div>
+            </div>
+            <button class="text-gray-400 hover:text-red-500 font-bold text-sm px-2 py-1 transition btn-delete-rule" data-rule-id="${rule.id}">×</button>
+        `;
+        
+        // トグル切り替えイベント
+        card.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+            handleToggleSubRule(rule.id, e.target.checked);
+        });
+        
+        // 削除イベント
+        card.querySelector('.btn-delete-rule').addEventListener('click', () => {
+            handleDeleteSubRule(rule.id);
+        });
+        
+        listEl.appendChild(card);
+    });
+}
+
+/**
+ * アナウンスログの描画
+ */
+function renderAnnouncementLogs(pattern) {
+    const container = document.getElementById('sim-announcement-logs');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    const activeRules = (pattern.customSubstitutions || []).filter(s => s.active);
+    
+    if (activeRules.length === 0) {
+        container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">適用中の交代はありません（基本配置のままです）。</p>';
+        return;
+    }
+    
+    activeRules.forEach(rule => {
+        const item = document.createElement('div');
+        item.className = 'announcement-item';
+        
+        const textObj = getRuleSummaryText(rule, false);
+        item.innerHTML = `
+            <span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0">${textObj.code}</span>
+            <span class="text-xs font-semibold truncate text-amber-900">${textObj.fullDesc}</span>
+        `;
+        
+        container.appendChild(item);
+    });
+}
+
+/**
+ * 交代ルールをアナウンス風テキストにパースする
+ */
+function getRuleSummaryText(rule, shortVersion = false) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const base = currentPattern ? currentPattern.basePositions : {};
+    
+    if (rule.type === 'swap') {
+        const { pos1, pos2 } = rule.details;
+        const num1 = POSITION_NUMBERS[pos1] || '?';
+        const num2 = POSITION_NUMBERS[pos2] || '?';
+        
+        const p1Id = base[pos1];
+        const p2Id = base[pos2];
+        const name1 = players.find(p => p.id === p1Id)?.name || '未配置';
+        const name2 = players.find(p => p.id === p2Id)?.name || '未配置';
+        
+        return {
+            code: `${num1}-${num2}-${num1}`,
+            desc: `${POSITION_LABELS[pos1]}(${escapeHTML(name1)}) ⇔ ${POSITION_LABELS[pos2]}(${escapeHTML(name2)})`,
+            fullDesc: `${POSITION_LABELS[pos1]}の${escapeHTML(name1)}が${POSITION_LABELS[pos2]}、${POSITION_LABELS[pos2]}の${escapeHTML(name2)}が${POSITION_LABELS[pos1]}`
+        };
+    } else if (rule.type === 'sub') {
+        const { pos, outPlayerId, inPlayerId } = rule.details;
+        const num = POSITION_NUMBERS[pos] || '?';
+        
+        const outName = players.find(p => p.id === outPlayerId)?.name || '未配置';
+        const inName = players.find(p => p.id === inPlayerId)?.name || '交代選手';
+        
+        return {
+            code: `${num}`,
+            desc: `${POSITION_LABELS[pos]}(${escapeHTML(outName)}) ➔ ${escapeHTML(inName)}`,
+            fullDesc: `${POSITION_LABELS[pos]}の${escapeHTML(outName)}に代わって、${escapeHTML(inName)}が${POSITION_LABELS[pos]}`
+        };
+    } else if (rule.type === 'rotation') {
+        const keys = rule.details.positions;
+        const numbers = keys.map(k => POSITION_NUMBERS[k] || '?');
+        const numCode = [...numbers, numbers[0]].join('-'); // 例: 1-4-5-1
+        
+        const names = keys.map(k => {
+            const pId = base[k];
+            return players.find(p => p.id === pId)?.name || '未配置';
+        });
+        
+        // 概要テキスト
+        const descChain = keys.map((k, i) => `${POSITION_LABELS[k]}(${escapeHTML(names[i])})`).join(' ➔ ');
+        
+        // アナウンス風詳細テキスト
+        const announcementChain = keys.map((k, i) => {
+            const nextKey = keys[(i + 1) % keys.length];
+            return `${POSITION_LABELS[k]}の${escapeHTML(names[i])}が${POSITION_LABELS[nextKey]}`;
+        }).join('、');
+        
+        return {
+            code: numCode,
+            desc: descChain,
+            fullDesc: announcementChain
+        };
+    }
+    
+    return { code: '?', desc: '不明な交代', fullDesc: '不明な交代' };
+}
+
 // ==========================================
-// イベントハンドラー (D&D / タップ / CRUD)
+// 交代作成フォームのセレクトボックス初期化
+// ==========================================
+function initRuleFormSelects() {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    const base = currentPattern.basePositions || {};
+    
+    const swapPos1 = document.getElementById('swap-pos1');
+    const swapPos2 = document.getElementById('swap-pos2');
+    const subPos = document.getElementById('sub-pos');
+    const subPlayerIn = document.getElementById('sub-player-in');
+    
+    if (swapPos1 && swapPos2) {
+        swapPos1.innerHTML = '';
+        swapPos2.innerHTML = '';
+        activePositions.forEach(pos => {
+            const pId = base[pos];
+            const name = players.find(p => p.id === pId)?.name || '未配置';
+            
+            const opt = document.createElement('option');
+            opt.value = pos;
+            opt.textContent = `${POSITION_LABELS[pos]} (${name})`;
+            
+            swapPos1.appendChild(opt.cloneNode(true));
+            swapPos2.appendChild(opt.cloneNode(true));
+        });
+        if (swapPos2.options.length > 1) {
+            swapPos2.selectedIndex = 1;
+        }
+    }
+    
+    if (subPos) {
+        subPos.innerHTML = '';
+        activePositions.forEach(pos => {
+            const pId = base[pos];
+            const name = players.find(p => p.id === pId)?.name || '未配置';
+            
+            const opt = document.createElement('option');
+            opt.value = pos;
+            opt.textContent = `${POSITION_LABELS[pos]} (${name})`;
+            subPos.appendChild(opt);
+        });
+    }
+    
+    if (subPlayerIn) {
+        subPlayerIn.innerHTML = '';
+        // 現在フィールドに立っていない選手 (基本スタメンで配置されていない選手)
+        const assignedBaseIds = new Set(Object.values(base).filter(Boolean));
+        const retiredIds = getRetiredPlayerIds(currentPattern);
+        
+        const availableIn = players.filter(p => !assignedBaseIds.has(p.id) && !retiredIds.has(p.id));
+        
+        if (availableIn.length === 0) {
+            subPlayerIn.innerHTML = '<option value="">控え選手なし</option>';
+        } else {
+            availableIn.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.name;
+                subPlayerIn.appendChild(opt);
+            });
+        }
+    }
+    
+    // 連鎖交代 (rotation) フォームの初期化
+    resetRotationForm();
+}
+
+/**
+ * 連鎖移動 (rotation) のポジション追加
+ */
+function resetRotationForm() {
+    const list = document.getElementById('rot-pos-list');
+    if (!list) return;
+    list.innerHTML = '';
+    
+    // 最初期状態で2つのポジション枠をデフォルトで設置する (連鎖には最低2ポジション必要)
+    addRotationPosSelector();
+    addRotationPosSelector();
+}
+
+function addRotationPosSelector() {
+    const list = document.getElementById('rot-pos-list');
+    if (!list) return;
+    
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const base = currentPattern ? currentPattern.basePositions : {};
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    
+    const container = document.createElement('div');
+    container.className = 'rot-pos-item';
+    
+    const select = document.createElement('select');
+    select.className = 'flex-grow border rounded p-1 text-xs bg-white focus:ring-1 focus:ring-amber-500';
+    
+    activePositions.forEach(pos => {
+        const pId = base[pos];
+        const name = players.find(p => p.id === pId)?.name || '未配置';
+        const opt = document.createElement('option');
+        opt.value = pos;
+        opt.textContent = `${POSITION_LABELS[pos]} (${name})`;
+        select.appendChild(opt);
+    });
+    
+    // 適当に初期位置をずらす
+    const existingCount = list.querySelectorAll('.rot-pos-item').length;
+    if (existingCount < select.options.length) {
+        select.selectedIndex = existingCount;
+    }
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'text-red-500 hover:text-red-700 font-bold px-1.5 text-xs';
+    deleteBtn.textContent = '×';
+    deleteBtn.onclick = () => {
+        // 最低2つの入力枠を確保
+        if (list.querySelectorAll('.rot-pos-item').length > 2) {
+            container.remove();
+        } else {
+            alert('連鎖移動には最低2つのポジションが必要です。');
+        }
+    };
+    
+    container.appendChild(select);
+    container.appendChild(deleteBtn);
+    list.appendChild(container);
+}
+
+// ==========================================
+// 交代の適用・解除ロジック & 競合チェック
 // ==========================================
 
 /**
- * 選手名の追加
+ * 交代ルール適用時の競合チェック
+ * 有効にしようとするルールが、既に有効な他のルールと衝突（同じ選手またはポジションを重複変更）しないか確認する
  */
+function handleToggleSubRule(ruleId, active) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    const rule = currentPattern.customSubstitutions.find(s => s.id === ruleId);
+    if (!rule) return;
+    
+    if (active) {
+        // 競合チェックを実行
+        const conflict = checkSubstitutionConflict(rule, currentPattern);
+        if (conflict) {
+            alert(`適用エラー: 他の有効な交代と競合するため適用できません。\n理由: ${conflict}`);
+            // トグルをOFFに戻す
+            renderSimulator();
+            return;
+        }
+    }
+    
+    rule.active = active;
+    savePatternsToLocalStorage();
+    initRuleFormSelects(); // 交代可能選手のリストアップに影響があるため再構築
+    renderSimulator();
+}
+
+/**
+ * 競合検出のコアロジック
+ */
+function checkSubstitutionConflict(newRule, pattern) {
+    const activeRules = (pattern.customSubstitutions || []).filter(s => s.active && s.id !== newRule.id);
+    const base = pattern.basePositions || {};
+    
+    // 1. 新しいルールが関わる「ポジション」と「選手」の抽出
+    const newPositions = new Set();
+    const newPlayerIds = new Set();
+    
+    const extractDetails = (rule, posSet, playerSet) => {
+        if (rule.type === 'swap') {
+            posSet.add(rule.details.pos1);
+            posSet.add(rule.details.pos2);
+            if (base[rule.details.pos1]) playerSet.add(base[rule.details.pos1]);
+            if (base[rule.details.pos2]) playerSet.add(base[rule.details.pos2]);
+        } else if (rule.type === 'sub') {
+            posSet.add(rule.details.pos);
+            if (rule.details.outPlayerId) playerSet.add(rule.details.outPlayerId);
+            if (rule.details.inPlayerId) playerSet.add(rule.details.inPlayerId);
+        } else if (rule.type === 'rotation') {
+            rule.details.positions.forEach(pos => {
+                posSet.add(pos);
+                if (base[pos]) playerSet.add(base[pos]);
+            });
+        }
+    };
+    
+    extractDetails(newRule, newPositions, newPlayerIds);
+    
+    // 2. 既存の有効ルールとの重複チェック
+    for (const activeRule of activeRules) {
+        const activePositions = new Set();
+        const activePlayerIds = new Set();
+        extractDetails(activeRule, activePositions, activePlayerIds);
+        
+        // ポジションの重複
+        for (const pos of newPositions) {
+            if (activePositions.has(pos)) {
+                return `ポジション「${POSITION_LABELS[pos]}」が既に他の有効な交代で変更されています。`;
+            }
+        }
+        
+        // 選手の重複
+        for (const pId of newPlayerIds) {
+            if (activePlayerIds.has(pId)) {
+                const name = players.find(p => p.id === pId)?.name || '選手';
+                return `選手「${name}」が既に他の有効な交代に関与しています。`;
+            }
+        }
+    }
+    
+    return null; // 競合なし
+}
+
+/**
+ * 交代ルールの新規作成
+ */
+function handleCreateSubRule() {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    const typeSelect = document.getElementById('rule-type-select');
+    const type = typeSelect ? typeSelect.value : 'swap';
+    
+    let details = {};
+    
+    if (type === 'swap') {
+        const pos1 = document.getElementById('swap-pos1').value;
+        const pos2 = document.getElementById('swap-pos2').value;
+        
+        if (pos1 === pos2) {
+            alert('同じポジション同士は入れ替えられません。');
+            return;
+        }
+        
+        details = { pos1, pos2 };
+    } else if (type === 'sub') {
+        const pos = document.getElementById('sub-pos').value;
+        const inPlayerId = document.getElementById('sub-player-in').value;
+        
+        if (!inPlayerId) {
+            alert('入る控え選手を選択してください。');
+            return;
+        }
+        
+        const outPlayerId = currentPattern.basePositions[pos];
+        if (!outPlayerId) {
+            alert('対象のポジションに基本スタメンが配置されていません。');
+            return;
+        }
+        
+        details = { pos, outPlayerId, inPlayerId };
+    } else if (type === 'rotation') {
+        const selects = document.querySelectorAll('#rot-pos-list select');
+        const rotPositions = Array.from(selects).map(sel => sel.value);
+        
+        // 重複チェック
+        const uniquePos = new Set(rotPositions);
+        if (uniquePos.size !== rotPositions.length) {
+            alert('連鎖移動内に同じポジションを重複して指定することはできません。');
+            return;
+        }
+        
+        details = { positions: rotPositions };
+    }
+    
+    const newRule = {
+        id: 'rule_' + Date.now(),
+        type: type,
+        active: false, // 初期はOFF状態で追加
+        details: details
+    };
+    
+    if (!currentPattern.customSubstitutions) {
+        currentPattern.customSubstitutions = [];
+    }
+    
+    currentPattern.customSubstitutions.push(newRule);
+    savePatternsToLocalStorage();
+    
+    // フォームとUIの更新
+    initRuleFormSelects();
+    renderSimulator();
+    
+    // 交代ルール管理タブの表示に切り替え
+    switchTab('subrules');
+}
+
+/**
+ * 交代ルールの削除
+ */
+function handleDeleteSubRule(ruleId) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    currentPattern.customSubstitutions = currentPattern.customSubstitutions.filter(s => s.id !== ruleId);
+    savePatternsToLocalStorage();
+    initRuleFormSelects();
+    renderSimulator();
+}
+
+// ==========================================
+// タブ切り替え制御
+// ==========================================
+function switchTab(tabName) {
+    activeTab = tabName;
+    const tabSetup = document.getElementById('tab-btn-setup');
+    const tabSubrules = document.getElementById('tab-btn-subrules');
+    const panelSetup = document.getElementById('panel-setup');
+    const panelSubrules = document.getElementById('panel-subrules');
+    
+    if (tabName === 'setup') {
+        tabSetup.className = 'flex-1 py-2 px-3 text-center text-sm font-bold bg-amber-600 text-white transition';
+        tabSubrules.className = 'flex-1 py-2 px-3 text-center text-sm font-bold bg-white text-gray-700 border-l hover:bg-gray-50 transition';
+        panelSetup.classList.remove('hidden');
+        panelSubrules.classList.add('hidden');
+    } else {
+        tabSetup.className = 'flex-1 py-2 px-3 text-center text-sm font-bold bg-white text-gray-700 transition';
+        tabSubrules.className = 'flex-1 py-2 px-3 text-center text-sm font-bold bg-amber-600 text-white border-l hover:bg-gray-50 transition font-bold';
+        panelSetup.classList.add('hidden');
+        panelSubrules.classList.remove('hidden');
+    }
+}
+
+// ==========================================
+// スタメン基本配置設定の D&D / タップロジック
+// ==========================================
+
+function handleDragStart(e) {
+    const playerId = e.currentTarget.getAttribute('data-player-id');
+    e.dataTransfer.setData('text/plain', playerId);
+    
+    let source = 'bench';
+    if (e.currentTarget.parentNode.id === 'sim-players-list') {
+        source = 'players-list';
+    }
+    e.dataTransfer.setData('source-pos', source);
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.currentTarget.classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    const playerId = e.dataTransfer.getData('text/plain');
+    const targetPos = e.currentTarget.getAttribute('data-position');
+    
+    if (!playerId || !targetPos) return;
+    
+    assignPlayerToMasterPosition(playerId, targetPos);
+}
+
+/**
+ * 選手を基本配置（スタメン）に登録する
+ */
+function assignPlayerToMasterPosition(playerId, targetPos) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    // 基本配置の設定はスタメン決定であるため、交代ルールに影響しないようにする
+    let currentPosOfPlayer = null;
+    Object.keys(currentPattern.basePositions).forEach(pos => {
+        if (currentPattern.basePositions[pos] === playerId) {
+            currentPosOfPlayer = pos;
+        }
+    });
+    
+    const previousPlayerAtTarget = currentPattern.basePositions[targetPos];
+    
+    if (currentPosOfPlayer) {
+        // スタメン内の移動 (スワップ)
+        currentPattern.basePositions[currentPosOfPlayer] = previousPlayerAtTarget;
+        currentPattern.basePositions[targetPos] = playerId;
+    } else {
+        // 新規スタメン配置
+        currentPattern.basePositions[targetPos] = playerId;
+    }
+    
+    savePatternsToLocalStorage();
+    
+    selectedPlayerId = null;
+    selectedSourcePos = null;
+    
+    initRuleFormSelects(); // 選択可能な交代対象を更新するためにリビルド
+    renderSimulator();
+}
+
+/**
+ * タップ選択時の処理
+ */
+function handleSelectPlayer(playerId, source) {
+    if (selectedPlayerId === playerId && selectedSourcePos === source) {
+        selectedPlayerId = null;
+        selectedSourcePos = null;
+    } else {
+        selectedPlayerId = playerId;
+        selectedSourcePos = source;
+    }
+    renderSimulator();
+}
+
+/**
+ * 基本配置のグラウンド枠タップ処理
+ */
+function handleFieldSlotClick(clickedPos) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    const playerAtSlot = currentPattern.basePositions[clickedPos];
+    
+    if (selectedPlayerId) {
+        if (selectedSourcePos !== 'players-list' && selectedSourcePos !== 'bench') {
+            // グラウンド内でのスワップ
+            const playerAtSource = currentPattern.basePositions[selectedSourcePos];
+            
+            currentPattern.basePositions[selectedSourcePos] = playerAtSlot;
+            currentPattern.basePositions[clickedPos] = playerAtSource;
+            
+            savePatternsToLocalStorage();
+            selectedPlayerId = null;
+            selectedSourcePos = null;
+            initRuleFormSelects();
+            renderSimulator();
+        } else {
+            // 新規配置
+            assignPlayerToMasterPosition(selectedPlayerId, clickedPos);
+        }
+    } else {
+        if (playerAtSlot) {
+            selectedPlayerId = playerAtSlot;
+            selectedSourcePos = clickedPos;
+            renderSimulator();
+        }
+    }
+}
+
+/**
+ * 基本配置から選手を外す
+ */
+function removePlayerFromMasterPosition(pos) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    currentPattern.basePositions[pos] = null;
+    savePatternsToLocalStorage();
+    selectedPlayerId = null;
+    selectedSourcePos = null;
+    
+    initRuleFormSelects();
+    renderSimulator();
+}
+
+// ==========================================
+// 選手管理 (登録・削除)
+// ==========================================
+
 function handleAddPlayer() {
     const input = document.getElementById('sim-new-player-input');
     if (!input) return;
@@ -394,7 +1008,6 @@ function handleAddPlayer() {
     const name = input.value.trim();
     if (!name) return;
     
-    // 重複チェック
     if (players.some(p => p.name === name)) {
         alert('同じ名前の選手が既に登録されています。');
         return;
@@ -408,34 +1021,41 @@ function handleAddPlayer() {
     players.push(newPlayer);
     savePlayersToLocalStorage();
     input.value = '';
+    
+    initRuleFormSelects();
     renderSimulator();
 }
 
-/**
- * 選手名の削除
- */
 function handleDeletePlayer(playerId) {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
     
-    if (!confirm(`選手「${player.name}」を削除しますか？\n（全ての配置パターンからも削除されます）`)) {
+    if (!confirm(`選手「${player.name}」を削除しますか？\n（全てのデータ配置・交代設定からも削除されます）`)) {
         return;
     }
     
-    // 選手をリストから削除
     players = players.filter(p => p.id !== playerId);
     savePlayersToLocalStorage();
     
-    // 各パターンの配置データからも削除
     patterns.forEach(pat => {
-        pat.innings.forEach(inn => {
-            Object.keys(inn.positions).forEach(pos => {
-                if (inn.positions[pos] === playerId) {
-                    inn.positions[pos] = null;
-                }
-            });
+        // スタメン配置から削除
+        Object.keys(pat.basePositions).forEach(pos => {
+            if (pat.basePositions[pos] === playerId) {
+                pat.basePositions[pos] = null;
+            }
         });
+        
+        // 交代ルールから削除、または交代ルール自体の無効化
+        if (pat.customSubstitutions) {
+            pat.customSubstitutions = pat.customSubstitutions.filter(rule => {
+                if (rule.type === 'sub') {
+                    return rule.details.outPlayerId !== playerId && rule.details.inPlayerId !== playerId;
+                }
+                return true; // swap, rotationはポジションベースなので維持されるが、基本配置から選手が消えると表示は空になる
+            });
+        }
     });
+    
     savePatternsToLocalStorage();
     
     if (selectedPlayerId === playerId) {
@@ -443,246 +1063,21 @@ function handleDeletePlayer(playerId) {
         selectedSourcePos = null;
     }
     
+    initRuleFormSelects();
     renderSimulator();
 }
 
-/**
- * ドラッグ開始
- */
-function handleDragStart(e) {
-    const playerId = e.currentTarget.getAttribute('data-player-id');
-    e.dataTransfer.setData('text/plain', playerId);
-    
-    // ドラッグ元のポジションを特定
-    let source = 'bench';
-    if (e.currentTarget.parentNode.id === 'sim-players-list') {
-        source = 'players-list';
-    }
-    e.dataTransfer.setData('source-pos', source);
-}
+// ==========================================
+// 保存データの読み込み・保存・JSON操作
+// ==========================================
 
-/**
- * ドラッグオーバー
- */
-function handleDragOver(e) {
-    e.preventDefault();
-    e.currentTarget.classList.add('drag-over');
-}
-
-/**
- * ドラッグアウト
- */
-function handleDragLeave(e) {
-    e.currentTarget.classList.remove('drag-over');
-}
-
-/**
- * ドロップされたときの処理
- */
-function handleDrop(e) {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-    
-    const playerId = e.dataTransfer.getData('text/plain');
-    const targetPos = e.currentTarget.getAttribute('data-position');
-    
-    if (!playerId || !targetPos) return;
-    
-    assignPlayerToPosition(playerId, targetPos);
-}
-
-/**
- * 選手をポジションに配置する（共通処理）
- */
-function assignPlayerToPosition(playerId, targetPos) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    const currentInningData = currentPattern.innings[currentInningIndex];
-    
-    // 1. すでに他のポジションにその選手が配置されているか調べる (スワップ処理のため)
-    let currentPosOfPlayer = null;
-    Object.keys(currentInningData.positions).forEach(pos => {
-        if (currentInningData.positions[pos] === playerId) {
-            currentPosOfPlayer = pos;
-        }
-    });
-    
-    const previousPlayerAtTarget = currentInningData.positions[targetPos];
-    
-    if (currentPosOfPlayer) {
-        // 同一イニング内のポジション移動 (入れ替え)
-        currentInningData.positions[currentPosOfPlayer] = previousPlayerAtTarget;
-        currentInningData.positions[targetPos] = playerId;
-    } else {
-        // 新規配置
-        currentInningData.positions[targetPos] = playerId;
-    }
-    
-    savePatternsToLocalStorage();
-    
-    // 選択状態を解除
-    selectedPlayerId = null;
-    selectedSourcePos = null;
-    
-    renderSimulator();
-}
-
-/**
- * 選手リスト/ベンチでのタップ選択処理
- */
-function handleSelectPlayer(playerId, source) {
-    if (selectedPlayerId === playerId && selectedSourcePos === source) {
-        // 再度タップで解除
-        selectedPlayerId = null;
-        selectedSourcePos = null;
-    } else {
-        selectedPlayerId = playerId;
-        selectedSourcePos = source;
-    }
-    renderSimulator();
-}
-
-/**
- * グラウンド上のスロットがクリックされた時の処理 (タップ配置・スワップ)
- */
-function handleFieldSlotClick(clickedPos) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    const currentInningData = currentPattern.innings[currentInningIndex];
-    const playerAtSlot = currentInningData.positions[clickedPos];
-    
-    // 1. 選手が選択されている状態で、スロットをタップした場合
-    if (selectedPlayerId) {
-        // 移動元が別のポジションスロットの場合（グラウンド内のポジション入れ替え）
-        if (selectedSourcePos !== 'players-list' && selectedSourcePos !== 'bench') {
-            const playerAtSource = currentInningData.positions[selectedSourcePos];
-            
-            currentInningData.positions[selectedSourcePos] = playerAtSlot;
-            currentInningData.positions[clickedPos] = playerAtSource;
-            
-            savePatternsToLocalStorage();
-            selectedPlayerId = null;
-            selectedSourcePos = null;
-            renderSimulator();
-        } else {
-            // リスト/ベンチから空き、または既存のスロットへ配置
-            assignPlayerToPosition(selectedPlayerId, clickedPos);
-        }
-    } else {
-        // 2. 選手が選択されていない状態で、配置済みのスロットをタップした場合
-        if (playerAtSlot) {
-            // そのスロットを選択状態にする（他のスロットとの入れ替えや、ベンチへの戻しのため）
-            selectedPlayerId = playerAtSlot;
-            selectedSourcePos = clickedPos;
-            renderSimulator();
-        }
-    }
-}
-
-/**
- * グラウンド上の選手を外してベンチに戻す（タップ選択解除）
- * 選択状態のポジションを再度タップするか、ベンチエリアをタップしたときに外す
- */
-function removePlayerFromPosition(pos) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    const currentInningData = currentPattern.innings[currentInningIndex];
-    currentInningData.positions[pos] = null;
-    
-    savePatternsToLocalStorage();
-    selectedPlayerId = null;
-    selectedSourcePos = null;
-    renderSimulator();
-}
-
-/**
- * 回（イニング）の追加
- */
-function handleAddInning() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    const newInningIndex = currentPattern.innings.length;
-    currentPattern.innings.push({
-        inningIndex: newInningIndex,
-        positions: {}
-    });
-    
-    savePatternsToLocalStorage();
-    currentInningIndex = newInningIndex;
-    selectedPlayerId = null;
-    selectedSourcePos = null;
-    renderSimulator();
-}
-
-/**
- * 回（イニング）の削除
- */
-function handleDeleteInning() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    if (currentPattern.innings.length <= 1) {
-        alert('これ以上イニングを削除できません。');
-        return;
-    }
-    
-    if (!confirm(`${currentInningIndex + 1}回を削除しますか？`)) {
-        return;
-    }
-    
-    // 削除してインデックスを再構成
-    currentPattern.innings.splice(currentInningIndex, 1);
-    currentPattern.innings.forEach((inn, idx) => {
-        inn.inningIndex = idx;
-    });
-    
-    savePatternsToLocalStorage();
-    
-    if (currentInningIndex >= currentPattern.innings.length) {
-        currentInningIndex = currentPattern.innings.length - 1;
-    }
-    
-    selectedPlayerId = null;
-    selectedSourcePos = null;
-    renderSimulator();
-}
-
-/**
- * 前の回からコピー
- */
-function handleCopyPrevInning() {
-    if (currentInningIndex === 0) {
-        alert('1回にはコピー元の「前の回」がありません。');
-        return;
-    }
-    
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    const prevInningData = currentPattern.innings[currentInningIndex - 1];
-    const currentInningData = currentPattern.innings[currentInningIndex];
-    
-    // ディープコピー
-    currentInningData.positions = { ...prevInningData.positions };
-    
-    savePatternsToLocalStorage();
-    renderSimulator();
-}
-
-/**
- * 配置パターンの保存
- */
 function handleSavePattern() {
     const nameInput = document.getElementById('sim-pattern-name-input');
     if (!nameInput) return;
     
     const name = nameInput.value.trim();
     if (!name) {
-        alert('パターン名を入力してください。');
+        alert('データ名を入力してください。');
         return;
     }
     
@@ -692,18 +1087,15 @@ function handleSavePattern() {
         currentPattern.mode = simulatorMode;
         savePatternsToLocalStorage();
         updatePatternSelectOptions();
-        alert(`パターン「${name}」を保存しました。`);
+        alert(`データ「${name}」を保存しました。`);
     }
 }
 
-/**
- * 配置パターンの削除
- */
 function handleDeletePattern() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
-    if (!confirm(`配置パターン「${currentPattern.name}」を削除しますか？`)) {
+    if (!confirm(`データ「${currentPattern.name}」を削除しますか？`)) {
         return;
     }
     
@@ -720,36 +1112,33 @@ function handleDeletePattern() {
     
     const select = document.getElementById('sim-pattern-select');
     if (select) select.value = currentPatternId;
+    
     const nameInput = document.getElementById('sim-pattern-name-input');
     const pat = patterns.find(p => p.id === currentPatternId);
     if (nameInput && pat) nameInput.value = pat.name;
     
-    currentInningIndex = 0;
     selectedPlayerId = null;
     selectedSourcePos = null;
     
+    updateModeUI();
+    initRuleFormSelects();
     renderSimulator();
 }
 
-/**
- * 配置パターンの切り替え
- */
 function handlePatternSelectChange(e) {
     const targetId = e.target.value;
     
     if (!targetId) {
-        // 「新規作成」を選択した場合
-        const name = prompt('新しいパターン名を入力してください:');
+        const name = prompt('新しいデータ名を入力してください:');
         if (name === null) {
-            // キャンセルされた場合
             e.target.value = currentPatternId || '';
             return;
         }
         createNewPattern(name);
+        initRuleFormSelects();
         renderSimulator();
     } else {
         currentPatternId = targetId;
-        currentInningIndex = 0;
         
         const pattern = patterns.find(p => p.id === currentPatternId);
         if (pattern) {
@@ -762,19 +1151,17 @@ function handlePatternSelectChange(e) {
         selectedSourcePos = null;
         
         updateModeUI();
+        initRuleFormSelects();
         renderSimulator();
     }
 }
 
-/**
- * JSONエクスポート
- */
 function handleExportJSON() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     const exportData = {
-        version: 'ants-sim-1.0',
+        version: 'ants-sim-2.0',
         players: players,
         pattern: currentPattern
     };
@@ -790,9 +1177,6 @@ function handleExportJSON() {
     URL.revokeObjectURL(url);
 }
 
-/**
- * JSONインポート
- */
 function handleImportJSON(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -801,13 +1185,13 @@ function handleImportJSON(e) {
     reader.onload = function(evt) {
         try {
             const data = JSON.parse(evt.target.result);
-            if (data.version !== 'ants-sim-1.0' || !data.players || !data.pattern) {
+            if (data.version !== 'ants-sim-2.0' && data.version !== 'ants-sim-1.0') {
                 alert('ファイル形式が正しくありません。');
                 return;
             }
             
-            if (confirm('インポートを実行しますか？\n※既存の選手リストと配置パターンが更新されます。')) {
-                // 選手リストのマージ（IDが重複しないようにする）
+            if (confirm('インポートを実行しますか？\n※既存の選手リストと配置データがマージ/追加されます。')) {
+                // 選手リストのマージ
                 data.players.forEach(newP => {
                     if (!players.some(p => p.id === newP.id || p.name === newP.name)) {
                         players.push(newP);
@@ -815,27 +1199,42 @@ function handleImportJSON(e) {
                 });
                 savePlayersToLocalStorage();
                 
-                // パターンの追加
-                const newPat = data.pattern;
-                // 新しいIDを発行して追加
-                newPat.id = 'pat_' + Date.now();
-                newPat.name = newPat.name + ' (インポート)';
-                patterns.push(newPat);
-                currentPatternId = newPat.id;
-                currentInningIndex = 0;
-                simulatorMode = newPat.mode || 9;
+                // バージョン2.0のデータ構造をロード
+                if (data.version === 'ants-sim-2.0') {
+                    const newPat = data.pattern;
+                    newPat.id = 'pat_' + Date.now();
+                    newPat.name = newPat.name + ' (インポート)';
+                    patterns.push(newPat);
+                    currentPatternId = newPat.id;
+                    simulatorMode = newPat.mode || 9;
+                } else {
+                    // 旧バージョン (1.0) のイニングデータを移行
+                    const oldPat = data.pattern;
+                    const baseInning = oldPat.innings && oldPat.innings[0] ? oldPat.innings[0].positions : {};
+                    
+                    const newPat = {
+                        id: 'pat_' + Date.now(),
+                        name: oldPat.name + ' (旧移行)',
+                        mode: oldPat.mode || 9,
+                        basePositions: baseInning,
+                        customSubstitutions: []
+                    };
+                    patterns.push(newPat);
+                    currentPatternId = newPat.id;
+                    simulatorMode = newPat.mode || 9;
+                }
                 
                 savePatternsToLocalStorage();
                 updatePatternSelectOptions();
                 updateModeUI();
+                initRuleFormSelects();
                 renderSimulator();
                 alert('インポートが完了しました。');
             }
         } catch (err) {
             console.error(err);
-            alert('ファイルの読み込みに失敗しました。JSONファイルが壊れている可能性があります。');
+            alert('ファイルの読み込みに失敗しました。');
         }
-        // inputファイルをクリア
         e.target.value = '';
     };
     reader.readAsText(file);
@@ -845,7 +1244,29 @@ function handleImportJSON(e) {
 // イベントリスナー設定
 // ==========================================
 function setupEventListeners() {
-    // 選手登録関連
+    // タブ制御
+    document.getElementById('tab-btn-setup')?.addEventListener('click', () => switchTab('setup'));
+    document.getElementById('tab-btn-subrules')?.addEventListener('click', () => switchTab('subrules'));
+    
+    // 交代種別切り替え
+    document.getElementById('rule-type-select')?.addEventListener('change', (e) => {
+        const val = e.target.value;
+        document.getElementById('form-swap').classList.add('hidden');
+        document.getElementById('form-sub').classList.add('hidden');
+        document.getElementById('form-rotation').classList.add('hidden');
+        
+        if (val === 'swap') document.getElementById('form-swap').classList.remove('hidden');
+        else if (val === 'sub') document.getElementById('form-sub').classList.remove('hidden');
+        else if (val === 'rotation') document.getElementById('form-rotation').classList.remove('hidden');
+    });
+    
+    // 連鎖移動ポジション追加
+    document.getElementById('btn-add-rot-pos')?.addEventListener('click', addRotationPosSelector);
+    
+    // 交代ルール追加実行
+    document.getElementById('btn-create-sub-rule')?.addEventListener('click', handleCreateSubRule);
+    
+    // 選手追加
     document.getElementById('btn-add-sim-player')?.addEventListener('click', handleAddPlayer);
     document.getElementById('sim-new-player-input')?.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleAddPlayer();
@@ -856,22 +1277,15 @@ function setupEventListeners() {
     document.getElementById('btn-save-sim-pattern')?.addEventListener('click', handleSavePattern);
     document.getElementById('btn-delete-sim-pattern')?.addEventListener('click', handleDeletePattern);
     
-    // イニング操作
-    document.getElementById('btn-add-sim-inning')?.addEventListener('click', handleAddInning);
-    document.getElementById('btn-delete-sim-inning')?.addEventListener('click', handleDeleteInning);
-    document.getElementById('btn-copy-prev-inning')?.addEventListener('click', handleCopyPrevInning);
-    
     // モード切替
     document.getElementById('btn-sim-mode-9')?.addEventListener('click', () => {
         if (simulatorMode !== 9) {
             simulatorMode = 9;
             updateModeUI();
-            
-            // 現在のパターンのモードを更新
             const pat = patterns.find(p => p.id === currentPatternId);
             if (pat) pat.mode = 9;
             savePatternsToLocalStorage();
-            
+            initRuleFormSelects();
             renderSimulator();
         }
     });
@@ -880,12 +1294,10 @@ function setupEventListeners() {
         if (simulatorMode !== 10) {
             simulatorMode = 10;
             updateModeUI();
-            
-            // 現在のパターンのモードを更新
             const pat = patterns.find(p => p.id === currentPatternId);
             if (pat) pat.mode = 10;
             savePatternsToLocalStorage();
-            
+            initRuleFormSelects();
             renderSimulator();
         }
     });
@@ -894,7 +1306,7 @@ function setupEventListeners() {
     document.getElementById('btn-export-sim')?.addEventListener('click', handleExportJSON);
     document.getElementById('import-sim-input')?.addEventListener('change', handleImportJSON);
     
-    // メニューに戻る/ログアウト
+    // 戻る/ログアウト
     document.getElementById('btn-back-to-menu-sim')?.addEventListener('click', () => {
         selectedPlayerId = null;
         selectedSourcePos = null;
@@ -905,17 +1317,14 @@ function setupEventListeners() {
         document.getElementById('btn-logout')?.click();
     });
     
-    // ベンチの背景タップで、グラウンドの選択選手を外す
+    // ベンチ背景タップでスタメン解除
     document.getElementById('sim-bench-list')?.addEventListener('click', (e) => {
         if (e.target.id === 'sim-bench-list' && selectedPlayerId && selectedSourcePos !== 'players-list' && selectedSourcePos !== 'bench') {
-            removePlayerFromPosition(selectedSourcePos);
+            removePlayerFromMasterPosition(selectedSourcePos);
         }
     });
 }
 
-// ==========================================
-// ユーティリティ
-// ==========================================
 function escapeHTML(str) {
     if (typeof str !== 'string') return '';
     return str.replace(/[&<>'"]/g, tag => ({
