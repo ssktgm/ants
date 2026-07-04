@@ -226,8 +226,13 @@ function getPositionsToDraw(pattern) {
                 currentPositions[pos2] = temp;
             }
         } else if (sub.type === 'sub') {
-            const { pos, inPlayerId } = sub.details;
-            if (activePositions.includes(pos)) {
+            const { outPlayerId, inPlayerId, pos } = sub.details;
+            if (outPlayerId) {
+                const posKey = Object.keys(currentPositions).find(k => currentPositions[k] === outPlayerId);
+                if (posKey) {
+                    currentPositions[posKey] = inPlayerId;
+                }
+            } else if (pos && activePositions.includes(pos)) {
                 currentPositions[pos] = inPlayerId;
             }
         } else if (sub.type === 'rotation') {
@@ -434,11 +439,47 @@ function renderSubRulesList(pattern) {
         return;
     }
     
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    let tempPositions = { ...(pattern.basePositions || {}) };
+    
     rules.forEach(rule => {
+        // カードのテキスト用に、このルールが適用される時点（またはその直前）の tempPositions を渡す
+        const title = getRuleSummaryText(rule, tempPositions, true);
+        
+        // もしこのルールが有効なら、tempPositions を更新して次のルールの状態にする
+        if (rule.active) {
+            if (rule.type === 'swap') {
+                const { pos1, pos2 } = rule.details;
+                if (activePositions.includes(pos1) && activePositions.includes(pos2)) {
+                    const temp = tempPositions[pos1];
+                    tempPositions[pos1] = tempPositions[pos2];
+                    tempPositions[pos2] = temp;
+                }
+            } else if (rule.type === 'sub') {
+                const { outPlayerId, inPlayerId, pos } = rule.details;
+                if (outPlayerId) {
+                    const posKey = Object.keys(tempPositions).find(k => tempPositions[k] === outPlayerId);
+                    if (posKey) {
+                        tempPositions[posKey] = inPlayerId;
+                    }
+                } else if (pos && activePositions.includes(pos)) {
+                    tempPositions[pos] = inPlayerId;
+                }
+            } else if (rule.type === 'rotation') {
+                const keys = rule.details.positions;
+                const validKeys = keys.filter(k => activePositions.includes(k));
+                if (validKeys.length > 1) {
+                    const originalVals = validKeys.map(k => tempPositions[k]);
+                    for (let i = 0; i < validKeys.length; i++) {
+                        const prevVal = originalVals[(i - 1 + validKeys.length) % validKeys.length];
+                        tempPositions[validKeys[i]] = prevVal;
+                    }
+                }
+            }
+        }
+        
         const card = document.createElement('div');
         card.className = `sub-rule-card ${rule.active ? 'active' : ''}`;
-        
-        const title = getRuleSummaryText(rule, true);
         
         card.innerHTML = `
             <div class="flex items-center gap-2">
@@ -454,12 +495,10 @@ function renderSubRulesList(pattern) {
             <button class="text-gray-400 hover:text-red-500 font-bold text-sm px-2 py-1 transition btn-delete-rule" data-rule-id="${rule.id}">×</button>
         `;
         
-        // トグル切り替えイベント
         card.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
             handleToggleSubRule(rule.id, e.target.checked);
         });
         
-        // 削除イベント
         card.querySelector('.btn-delete-rule').addEventListener('click', () => {
             handleDeleteSubRule(rule.id);
         });
@@ -483,16 +522,49 @@ function renderAnnouncementLogs(pattern) {
         return;
     }
     
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    let tempPositions = { ...(pattern.basePositions || {}) };
+    
     activeRules.forEach(rule => {
+        // 直前状態の tempPositions を渡してテキストを取得
+        const textObj = getRuleSummaryText(rule, tempPositions, false);
+        
+        // tempPositions を更新
+        if (rule.type === 'swap') {
+            const { pos1, pos2 } = rule.details;
+            if (activePositions.includes(pos1) && activePositions.includes(pos2)) {
+                const temp = tempPositions[pos1];
+                tempPositions[pos1] = tempPositions[pos2];
+                tempPositions[pos2] = temp;
+            }
+        } else if (rule.type === 'sub') {
+            const { outPlayerId, inPlayerId, pos } = rule.details;
+            if (outPlayerId) {
+                const posKey = Object.keys(tempPositions).find(k => tempPositions[k] === outPlayerId);
+                if (posKey) {
+                    tempPositions[posKey] = inPlayerId;
+                }
+            } else if (pos && activePositions.includes(pos)) {
+                tempPositions[pos] = inPlayerId;
+            }
+        } else if (rule.type === 'rotation') {
+            const keys = rule.details.positions;
+            const validKeys = keys.filter(k => activePositions.includes(k));
+            if (validKeys.length > 1) {
+                const originalVals = validKeys.map(k => tempPositions[k]);
+                for (let i = 0; i < validKeys.length; i++) {
+                    const prevVal = originalVals[(i - 1 + validKeys.length) % validKeys.length];
+                    tempPositions[validKeys[i]] = prevVal;
+                }
+            }
+        }
+        
         const item = document.createElement('div');
         item.className = 'announcement-item';
-        
-        const textObj = getRuleSummaryText(rule, false);
         item.innerHTML = `
             <span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0">${textObj.code}</span>
             <span class="text-xs font-semibold truncate text-amber-900">${textObj.fullDesc}</span>
         `;
-        
         container.appendChild(item);
     });
 }
@@ -500,9 +572,8 @@ function renderAnnouncementLogs(pattern) {
 /**
  * 交代ルールをアナウンス風テキストにパースする
  */
-function getRuleSummaryText(rule, shortVersion = false) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    const base = currentPattern ? currentPattern.basePositions : {};
+function getRuleSummaryText(rule, tempPositions, shortVersion = false) {
+    const base = tempPositions || {};
     
     if (rule.type === 'swap') {
         const { pos1, pos2 } = rule.details;
@@ -520,16 +591,28 @@ function getRuleSummaryText(rule, shortVersion = false) {
             fullDesc: `${POSITION_LABELS[pos1]}の${escapeHTML(name1)}が${POSITION_LABELS[pos2]}、${POSITION_LABELS[pos2]}の${escapeHTML(name2)}が${POSITION_LABELS[pos1]}`
         };
     } else if (rule.type === 'sub') {
-        const { pos, outPlayerId, inPlayerId } = rule.details;
-        const num = POSITION_NUMBERS[pos] || '?';
+        const { outPlayerId, inPlayerId, pos } = rule.details;
+        
+        // outPlayerId がその時点で守っているポジションを特定
+        let detectedPos = null;
+        if (outPlayerId) {
+            detectedPos = Object.keys(base).find(k => base[k] === outPlayerId);
+        }
+        // 旧データ互換
+        if (!detectedPos && pos) {
+            detectedPos = pos;
+        }
+        
+        const num = detectedPos ? POSITION_NUMBERS[detectedPos] : '?';
+        const posLabel = detectedPos ? POSITION_LABELS[detectedPos] : '守備';
         
         const outName = players.find(p => p.id === outPlayerId)?.name || '未配置';
         const inName = players.find(p => p.id === inPlayerId)?.name || '交代選手';
         
         return {
             code: `${num}`,
-            desc: `${POSITION_LABELS[pos]}(${escapeHTML(outName)}) ➔ ${escapeHTML(inName)}`,
-            fullDesc: `${POSITION_LABELS[pos]}の${escapeHTML(outName)}に代わって、${escapeHTML(inName)}が${POSITION_LABELS[pos]}`
+            desc: `${posLabel}(${escapeHTML(outName)}) ➔ ${escapeHTML(inName)}`,
+            fullDesc: `${posLabel}の${escapeHTML(outName)}に代わって、${escapeHTML(inName)}が${posLabel}`
         };
     } else if (rule.type === 'rotation') {
         const keys = rule.details.positions;
@@ -570,29 +653,32 @@ function initRuleFormSelects() {
     const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
     const base = currentPattern.basePositions || {};
     
-    const subPos = document.getElementById('sub-pos');
+    const subPlayerOut = document.getElementById('sub-player-out');
     const subPlayerIn = document.getElementById('sub-player-in');
     
-    if (subPos) {
-        subPos.innerHTML = '';
+    // その時点の交代適用後の配置を取得
+    const currentPositions = getPositionsToDraw(currentPattern);
+    const assignedPlayerIds = new Set(Object.values(currentPositions).filter(Boolean));
+    const retiredIds = getRetiredPlayerIds(currentPattern);
+    
+    if (subPlayerOut) {
+        subPlayerOut.innerHTML = '';
         activePositions.forEach(pos => {
-            const pId = base[pos];
-            const name = players.find(p => p.id === pId)?.name || '未配置';
-            
-            const opt = document.createElement('option');
-            opt.value = pos;
-            opt.textContent = `${POSITION_LABELS[pos]} (${name})`;
-            subPos.appendChild(opt);
+            const pId = currentPositions[pos];
+            if (pId) {
+                const name = players.find(p => p.id === pId)?.name || '未配置';
+                const opt = document.createElement('option');
+                opt.value = pId;
+                opt.textContent = `${name} (${POSITION_LABELS[pos]})`;
+                subPlayerOut.appendChild(opt);
+            }
         });
     }
     
     if (subPlayerIn) {
         subPlayerIn.innerHTML = '';
-        // 現在フィールドに立っていない選手 (基本スタメンで配置されていない選手)
-        const assignedBaseIds = new Set(Object.values(base).filter(Boolean));
-        const retiredIds = getRetiredPlayerIds(currentPattern);
-        
-        const availableIn = players.filter(p => !assignedBaseIds.has(p.id) && !retiredIds.has(p.id));
+        // 現在グラウンドに立っておらず、退いてもいない選手
+        const availableIn = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredIds.has(p.id));
         
         if (availableIn.length === 0) {
             subPlayerIn.innerHTML = '<option value="">控え選手なし</option>';
@@ -650,50 +736,74 @@ function handleToggleSubRule(ruleId, active) {
  */
 function checkSubstitutionConflict(newRule, pattern) {
     const activeRules = (pattern.customSubstitutions || []).filter(s => s.active && s.id !== newRule.id);
-    const base = pattern.basePositions || {};
     
-    // 1. 新しいルールが関わる「ポジション」と「選手」の抽出
-    const newPositions = new Set();
-    const newPlayerIds = new Set();
+    // ポジション交代（rotation）同士のポジション重複チェック
+    if (newRule.type === 'rotation') {
+        const newPositions = new Set(newRule.details.positions);
+        for (const activeRule of activeRules) {
+            if (activeRule.type === 'rotation') {
+                const activePositions = activeRule.details.positions;
+                for (const pos of activePositions) {
+                    if (newPositions.has(pos)) {
+                        return `ポジション交代「${POSITION_LABELS[pos]}」が既に他の有効なポジション交代に含まれています。`;
+                    }
+                }
+            }
+        }
+    }
     
-    const extractDetails = (rule, posSet, playerSet) => {
-        if (rule.type === 'swap') {
-            posSet.add(rule.details.pos1);
-            posSet.add(rule.details.pos2);
-            if (base[rule.details.pos1]) playerSet.add(base[rule.details.pos1]);
-            if (base[rule.details.pos2]) playerSet.add(base[rule.details.pos2]);
-        } else if (rule.type === 'sub') {
-            posSet.add(rule.details.pos);
-            if (rule.details.outPlayerId) playerSet.add(rule.details.outPlayerId);
-            if (rule.details.inPlayerId) playerSet.add(rule.details.inPlayerId);
-        } else if (rule.type === 'rotation') {
-            rule.details.positions.forEach(pos => {
-                posSet.add(pos);
-                if (base[pos]) playerSet.add(base[pos]);
+    // 選手交代（sub）同士、または全体での選手ID重複チェック
+    // 競合とみなす条件:
+    // A. 同じ選手を2回「入る選手(inPlayerId)」に指定することはできない。
+    // B. 同じ選手を2回「退く選手(outPlayerId)」に指定することはできない。
+    // C. 選手交代で退く予定の選手が、同時にポジション交代で移動することはできない（またはその逆）。
+    
+    const newInPlayers = new Set();
+    const newOutPlayers = new Set();
+    
+    if (newRule.type === 'sub') {
+        if (newRule.details.inPlayerId) newInPlayers.add(newRule.details.inPlayerId);
+        if (newRule.details.outPlayerId) newOutPlayers.add(newRule.details.outPlayerId);
+    } else if (newRule.type === 'rotation') {
+        const base = pattern.basePositions || {};
+        newRule.details.positions.forEach(pos => {
+            if (base[pos]) {
+                newOutPlayers.add(base[pos]);
+                newInPlayers.add(base[pos]);
+            }
+        });
+    }
+    
+    for (const activeRule of activeRules) {
+        const activeInPlayers = new Set();
+        const activeOutPlayers = new Set();
+        
+        if (activeRule.type === 'sub') {
+            if (activeRule.details.inPlayerId) activeInPlayers.add(activeRule.details.inPlayerId);
+            if (activeRule.details.outPlayerId) activeOutPlayers.add(activeRule.details.outPlayerId);
+        } else if (activeRule.type === 'rotation') {
+            const base = pattern.basePositions || {};
+            activeRule.details.positions.forEach(pos => {
+                if (base[pos]) {
+                    activeOutPlayers.add(base[pos]);
+                    activeInPlayers.add(base[pos]);
+                }
             });
         }
-    };
-    
-    extractDetails(newRule, newPositions, newPlayerIds);
-    
-    // 2. 既存の有効ルールとの重複チェック
-    for (const activeRule of activeRules) {
-        const activePositions = new Set();
-        const activePlayerIds = new Set();
-        extractDetails(activeRule, activePositions, activePlayerIds);
         
-        // ポジションの重複
-        for (const pos of newPositions) {
-            if (activePositions.has(pos)) {
-                return `ポジション「${POSITION_LABELS[pos]}」が既に他の有効な交代で変更されています。`;
+        // 1. 同一選手が二重にグラウンドに入る(inPlayerId)重複のチェック
+        for (const pId of newInPlayers) {
+            if (activeInPlayers.has(pId)) {
+                const name = players.find(p => p.id === pId)?.name || '選手';
+                return `選手「${name}」は、既に他の有効な交代でグラウンドに入ることになっています。`;
             }
         }
         
-        // 選手の重複
-        for (const pId of newPlayerIds) {
-            if (activePlayerIds.has(pId)) {
+        // 2. 同一選手が二重に退場する(outPlayerId)重複のチェック
+        for (const pId of newOutPlayers) {
+            if (activeOutPlayers.has(pId)) {
                 const name = players.find(p => p.id === pId)?.name || '選手';
-                return `選手「${name}」が既に他の有効な交代に関与しています。`;
+                return `選手「${name}」は、既に他の有効な交代で退くことになっています。`;
             }
         }
     }
@@ -714,21 +824,19 @@ function handleCreateSubRule() {
     let details = {};
     
     if (type === 'sub') {
-        const pos = document.getElementById('sub-pos').value;
+        const outPlayerId = document.getElementById('sub-player-out').value;
         const inPlayerId = document.getElementById('sub-player-in').value;
         
+        if (!outPlayerId) {
+            alert('退く選手を選択してください。');
+            return;
+        }
         if (!inPlayerId) {
             alert('入る控え選手を選択してください。');
             return;
         }
         
-        const outPlayerId = (currentPattern.basePositions || {})[pos];
-        if (!outPlayerId) {
-            alert('対象のポジションに基本スタメンが配置されていません。');
-            return;
-        }
-        
-        details = { pos, outPlayerId, inPlayerId };
+        details = { outPlayerId, inPlayerId };
     } else if (type === 'rotation') {
         const textInput = document.getElementById('rot-input-text');
         const text = textInput ? textInput.value.trim() : '';
