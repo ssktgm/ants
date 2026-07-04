@@ -18,7 +18,10 @@ if (SUPABASE_URL && !SUPABASE_URL.startsWith('https://')) {
 }
 console.log("Checking Supabase URL:", SUPABASE_URL ? "Exists" : "Empty");
 
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (!window.supabaseClient && window.supabase && window.supabase.createClient) {
+    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+const supabaseClient = window.supabaseClient;
 let currentUser = null;
 let isAppInitialized = false;
 let currentUserRole = 'user'; // 'admin' or 'user'

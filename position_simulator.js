@@ -11,7 +11,10 @@ let supabaseClient = null;
 
 if (SUPABASE_URL && SUPABASE_ANON_KEY) {
     try {
-        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        if (!window.supabaseClient && window.supabase && window.supabase.createClient) {
+            window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+        supabaseClient = window.supabaseClient;
     } catch (e) {
         console.error('Supabase Client initialize error:', e);
     }
@@ -84,6 +87,8 @@ export async function initPositionSimulator() {
     try {
         setupEventListeners();
         await loadData();
+        
+        updatePatternSelectOptions();
         
         if (patterns.length > 0) {
             currentPatternId = patterns[0].id;
