@@ -614,20 +614,24 @@ function renderBattingOrderList(pattern) {
         const row = document.createElement('div');
         row.className = 'flex items-center justify-between bg-amber-50/50 border border-amber-100 rounded-lg p-2 text-xs';
         
-        // セレクトボックスの作成
-        const select = document.createElement('select');
-        select.className = 'border rounded p-1 text-[11px] font-bold bg-white text-gray-700';
-        for (let o = 1; o <= maxOrder; o++) {
-            const opt = document.createElement('option');
-            opt.value = o;
-            opt.textContent = `${o}番`;
-            if (o === ord) opt.selected = true;
-            select.appendChild(opt);
-        }
+        // 矢印ボタンエリア
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'flex items-center gap-1 shrink-0';
         
-        select.addEventListener('change', (e) => {
-            handleBattingOrderChange(playerId, parseInt(e.target.value));
-        });
+        const btnUp = document.createElement('button');
+        btnUp.className = 'px-2 py-1 bg-amber-100 hover:bg-amber-200 disabled:opacity-30 disabled:cursor-not-allowed text-amber-900 font-bold rounded text-[10px] leading-none transition shadow-sm';
+        btnUp.textContent = '▲';
+        if (ord === 1) btnUp.disabled = true;
+        btnUp.addEventListener('click', () => handleSwapBattingOrder(ord, 'up'));
+        
+        const btnDown = document.createElement('button');
+        btnDown.className = 'px-2 py-1 bg-amber-100 hover:bg-amber-200 disabled:opacity-30 disabled:cursor-not-allowed text-amber-900 font-bold rounded text-[10px] leading-none transition shadow-sm';
+        btnDown.textContent = '▼';
+        if (ord === maxOrder) btnDown.disabled = true;
+        btnDown.addEventListener('click', () => handleSwapBattingOrder(ord, 'down'));
+        
+        btnContainer.appendChild(btnUp);
+        btnContainer.appendChild(btnDown);
         
         const numText = player.number ? `#${player.number} ` : '';
         row.innerHTML = `
@@ -639,7 +643,8 @@ function renderBattingOrderList(pattern) {
                 <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">${posLabel}</span>
             </div>
         `;
-        row.appendChild(select);
+        
+        row.appendChild(btnContainer);
         container.appendChild(row);
     }
     
@@ -649,45 +654,32 @@ function renderBattingOrderList(pattern) {
 }
 
 /**
- * 打順変更時の相互スワップハンドラー
+ * 打順スワップハンドラー
  */
-async function handleBattingOrderChange(playerId, newOrder) {
+async function handleSwapBattingOrder(order, direction) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     if (!currentPattern.battingOrder) currentPattern.battingOrder = {};
     
-    // 変更対象選手の現在の打順を見つける
-    let oldOrder = null;
-    Object.keys(currentPattern.battingOrder).forEach(ord => {
-        if (currentPattern.battingOrder[ord] === playerId) {
-            oldOrder = parseInt(ord);
-        }
-    });
+    const targetOrder = direction === 'up' ? order - 1 : order + 1;
     
-    // もし変更先の打順に別の選手が配置されていたら、その選手を以前の打順と入れ替える（スワップ）
-    const previousOccupantId = currentPattern.battingOrder[newOrder];
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+    const maxOrder = activePositions.length;
     
-    if (previousOccupantId) {
-        if (oldOrder) {
-            currentPattern.battingOrder[oldOrder] = previousOccupantId;
-        } else {
-            // 前の打順がない場合は、空き番を探して割り振る
-            const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
-            for (let o = 1; o <= activePositions.length; o++) {
-                if (!currentPattern.battingOrder[o] && o !== newOrder) {
-                    currentPattern.battingOrder[o] = previousOccupantId;
-                    break;
-                }
-            }
-        }
-    } else {
-        if (oldOrder) {
-            delete currentPattern.battingOrder[oldOrder];
-        }
+    if (targetOrder < 1 || targetOrder > maxOrder) return;
+    
+    const playerA = currentPattern.battingOrder[order];
+    const playerB = currentPattern.battingOrder[targetOrder];
+    
+    // スワップ実行
+    if (playerA && playerB) {
+        currentPattern.battingOrder[order] = playerB;
+        currentPattern.battingOrder[targetOrder] = playerA;
+    } else if (playerA) {
+        currentPattern.battingOrder[targetOrder] = playerA;
+        delete currentPattern.battingOrder[order];
     }
-    
-    currentPattern.battingOrder[newOrder] = playerId;
     
     savePatternsToLocalStorage();
     await syncPatternToDB(currentPattern);
