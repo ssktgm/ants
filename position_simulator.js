@@ -81,25 +81,44 @@ const STORAGE_PATTERNS_KEY = 'ants_sim_patterns';
  * 初期化関数
  */
 export async function initPositionSimulator() {
-    setupEventListeners();
-    await loadData();
-    
-    if (patterns.length > 0) {
-        currentPatternId = patterns[0].id;
-        const select = document.getElementById('sim-pattern-select');
-        if (select) select.value = currentPatternId;
-        const pattern = patterns.find(p => p.id === currentPatternId);
-        if (pattern) {
-            simulatorMode = pattern.mode || 9;
+    try {
+        setupEventListeners();
+        await loadData();
+        
+        if (patterns.length > 0) {
+            currentPatternId = patterns[0].id;
+            const select = document.getElementById('sim-pattern-select');
+            if (select) select.value = currentPatternId;
+            const pattern = patterns.find(p => p.id === currentPatternId);
+            if (pattern) {
+                simulatorMode = pattern.mode || 9;
+            }
+        } else {
+            await createNewPattern('デフォルト配置');
         }
-    } else {
-        await createNewPattern('デフォルト配置');
+        
+        updateModeUI();
+        switchTab('setup');
+        initRuleFormSelects();
+        renderSimulator();
+    } catch (e) {
+        console.error('Fatal initialization error:', e);
+        alert('アプリケーションの初期化中にエラーが発生しました。\n詳細: ' + e.message);
     }
-    
-    updateModeUI();
-    switchTab('setup');
-    initRuleFormSelects();
-    renderSimulator();
+}
+
+/**
+ * パターンデータの構造を補正・健全化するヘルパー
+ */
+function sanitizePattern(pat) {
+    if (!pat) return pat;
+    if (!pat.basePositions) pat.basePositions = {};
+    if (!pat.customSubstitutions) pat.customSubstitutions = [];
+    if (!pat.battingOrder) pat.battingOrder = {};
+    if (!pat.headerInfo) pat.headerInfo = {};
+    if (pat.mode === undefined) pat.mode = 9;
+    if (pat.isSynced === undefined) pat.isSynced = false;
+    return pat;
 }
 
 /**
@@ -115,7 +134,7 @@ async function loadData() {
             
             if (!pError && !patError && dbPlayers && dbPatterns) {
                 players = dbPlayers;
-                patterns = dbPatterns.map(p => ({
+                patterns = dbPatterns.map(p => sanitizePattern({
                     id: p.id,
                     name: p.name,
                     mode: p.has_dh ? 10 : 9,
@@ -159,11 +178,12 @@ async function loadData() {
                 const localPats = JSON.parse(storedPat);
                 localPats.forEach(async (pat) => {
                     if (!dbPatIds.has(pat.id)) {
-                        pat.isSynced = false;
-                        patterns.push(pat);
+                        const sanitized = sanitizePattern(pat);
+                        sanitized.isSynced = false;
+                        patterns.push(sanitized);
                         // 非同期でDBへ自動プッシュし、成功したら同期済みに更新
-                        const err = await syncPatternToDB(pat);
-                        pat.isSynced = !err;
+                        const err = await syncPatternToDB(sanitized);
+                        sanitized.isSynced = !err;
                         updatePatternSelectOptions();
                     }
                 });
@@ -200,20 +220,12 @@ function loadFromLocalStorage() {
         
         const storedPatterns = localStorage.getItem(STORAGE_PATTERNS_KEY);
         if (storedPatterns) {
-            patterns = JSON.parse(storedPatterns);
-            patterns.forEach(pat => {
-                if (!pat.basePositions) {
-                    if (pat.innings && pat.innings[0]) {
-                        pat.basePositions = pat.innings[0].positions || {};
-                    } else {
-                        pat.basePositions = {};
-                    }
+            patterns = JSON.parse(storedPatterns).map(pat => {
+                // 互換性補正
+                if (!pat.basePositions && pat.innings && pat.innings[0]) {
+                    pat.basePositions = pat.innings[0].positions || {};
                 }
-                if (!pat.customSubstitutions) pat.customSubstitutions = [];
-                if (!pat.battingOrder) pat.battingOrder = {};
-                if (!pat.headerInfo) pat.headerInfo = {};
-                // ローカルのみから読み込まれたものは同期状態不明（未同期）とする
-                if (pat.isSynced === undefined) pat.isSynced = false;
+                return sanitizePattern(pat);
             });
         }
     } catch (e) {
