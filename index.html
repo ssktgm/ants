@@ -595,7 +595,7 @@
                     <!-- タブ切り替えボタン -->
                     <div class="flex border rounded-lg overflow-hidden bg-white shadow-sm shrink-0">
                         <button id="tab-btn-setup" class="flex-1 py-2 px-3 text-center text-sm font-bold bg-amber-600 text-white transition">スタメン設定</button>
-                        <button id="tab-btn-subrules" class="flex-1 py-2 px-3 text-center text-sm font-bold bg-white text-gray-700 border-l hover:bg-gray-50 transition font-bold">交代ルール管理</button>
+                        <button id="tab-btn-subrules" class="flex-1 py-2 px-3 text-center text-sm font-bold bg-white text-gray-700 border-l hover:bg-gray-50 transition font-bold">交代管理</button>
                     </div>
 
                     <!-- パネル1: スタメン設定 & 選手一覧 -->
@@ -658,13 +658,19 @@
                         </div>
                     </div>
 
-                    <!-- パネル2: 交代ルール管理 -->
+                    <!-- パネル2: 交代管理 -->
                     <div id="panel-subrules" class="hidden flex flex-col gap-6 flex-grow">
                         <!-- 交代ルール追加フォーム -->
                         <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col gap-4">
                             <h3 class="font-bold text-gray-800 border-b pb-2 flex items-center gap-1">
                                 <span>➕</span><span>交代イベントを定義</span>
                             </h3>
+                            
+                            <!-- 交代の名前 (任意) -->
+                            <div>
+                                <label for="rule-name-input" class="block text-xs font-bold text-gray-500 mb-1">交代の名前 (任意)</label>
+                                <input type="text" id="rule-name-input" placeholder="例: 投手菱沼へ交代、ダブルスイッチなど" class="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                            </div>
                             
                             <!-- 交代種別セレクト -->
                             <div>

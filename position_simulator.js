@@ -901,6 +901,8 @@ function renderSubRulesList(pattern) {
         const card = document.createElement('div');
         card.className = `sub-rule-card ${rule.active ? 'active' : ''}`;
         
+        const nameDisplay = rule.name ? `<span class="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded leading-none inline-block mb-1 border border-amber-200/50">${escapeHTML(rule.name)}</span>` : '';
+        
         card.innerHTML = `
             <div class="flex items-center gap-2">
                 <label class="sim-switch">
@@ -908,6 +910,7 @@ function renderSubRulesList(pattern) {
                     <span class="sim-slider"></span>
                 </label>
                 <div class="flex flex-col">
+                    ${nameDisplay}
                     <span class="text-xs font-bold text-gray-800">${title.code}</span>
                     <span class="text-[11px] text-gray-600 leading-tight">${title.desc}</span>
                 </div>
@@ -977,11 +980,12 @@ function renderAnnouncementLogs(pattern) {
             }
         }
         
+        const namePrefix = rule.name ? `【${escapeHTML(rule.name)}】` : '';
         const item = document.createElement('div');
         item.className = 'announcement-item';
         item.innerHTML = `
             <span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-mono shrink-0">${textObj.code}</span>
-            <span class="text-xs font-semibold truncate text-amber-900">${textObj.fullDesc}</span>
+            <span class="text-xs font-semibold truncate text-amber-900">${namePrefix}${textObj.fullDesc}</span>
         `;
         container.appendChild(item);
     });
@@ -1149,8 +1153,12 @@ async function handleCreateSubRule() {
         details = { positions: rotPositions };
     }
     
+    const nameInput = document.getElementById('rule-name-input');
+    const ruleName = nameInput ? nameInput.value.trim() : '';
+    
     const newRule = {
         id: 'rule_' + Date.now(),
+        name: ruleName,
         type: type,
         active: false,
         details: details
@@ -1163,6 +1171,10 @@ async function handleCreateSubRule() {
     currentPattern.customSubstitutions.push(newRule);
     
     await autoSavePattern(currentPattern);
+    
+    if (nameInput) nameInput.value = '';
+    const rotTextInput = document.getElementById('rot-input-text');
+    if (rotTextInput) rotTextInput.value = '';
     
     initRuleFormSelects();
     renderSimulator();
