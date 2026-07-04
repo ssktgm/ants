@@ -1864,16 +1864,15 @@ function handlePrintMemberTable() {
                 <div class="header-table-wrapper">
                     <table class="table-header">
                         <tr>
-                            <td colspan="3" class="cell-date font-variable">${escapeHTML(info.date || '')}</td>
+                            <td colspan="2" class="cell-date font-variable">${escapeHTML(info.date || '')}</td>
                             <td class="cell-tournament-label">大会名</td>
                             <td class="cell-tournament font-variable">${escapeHTML(info.tournament || '')}</td>
                         </tr>
                         <tr>
                             <td class="cell-team-label-l">チーム</td>
-                            <td class="cell-team font-variable">${escapeHTML(info.teamHome || '')}</td>
-                            <td class="cell-vs">対</td>
-                            <td class="cell-team-label-r text-[8px] font-normal leading-none" style="font-size: 7px; padding: 2px 0;">相手<br>チーム</td>
-                            <td class="cell-team font-variable">${escapeHTML(info.teamVisitor || '')}</td>
+                            <td class="cell-team-val font-variable">${escapeHTML(info.teamHome || '')}</td>
+                            <td class="cell-team-label-r">相手チーム</td>
+                            <td class="cell-team-val font-variable">${escapeHTML(info.teamVisitor || '')}</td>
                         </tr>
                     </table>
                 </div>
@@ -1940,6 +1939,9 @@ function handlePrintMemberTable() {
         <head>
             <title>印刷用メンバー表 (4枚綴り)</title>
             <meta charset="utf-8">
+            <link rel="preconnect" href="https://fonts.googleapis.com">
+            <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+            <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&family=Noto+Serif+JP:wght@400;700;900&display=swap" rel="stylesheet">
             <style>
                 @page {
                     size: A4 landscape;
@@ -2022,20 +2024,17 @@ function handlePrintMemberTable() {
                     box-sizing: border-box;
                 }
                 
-                /* フォントファミリーの差別化（固定値：ゴシック体、可変値：明朝体） */
+                /* フォントファミリーの差別化（固定値：Noto Serif JP、可変値：M PLUS Rounded 1c） */
                 th, .card-title, .bench-section-label, .cell-tournament-label, 
-                .cell-team-label-l, .cell-team-label-r, .cell-vs, .footer-label {
-                    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", sans-serif;
-                    font-weight: bold;
+                .cell-team-label-l, .cell-team-label-r, .footer-label {
+                    font-family: 'Noto Serif JP', serif;
+                    font-weight: 700;
                 }
-                .font-variable, .cell-date, .cell-tournament, .cell-team, 
-                .cell-name, .cell-bench-name, .footer-val {
-                    font-family: "MS Mincho", "Hiragino Mincho ProN", "MS PMincho", Georgia, serif;
-                    font-weight: bold;
-                }
-                .cell-order, .cell-number, .cell-bench-num {
-                    font-family: "Helvetica Neue", Arial, sans-serif;
-                    font-weight: bold;
+                .font-variable, .cell-date, .cell-tournament, .cell-team-val, 
+                .cell-name, .cell-bench-name, .footer-val,
+                .cell-order, .cell-pos, .cell-number, .cell-bench-num {
+                    font-family: 'M PLUS Rounded 1c', sans-serif;
+                    font-weight: 700;
                 }
 
                 /* ヘッダーテーブル */
@@ -2047,11 +2046,11 @@ function handlePrintMemberTable() {
                     padding: 0 2px;
                 }
                 .cell-date {
-                    width: 48%;
+                    width: 50%;
                     font-size: 7.5px;
                 }
                 .cell-tournament-label {
-                    width: 12%;
+                    width: 10%;
                     background-color: #f2f2f2;
                     font-weight: bold;
                 }
@@ -2065,22 +2064,22 @@ function handlePrintMemberTable() {
                     line-height: 1.1;
                 }
                 .cell-team-label-l, .cell-team-label-r {
-                    width: 12%;
+                    width: 7%;
+                    font-size: 6px;
+                    line-height: 1.0;
+                    padding: 1px 0;
                     background-color: #f2f2f2;
-                    font-weight: bold;
+                    writing-mode: vertical-rl;
+                    text-orientation: upright;
+                    letter-spacing: 0.5px;
                 }
-                .cell-team {
-                    width: 36%;
-                    font-size: 8.5px;
+                .cell-team-val {
+                    width: 43%;
+                    font-size: 9px;
+                    font-weight: bold;
                     white-space: normal;
                     word-break: break-all;
                     line-height: 1.1;
-                }
-                .cell-vs {
-                    width: 4%;
-                    font-weight: bold;
-                    font-size: 7px;
-                    background-color: #f9f9f9;
                 }
                 
                 /* スタメンテーブル */
