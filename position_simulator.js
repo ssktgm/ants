@@ -113,12 +113,8 @@ async function loadData() {
             const { data: dbPlayers, error: pError } = await supabaseClient.from('sim_players').select('*').order('created_at', { ascending: true });
             const { data: dbPatterns, error: patError } = await supabaseClient.from('sim_patterns').select('*').order('created_at', { ascending: true });
             
-            if (!pError && dbPlayers) {
+            if (!pError && !patError && dbPlayers && dbPatterns) {
                 players = dbPlayers;
-                success = true;
-            }
-            
-            if (!patError && dbPatterns) {
                 patterns = dbPatterns.map(p => ({
                     id: p.id,
                     name: p.name,
@@ -126,9 +122,13 @@ async function loadData() {
                     basePositions: p.base_positions || {},
                     customSubstitutions: p.custom_substitutions || [],
                     battingOrder: p.batting_order || {},
-                    headerInfo: p.header_info || {}
+                    headerInfo: p.header_info || {},
+                    isSynced: true
                 }));
                 success = true;
+            } else {
+                if (pError) console.error('Supabase load players error:', pError);
+                if (patError) console.error('Supabase load patterns error:', patError);
             }
         } catch (err) {
             console.error('Supabase load failed, falling back to local storage:', err);
@@ -157,10 +157,14 @@ async function loadData() {
             const storedPat = localStorage.getItem(STORAGE_PATTERNS_KEY);
             if (storedPat) {
                 const localPats = JSON.parse(storedPat);
-                localPats.forEach(pat => {
+                localPats.forEach(async (pat) => {
                     if (!dbPatIds.has(pat.id)) {
+                        pat.isSynced = false;
                         patterns.push(pat);
-                        syncPatternToDB(pat);
+                        // 非同期でDBへ自動プッシュし、成功したら同期済みに更新
+                        const err = await syncPatternToDB(pat);
+                        pat.isSynced = !err;
+                        updatePatternSelectOptions();
                     }
                 });
             }
@@ -208,6 +212,8 @@ function loadFromLocalStorage() {
                 if (!pat.customSubstitutions) pat.customSubstitutions = [];
                 if (!pat.battingOrder) pat.battingOrder = {};
                 if (!pat.headerInfo) pat.headerInfo = {};
+                // ローカルのみから読み込まれたものは同期状態不明（未同期）とする
+                if (pat.isSynced === undefined) pat.isSynced = false;
             });
         }
     } catch (e) {
@@ -227,7 +233,7 @@ function savePatternsToLocalStorage() {
  * Supabase 同期処理
  */
 async function syncPlayerToDB(player, isDelete = false) {
-    if (!supabaseClient) return;
+    if (!supabaseClient) return null;
     try {
         let res;
         if (isDelete) {
@@ -239,17 +245,15 @@ async function syncPlayerToDB(player, isDelete = false) {
                 number: player.number
             });
         }
-        if (res && res.error) {
-            console.error('Supabase player sync error:', res.error);
-            alert(`データベースとの同期に失敗しました。\nエラー詳細: ${res.error.message}\n(入力内容は一時的にブラウザに保存されますが、解決されるまでサーバーへ同期されません。)`);
-        }
+        return res ? res.error : null;
     } catch (e) {
         console.error('Supabase player sync error:', e);
+        return e;
     }
 }
 
 async function syncPatternToDB(pattern, isDelete = false) {
-    if (!supabaseClient) return;
+    if (!supabaseClient) return null;
     try {
         let res;
         if (isDelete) {
@@ -266,13 +270,22 @@ async function syncPatternToDB(pattern, isDelete = false) {
                 updated_at: new Date().toISOString()
             });
         }
-        if (res && res.error) {
-            console.error('Supabase pattern sync error:', res.error);
-            alert(`データベースとの同期に失敗しました。\nエラー詳細: ${res.error.message}\n(配置や打順は一時的にブラウザに保存されますが、解決されるまでサーバーへ同期されません。)`);
-        }
+        return res ? res.error : null;
     } catch (e) {
         console.error('Supabase pattern sync error:', e);
+        return e;
     }
+}
+
+/**
+ * 自動セーブ＆同期ステータス更新処理
+ */
+async function autoSavePattern(pattern) {
+    if (!pattern) return;
+    savePatternsToLocalStorage();
+    const err = await syncPatternToDB(pattern);
+    pattern.isSynced = !err;
+    updatePatternSelectOptions();
 }
 
 /**
@@ -302,10 +315,7 @@ async function createNewPattern(name = '') {
     patterns.push(newPat);
     currentPatternId = id;
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(newPat);
-    
-    updatePatternSelectOptions();
+    await autoSavePattern(newPat);
     
     const select = document.getElementById('sim-pattern-select');
     if (select) select.value = id;
@@ -321,7 +331,8 @@ function updatePatternSelectOptions() {
     patterns.forEach(p => {
         const option = document.createElement('option');
         option.value = p.id;
-        option.textContent = p.name;
+        const suffix = p.isSynced === false ? ' (未同期)' : '';
+        option.textContent = p.name + suffix;
         select.appendChild(option);
     });
     
@@ -721,8 +732,7 @@ async function handleSwapBattingOrder(order, direction) {
         delete currentPattern.battingOrder[order];
     }
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern);
+    await autoSavePattern(currentPattern);
     
     renderSimulator();
 }
@@ -942,8 +952,7 @@ async function handleToggleSubRule(ruleId, active) {
     
     rule.active = active;
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern);
+    await autoSavePattern(currentPattern);
     
     initRuleFormSelects();
     renderSimulator();
@@ -1090,8 +1099,7 @@ async function handleCreateSubRule() {
     
     currentPattern.customSubstitutions.push(newRule);
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern);
+    await autoSavePattern(currentPattern);
     
     initRuleFormSelects();
     renderSimulator();
@@ -1107,8 +1115,7 @@ async function handleDeleteSubRule(ruleId) {
     
     currentPattern.customSubstitutions = currentPattern.customSubstitutions.filter(s => s.id !== ruleId);
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern);
+    await autoSavePattern(currentPattern);
     
     initRuleFormSelects();
     renderSimulator();
@@ -1201,8 +1208,7 @@ async function assignPlayerToMasterPosition(playerId, targetPos) {
     // 打順の同期
     assignDefaultBattingOrder(currentPattern);
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern);
+    await autoSavePattern(currentPattern);
     
     selectedPlayerId = null;
     selectedSourcePos = null;
@@ -1246,8 +1252,7 @@ async function handleFieldSlotClick(clickedPos) {
             // 打順の同期
             assignDefaultBattingOrder(currentPattern);
             
-            savePatternsToLocalStorage();
-            await syncPatternToDB(currentPattern);
+            await autoSavePattern(currentPattern);
             
             selectedPlayerId = null;
             selectedSourcePos = null;
@@ -1279,8 +1284,7 @@ async function removePlayerFromMasterPosition(pos) {
     // 打順の同期
     assignDefaultBattingOrder(currentPattern);
     
-    savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern);
+    await autoSavePattern(currentPattern);
     
     selectedPlayerId = null;
     selectedSourcePos = null;
@@ -1370,11 +1374,9 @@ async function handleDeletePlayer(playerId) {
         }
         
         if (changed) {
-            await syncPatternToDB(pat);
+            await autoSavePattern(pat);
         }
     }
-    
-    savePatternsToLocalStorage();
     
     if (selectedPlayerId === playerId) {
         selectedPlayerId = null;
@@ -1405,10 +1407,15 @@ async function handleSavePattern() {
         currentPattern.mode = simulatorMode;
         
         savePatternsToLocalStorage();
-        await syncPatternToDB(currentPattern);
+        const err = await syncPatternToDB(currentPattern);
         
         updatePatternSelectOptions();
-        alert(`データ「${name}」を上書き保存しました。`);
+        
+        if (err) {
+            alert(`データ「${name}」をローカルに保存しましたが、データベースとの同期に失敗しました。\nエラー詳細: ${err.message || err}`);
+        } else {
+            alert(`データ「${name}」を上書き保存しました。`);
+        }
     }
 }
 
@@ -1441,14 +1448,18 @@ async function handleSaveAsNewPattern() {
     currentPatternId = id;
     
     savePatternsToLocalStorage();
-    await syncPatternToDB(newPat);
+    const err = await syncPatternToDB(newPat);
     
     updatePatternSelectOptions();
     
     const select = document.getElementById('sim-pattern-select');
     if (select) select.value = id;
     
-    alert(`データ「${name}」を新規別名で保存しました。`);
+    if (err) {
+        alert(`データ「${name}」を新規ローカル登録しましたが、データベースとの同期に失敗しました。\nエラー詳細: ${err.message || err}`);
+    } else {
+        alert(`データ「${name}」を新規別名で保存しました。`);
+    }
     renderSimulator();
 }
 
@@ -1463,15 +1474,25 @@ async function handleDeletePattern() {
     patterns = patterns.filter(p => p.id !== currentPatternId);
     
     savePatternsToLocalStorage();
-    await syncPatternToDB(currentPattern, true);
+    const err = await syncPatternToDB(currentPattern, true);
     
     if (patterns.length > 0) {
         currentPatternId = patterns[0].id;
     } else {
-        await createNewPattern('デフォルト配置');
+        currentPatternId = null;
     }
     
     updatePatternSelectOptions();
+    
+    if (err) {
+        alert(`データ「${currentPattern.name}」をローカルから削除しましたが、データベースとの同期（削除）に失敗しました。\nエラー詳細: ${err.message || err}`);
+    } else {
+        alert(`データ「${currentPattern.name}」を削除しました。`);
+    }
+    
+    if (!currentPatternId) {
+        await createNewPattern('デフォルト配置');
+    }
     
     const select = document.getElementById('sim-pattern-select');
     if (select) select.value = currentPatternId;
@@ -1571,8 +1592,7 @@ function handleHeaderInfoChange() {
     currentPattern.headerInfo.time = document.getElementById('member-input-time').value.trim();
     
     // 保存
-    savePatternsToLocalStorage();
-    syncPatternToDB(currentPattern);
+    autoSavePattern(currentPattern);
     
     // テキストエリア更新
     const drawPositions = getPositionsToDraw(currentPattern);
@@ -2174,7 +2194,7 @@ function handleImportJSON(e) {
                     patterns.push(newPat);
                     currentPatternId = newPat.id;
                     simulatorMode = newPat.mode;
-                    await syncPatternToDB(newPat);
+                    await autoSavePattern(newPat);
                 } else if (data.version === 'ants-sim-2.0') {
                     const newPat = data.pattern;
                     newPat.id = 'pat_' + Date.now();
@@ -2185,7 +2205,7 @@ function handleImportJSON(e) {
                     patterns.push(newPat);
                     currentPatternId = newPat.id;
                     simulatorMode = newPat.mode;
-                    await syncPatternToDB(newPat);
+                    await autoSavePattern(newPat);
                 } else {
                     const oldPat = data.pattern;
                     const baseInning = oldPat.innings && oldPat.innings[0] ? oldPat.innings[0].positions : {};
@@ -2202,11 +2222,9 @@ function handleImportJSON(e) {
                     patterns.push(newPat);
                     currentPatternId = newPat.id;
                     simulatorMode = newPat.mode;
-                    await syncPatternToDB(newPat);
+                    await autoSavePattern(newPat);
                 }
                 
-                savePatternsToLocalStorage();
-                updatePatternSelectOptions();
                 updateModeUI();
                 initRuleFormSelects();
                 renderSimulator();
@@ -2282,8 +2300,7 @@ function setupEventListeners() {
             if (pat) {
                 pat.mode = 9;
                 assignDefaultBattingOrder(pat);
-                savePatternsToLocalStorage();
-                await syncPatternToDB(pat);
+                await autoSavePattern(pat);
             }
             initRuleFormSelects();
             renderSimulator();
@@ -2298,8 +2315,7 @@ function setupEventListeners() {
             if (pat) {
                 pat.mode = 10;
                 assignDefaultBattingOrder(pat);
-                savePatternsToLocalStorage();
-                await syncPatternToDB(pat);
+                await autoSavePattern(pat);
             }
             initRuleFormSelects();
             renderSimulator();
