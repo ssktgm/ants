@@ -1720,16 +1720,16 @@ function handlePrintMemberTable() {
                 <div class="header-table-wrapper">
                     <table class="table-header">
                         <tr>
-                            <td colspan="3" class="cell-date font-serif">${escapeHTML(info.date || '')}</td>
+                            <td colspan="3" class="cell-date font-variable">${escapeHTML(info.date || '')}</td>
                             <td class="cell-tournament-label">大会名</td>
-                            <td class="cell-tournament font-serif">${escapeHTML(info.tournament || '')}</td>
+                            <td class="cell-tournament font-variable">${escapeHTML(info.tournament || '')}</td>
                         </tr>
                         <tr>
                             <td class="cell-team-label-l">チーム</td>
-                            <td class="cell-team font-serif font-bold">${escapeHTML(info.teamHome || '')}</td>
+                            <td class="cell-team font-variable">${escapeHTML(info.teamHome || '')}</td>
                             <td class="cell-vs">対</td>
-                            <td class="cell-team-label-r font-serif text-[8px] font-normal leading-none" style="font-size: 7px; padding: 2px 0;">相手<br>チーム</td>
-                            <td class="cell-team font-serif font-bold">${escapeHTML(info.teamVisitor || '')}</td>
+                            <td class="cell-team-label-r text-[8px] font-normal leading-none" style="font-size: 7px; padding: 2px 0;">相手<br>チーム</td>
+                            <td class="cell-team font-variable">${escapeHTML(info.teamVisitor || '')}</td>
                         </tr>
                     </table>
                 </div>
@@ -1738,7 +1738,7 @@ function handlePrintMemberTable() {
                     <thead>
                         <tr>
                             <th style="width: 13%;">打順</th>
-                            <th style="width: 15%;">守備位置</th>
+                            <th style="width: 15%; line-height: 1.1;">守備<br>位置</th>
                             <th style="width: 54%;">選手名</th>
                             <th style="width: 18%;">背番号</th>
                         </tr>
@@ -1766,17 +1766,17 @@ function handlePrintMemberTable() {
                 <table class="table-footer">
                     <tr>
                         <td class="footer-label">監督</td>
-                        <td class="footer-val font-serif">${escapeHTML(info.manager || '')}</td>
+                        <td class="footer-val font-variable">${escapeHTML(info.manager || '')}</td>
                         <td class="footer-label">主将</td>
-                        <td class="footer-val font-serif">${escapeHTML(info.captain || '')}</td>
+                        <td class="footer-val font-variable">${escapeHTML(info.captain || '')}</td>
                         <td class="footer-label font-sans leading-none text-[7px]" style="font-size: 6.5px; padding: 0;">スコ<br>アラー</td>
-                        <td class="footer-val font-serif">${escapeHTML(info.scorer || '')}</td>
+                        <td class="footer-val font-variable">${escapeHTML(info.scorer || '')}</td>
                     </tr>
                     <tr>
                         <td class="footer-label">球場</td>
-                        <td colspan="3" class="footer-val font-serif">${escapeHTML(info.stadium || '')}</td>
+                        <td colspan="3" class="footer-val font-variable">${escapeHTML(info.stadium || '')}</td>
                         <td class="footer-label">時間</td>
-                        <td class="footer-val font-serif">${escapeHTML(info.time || '')}</td>
+                        <td class="footer-val font-variable">${escapeHTML(info.time || '')}</td>
                     </tr>
                 </table>
             </div>
@@ -1804,7 +1804,7 @@ function handlePrintMemberTable() {
                 body {
                     margin: 0;
                     padding: 0;
-                    font-family: "MS Mincho", "Hiragino Mincho ProN", serif;
+                    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
                     background-color: #fff;
                     -webkit-print-color-adjust: exact;
                 }
@@ -1820,7 +1820,8 @@ function handlePrintMemberTable() {
                     width: 68mm;
                     height: 204mm;
                     box-sizing: border-box;
-                    border: 1px solid #333;
+                    /* 一番外側の外枠は不要のためborder削除 */
+                    border: none;
                     padding: 2mm 3.5mm;
                     display: flex;
                     flex-direction: column;
@@ -1845,8 +1846,9 @@ function handlePrintMemberTable() {
                     top: 1.5mm;
                     right: 2.5mm;
                     font-size: 8px;
-                    font-family: sans-serif;
+                    font-family: "Helvetica Neue", Arial, sans-serif;
                     color: #555;
+                    font-weight: bold;
                 }
                 .card-title {
                     text-align: center;
@@ -1857,6 +1859,7 @@ function handlePrintMemberTable() {
                     margin-top: 1mm;
                     text-decoration: underline;
                     text-underline-offset: 3px;
+                    font-family: "Helvetica Neue", Arial, sans-serif;
                 }
                 .header-table-wrapper {
                     margin-bottom: 1.5mm;
@@ -1874,13 +1877,30 @@ function handlePrintMemberTable() {
                     height: 5.2mm;
                     box-sizing: border-box;
                 }
+                
+                /* フォントファミリーの差別化（固定値：ゴシック体、可変値：明朝体） */
+                th, .card-title, .bench-section-label, .cell-tournament-label, 
+                .cell-team-label-l, .cell-team-label-r, .cell-vs, .footer-label {
+                    font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", sans-serif;
+                    font-weight: bold;
+                }
+                .font-variable, .cell-date, .cell-tournament, .cell-team, 
+                .cell-name, .cell-bench-name, .footer-val {
+                    font-family: "MS Mincho", "Hiragino Mincho ProN", "MS PMincho", Georgia, serif;
+                    font-weight: bold;
+                }
+                .cell-order, .cell-number, .cell-bench-num {
+                    font-family: "Helvetica Neue", Arial, sans-serif;
+                    font-weight: bold;
+                }
+
                 /* ヘッダーテーブル */
                 .table-header {
                     font-size: 8px;
                 }
                 .table-header td {
-                    height: 4.8mm;
-                    padding: 0 1px;
+                    height: 5.0mm;
+                    padding: 0 2px;
                 }
                 .cell-date {
                     width: 48%;
@@ -1896,9 +1916,9 @@ function handlePrintMemberTable() {
                     font-size: 7.5px;
                     text-align: left;
                     padding-left: 2px;
-                    overflow: hidden;
-                    white-space: nowrap;
-                    text-overflow: ellipsis;
+                    white-space: normal;
+                    word-break: break-all;
+                    line-height: 1.1;
                 }
                 .cell-team-label-l, .cell-team-label-r {
                     width: 12%;
@@ -1907,10 +1927,10 @@ function handlePrintMemberTable() {
                 }
                 .cell-team {
                     width: 36%;
-                    font-size: 9px;
-                    overflow: hidden;
-                    white-space: nowrap;
-                    text-overflow: ellipsis;
+                    font-size: 8.5px;
+                    white-space: normal;
+                    word-break: break-all;
+                    line-height: 1.1;
                 }
                 .cell-vs {
                     width: 4%;
@@ -1927,34 +1947,27 @@ function handlePrintMemberTable() {
                     background-color: #f2f2f2;
                     font-weight: bold;
                     font-size: 8.5px;
-                    height: 4.5mm;
+                    height: 5.2mm;
                 }
                 .table-lineup td {
                     height: 6.2mm;
                 }
                 .cell-order {
-                    font-family: sans-serif;
                     font-size: 11px;
-                    font-weight: bold;
                 }
                 .cell-pos {
                     font-size: 10px;
-                    font-weight: bold;
                 }
                 .cell-name {
                     font-size: 11.5px;
-                    font-weight: bold;
-                    text-align: center;
                 }
                 .cell-number {
-                    font-family: sans-serif;
                     font-size: 11px;
-                    font-weight: bold;
                 }
                 
                 /* 控え選手 */
                 .bench-section-label {
-                    font-size: 8px;
+                    font-size: 8.5px;
                     font-weight: bold;
                     background-color: #e5e5e5;
                     border: 1px solid #333;
@@ -1979,17 +1992,14 @@ function handlePrintMemberTable() {
                 }
                 .cell-bench-name {
                     text-align: center;
-                    font-weight: bold;
                     font-size: 9.5px;
                     padding: 0 1px;
-                    overflow: hidden;
-                    white-space: nowrap;
-                    text-overflow: ellipsis;
+                    white-space: normal;
+                    word-break: break-all;
+                    line-height: 1.1;
                 }
                 .cell-bench-num {
-                    font-family: sans-serif;
                     font-size: 8.5px;
-                    font-weight: bold;
                 }
                 
                 /* フッターテーブル */
@@ -2007,9 +2017,9 @@ function handlePrintMemberTable() {
                 .footer-val {
                     width: 19%;
                     font-size: 8.5px;
-                    overflow: hidden;
-                    white-space: nowrap;
-                    text-overflow: ellipsis;
+                    white-space: normal;
+                    word-break: break-all;
+                    line-height: 1.1;
                 }
                 
                 /* 印刷時の設定 */
