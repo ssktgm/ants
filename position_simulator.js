@@ -2305,6 +2305,26 @@ function handleImportJSON(e) {
 // イベントリスナー設定
 // ==========================================
 function setupEventListeners() {
+    // 登録選手パネルのアコーディオン開閉
+    const toggleHeader = document.getElementById('btn-toggle-players-panel');
+    const panelContent = document.getElementById('players-panel-content');
+    const toggleIcon = document.getElementById('icon-toggle-players');
+    
+    if (toggleHeader && panelContent && toggleIcon) {
+        toggleHeader.addEventListener('click', () => {
+            const isHidden = panelContent.classList.toggle('hidden');
+            toggleIcon.textContent = isHidden ? '▼' : '▲';
+            localStorage.setItem('ants_sim_players_panel_collapsed', isHidden ? 'true' : 'false');
+        });
+        
+        // 初期状態の復元
+        const isCollapsed = localStorage.getItem('ants_sim_players_panel_collapsed') === 'true';
+        if (isCollapsed) {
+            panelContent.classList.add('hidden');
+            toggleIcon.textContent = '▼';
+        }
+    }
+
     // タブ制御
     document.getElementById('tab-btn-setup')?.addEventListener('click', () => switchTab('setup'));
     document.getElementById('tab-btn-subrules')?.addEventListener('click', () => switchTab('subrules'));

@@ -600,32 +600,41 @@
 
                     <!-- パネル1: スタメン設定 & 選手一覧 -->
                     <div id="panel-setup" class="flex flex-col gap-6 flex-grow">
-                        <!-- 選手登録 -->
-                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
-                            <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
-                                <span>👥</span><span>選手登録</span>
-                            </h3>
-                            <div class="flex flex-col gap-2">
-                                <div class="flex gap-2">
-                                    <input type="text" id="sim-new-player-input" placeholder="選手フルネーム" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-grow focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
-                                    <input type="text" id="sim-new-player-number" placeholder="背番号" class="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-16 text-center focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
-                                </div>
-                                <button id="btn-add-sim-player" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 rounded-lg text-sm transition w-full">追加</button>
-                            </div>
-                        </div>
-
-                        <!-- 選手一覧リスト -->
-                        <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col flex-grow min-h-[220px]">
-                            <div class="flex justify-between items-center mb-3">
+                        <!-- 登録選手一覧パネル（開閉アコーディオン付き） -->
+                        <div class="bg-white rounded-xl shadow border border-gray-200 overflow-hidden">
+                            <!-- アコーディオンヘッダー -->
+                            <div id="btn-toggle-players-panel" class="bg-gray-50 hover:bg-gray-100 p-4 border-b border-gray-200 flex justify-between items-center cursor-pointer select-none transition">
                                 <h3 class="font-bold text-gray-800 flex items-center gap-1">
-                                    <span>📋</span><span>登録選手一覧</span>
+                                    <span>📋</span><span>登録選手・選手登録</span>
                                 </h3>
-                                <span class="text-xs text-gray-500 font-bold" id="sim-player-count">0 人</span>
+                                <div class="flex items-center gap-2">
+                                    <span id="sim-player-count" class="text-xs text-gray-500 font-bold bg-white border border-gray-200 px-2 py-0.5 rounded-full">0 人</span>
+                                    <span id="icon-toggle-players" class="text-xs text-gray-400 font-bold transform transition-transform duration-200">▲</span>
+                                </div>
                             </div>
-                            <div id="sim-players-list" class="flex flex-wrap gap-2 max-h-[250px] overflow-y-auto p-1 border border-gray-100 rounded-lg flex-grow">
-                                <!-- 選手リスト -->
+                            <!-- アコーディオンコンテンツ -->
+                            <div id="players-panel-content" class="p-4 flex flex-col gap-4">
+                                <!-- 選手登録フォーム -->
+                                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                                    <h4 class="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
+                                        <span>👥</span><span>選手を追加</span>
+                                    </h4>
+                                    <div class="flex flex-col gap-2">
+                                        <div class="flex gap-2">
+                                            <input type="text" id="sim-new-player-input" placeholder="選手フルネーム" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-grow focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white">
+                                            <input type="text" id="sim-new-player-number" placeholder="背番号" class="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-16 text-center focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white">
+                                        </div>
+                                        <button id="btn-add-sim-player" class="bg-amber-600 hover:bg-amber-700 text-white font-bold py-1.5 rounded-lg text-sm transition w-full shadow-sm">追加</button>
+                                    </div>
+                                </div>
+                                <!-- 登録選手一覧 -->
+                                <div class="flex flex-col flex-grow min-h-[160px]">
+                                    <div id="sim-players-list" class="flex flex-wrap gap-2 max-h-[180px] overflow-y-auto p-1 border border-gray-100 rounded-lg flex-grow bg-white">
+                                        <!-- 選手リスト -->
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 mt-2">※選手バッジをドラッグまたはタップして守備位置へ配置します。</p>
+                                </div>
                             </div>
-                            <p class="text-[11px] text-gray-400 mt-2">※選手バッジをドラッグまたはタップして、グラウンド上の守備位置に配置（スタメン決定）します。</p>
                         </div>
 
                         <!-- スタメン打順の設定 -->
