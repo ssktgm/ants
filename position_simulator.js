@@ -1060,51 +1060,7 @@ async function handleToggleSubRule(ruleId, active) {
  * 競合検出
  */
 function checkSubstitutionConflict(newRule, pattern) {
-    const activeRules = (pattern.customSubstitutions || []).filter(s => s.active && s.id !== newRule.id);
-    
-    if (newRule.type === 'rotation') {
-        const newPositions = new Set(newRule.details.positions);
-        for (const activeRule of activeRules) {
-            if (activeRule.type === 'rotation') {
-                const activePositions = activeRule.details.positions;
-                for (const pos of activePositions) {
-                    if (newPositions.has(pos)) {
-                        return `ポジション交代「${POSITION_LABELS[pos]}」が既に他の有効なポジション交代に含まれています。`;
-                    }
-                }
-            }
-        }
-    }
-    
-    const newInPlayers = new Set();
-    const newOutPlayers = new Set();
-    
-    if (newRule.type === 'sub') {
-        if (newRule.details.inPlayerId) newInPlayers.add(newRule.details.inPlayerId);
-        if (newRule.details.outPlayerId) newOutPlayers.add(newRule.details.outPlayerId);
-    }
-    
-    for (const activeRule of activeRules) {
-        if (activeRule.type !== 'sub') continue;
-        
-        const activeInPlayerId = activeRule.details.inPlayerId;
-        const activeOutPlayerId = activeRule.details.outPlayerId;
-        
-        for (const pId of newInPlayers) {
-            if (activeInPlayerId === pId) {
-                const name = players.find(p => p.id === pId)?.name || '選手';
-                return `選手「${name}」は、既に他の有効な交代でグラウンドに入ることになっています。`;
-            }
-        }
-        
-        for (const pId of newOutPlayers) {
-            if (activeOutPlayerId === pId) {
-                const name = players.find(p => p.id === pId)?.name || '選手';
-                return `選手「${name}」は、既に他の有効な交代で退くことになっています。`;
-            }
-        }
-    }
-    
+    // ユーザーが自由に重ね合わせの交代をシミュレーションできるように競合チェックを緩和（常に競合なしとする）
     return null;
 }
 
@@ -1155,10 +1111,6 @@ async function handleCreateSubRule() {
             return;
         }
         
-        if (nums.length > 2 && nums[0] === nums[nums.length - 1]) {
-            nums.pop();
-        }
-        
         const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
         
         const rotPositions = [];
@@ -1175,10 +1127,12 @@ async function handleCreateSubRule() {
             rotPositions.push(posKey);
         }
         
-        const uniquePos = new Set(rotPositions);
-        if (uniquePos.size !== rotPositions.length) {
-            alert('交代ルート内で同じポジションを重複して指定することはできません。');
-            return;
+        // 隣り合う同一ポジションの重複のみ禁止（循環や再移動は許可）
+        for (let i = 0; i < rotPositions.length - 1; i++) {
+            if (rotPositions[i] === rotPositions[i + 1]) {
+                alert('隣り合うポジションに同じものを指定することはできません（例: 1-1-3 は不可）。');
+                return;
+            }
         }
         
         details = { positions: rotPositions };
