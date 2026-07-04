@@ -737,7 +737,8 @@ function handleToggleSubRule(ruleId, active) {
 function checkSubstitutionConflict(newRule, pattern) {
     const activeRules = (pattern.customSubstitutions || []).filter(s => s.active && s.id !== newRule.id);
     
-    // ポジション交代（rotation）同士のポジション重複チェック
+    // 1. ポジション交代（rotation）同士のポジション重複チェック
+    // 同じポジションが複数の有効なポジション交代ルールに登場する場合、適用順序の競合を避けるためエラーとする
     if (newRule.type === 'rotation') {
         const newPositions = new Set(newRule.details.positions);
         for (const activeRule of activeRules) {
@@ -752,56 +753,33 @@ function checkSubstitutionConflict(newRule, pattern) {
         }
     }
     
-    // 選手交代（sub）同士、または全体での選手ID重複チェック
-    // 競合とみなす条件:
-    // A. 同じ選手を2回「入る選手(inPlayerId)」に指定することはできない。
-    // B. 同じ選手を2回「退く選手(outPlayerId)」に指定することはできない。
-    // C. 選手交代で退く予定の選手が、同時にポジション交代で移動することはできない（またはその逆）。
-    
+    // 2. 選手交代（sub）同士の選手重複チェック
+    // 選手交代に関わる選手のみをチェックする。ポジション交代で移動する選手は除外する
     const newInPlayers = new Set();
     const newOutPlayers = new Set();
     
     if (newRule.type === 'sub') {
         if (newRule.details.inPlayerId) newInPlayers.add(newRule.details.inPlayerId);
         if (newRule.details.outPlayerId) newOutPlayers.add(newRule.details.outPlayerId);
-    } else if (newRule.type === 'rotation') {
-        const base = pattern.basePositions || {};
-        newRule.details.positions.forEach(pos => {
-            if (base[pos]) {
-                newOutPlayers.add(base[pos]);
-                newInPlayers.add(base[pos]);
-            }
-        });
     }
     
     for (const activeRule of activeRules) {
-        const activeInPlayers = new Set();
-        const activeOutPlayers = new Set();
+        if (activeRule.type !== 'sub') continue; // 選手交代同士のみチェック
         
-        if (activeRule.type === 'sub') {
-            if (activeRule.details.inPlayerId) activeInPlayers.add(activeRule.details.inPlayerId);
-            if (activeRule.details.outPlayerId) activeOutPlayers.add(activeRule.details.outPlayerId);
-        } else if (activeRule.type === 'rotation') {
-            const base = pattern.basePositions || {};
-            activeRule.details.positions.forEach(pos => {
-                if (base[pos]) {
-                    activeOutPlayers.add(base[pos]);
-                    activeInPlayers.add(base[pos]);
-                }
-            });
-        }
+        const activeInPlayerId = activeRule.details.inPlayerId;
+        const activeOutPlayerId = activeRule.details.outPlayerId;
         
-        // 1. 同一選手が二重にグラウンドに入る(inPlayerId)重複のチェック
+        // A. 同じ選手が二重にグラウンドに入る(inPlayerId)チェック
         for (const pId of newInPlayers) {
-            if (activeInPlayers.has(pId)) {
+            if (activeInPlayerId === pId) {
                 const name = players.find(p => p.id === pId)?.name || '選手';
                 return `選手「${name}」は、既に他の有効な交代でグラウンドに入ることになっています。`;
             }
         }
         
-        // 2. 同一選手が二重に退場する(outPlayerId)重複のチェック
+        // B. 同じ選手が二重に退場する(outPlayerId)チェック
         for (const pId of newOutPlayers) {
-            if (activeOutPlayers.has(pId)) {
+            if (activeOutPlayerId === pId) {
                 const name = players.find(p => p.id === pId)?.name || '選手';
                 return `選手「${name}」は、既に他の有効な交代で退くことになっています。`;
             }
