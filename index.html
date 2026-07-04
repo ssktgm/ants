@@ -129,6 +129,9 @@
                 <button id="btn-app-dispatch" class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded shadow">
                     配車調整
                 </button>
+                <button id="btn-app-simulator" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 px-4 rounded shadow">
+                    ポジション設定
+                </button>
             </div>
             <div class="mt-8 pt-4 border-t flex justify-center space-x-4 text-sm text-gray-500">
                 <button id="btn-change-password-menu" class="underline hover:text-gray-700">パスワード変更</button>
@@ -153,6 +156,7 @@
                 <button id="btn-back-to-menu" class="text-xs font-bold bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded transition">&lt; メニュー</button>
                 <button id="nav-dispatch" class="font-bold text-blue-300 px-2 py-1 transition">配車調整</button>
                 <button id="nav-master" class="text-gray-400 hover:text-white px-2 py-1 transition">配車マスタ</button>
+                <button id="nav-simulator" class="text-gray-400 hover:text-white px-2 py-1 transition font-bold hidden">ポジション</button>
                 <button id="nav-users" class="hidden text-gray-400 hover:text-white px-2 py-1 transition font-bold">メンバー・マスタ管理</button>
                 <button id="btn-change-password" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">アカウント設定</button>
                 <button id="btn-logout" class="text-xs bg-gray-600 hover:bg-gray-50 px-2 py-1 rounded transition">ログアウト</button>
@@ -479,6 +483,145 @@
             <div class="flex justify-end space-x-2">
                 <button id="btn-close-change-password" class="bg-gray-300 hover:bg-gray-400 text-gray-800 px-4 py-2 rounded transition font-bold text-sm">キャンセル</button>
                 <button id="btn-submit-change-password" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded transition font-bold text-sm">パスワードを変更</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- ポジションシミュレーター画面 (Simulator View) -->
+    <!-- ========================================== -->
+    <div id="position-simulator-view" class="hidden min-h-screen bg-gray-50 flex flex-col">
+        <!-- 上部ナビゲーション -->
+        <div class="bg-amber-800 text-white p-4 flex justify-between items-center sticky top-0 z-50 shadow-md">
+            <h1 class="text-xl md:text-2xl font-bold flex items-center gap-2">
+                <img src="./logo.jpg" alt="Arinko Ants" class="w-8 h-8 md:w-10 md:h-10 object-contain rounded-full border border-amber-700 bg-white shrink-0">
+                <span>ポジション設定</span>
+            </h1>
+            <div class="flex items-center space-x-2 md:space-x-4">
+                <span id="sim-user-email-display" class="hidden md:inline text-xs text-gray-300"></span>
+                <button id="btn-back-to-menu-sim" class="text-xs font-bold bg-amber-900 hover:bg-amber-700 px-2 py-1 rounded transition">&lt; メニュー</button>
+                <button id="nav-dispatch-sim" class="text-xs font-bold bg-blue-700 hover:bg-blue-600 px-2 py-1 rounded transition hidden">配車調整</button>
+                <button id="nav-attendance-sim" class="text-xs font-bold bg-green-700 hover:bg-green-600 px-2 py-1 rounded transition hidden">出欠管理</button>
+                <button id="btn-logout-sim" class="text-xs bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded transition">ログアウト</button>
+            </div>
+        </div>
+
+        <div class="container mx-auto py-4 md:py-6 px-4 max-w-7xl flex-grow flex flex-col gap-6">
+            <!-- コントロールバー -->
+            <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-wrap gap-4 items-center justify-between">
+                <!-- パターン保存・読込 -->
+                <div class="flex items-center gap-2 flex-wrap">
+                    <label for="sim-pattern-select" class="text-sm font-bold text-gray-700">配置パターン:</label>
+                    <select id="sim-pattern-select" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 min-w-[200px]">
+                        <option value="">新規作成...</option>
+                    </select>
+                    <input type="text" id="sim-pattern-name-input" placeholder="パターン名を入力" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-48 focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                    <button id="btn-save-sim-pattern" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition shadow-sm">保存</button>
+                    <button id="btn-delete-sim-pattern" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold px-3 py-1.5 rounded-lg text-sm transition">削除</button>
+                </div>
+                <!-- JSONインポート/エクスポート -->
+                <div class="flex items-center gap-2">
+                    <button id="btn-export-sim" class="bg-gray-600 hover:bg-gray-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition">JSON保存</button>
+                    <label for="import-sim-input" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold px-3 py-1.5 rounded-lg text-sm transition cursor-pointer text-center">JSON読込</label>
+                    <input type="file" id="import-sim-input" class="hidden" accept=".json">
+                    
+                    <!-- 9人制/10人制切替 -->
+                    <div class="flex border rounded-lg overflow-hidden ml-2 shadow-sm">
+                        <button id="btn-sim-mode-9" class="px-3 py-1.5 text-xs font-bold bg-amber-600 text-white transition">9人制</button>
+                        <button id="btn-sim-mode-10" class="px-3 py-1.5 text-xs font-bold bg-white text-gray-700 border-l hover:bg-gray-50 transition">10人制</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- メインエリア: 左側グラウンド、右側選手管理 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-grow items-stretch">
+                <!-- 左側（2/3）: イニング操作とグラウンド -->
+                <div class="lg:col-span-2 flex flex-col gap-4 bg-white p-4 rounded-xl shadow border border-gray-200">
+                    <!-- イニングタブ -->
+                    <div class="flex items-center justify-between border-b pb-2 flex-wrap gap-2">
+                        <div class="flex items-center gap-1 overflow-x-auto pb-1" id="sim-inning-tabs">
+                            <!-- JSで動的に追加される: 1回、2回... -->
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button id="btn-add-sim-inning" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold px-3 py-1.5 rounded-lg text-xs transition">＋ 回を追加</button>
+                            <button id="btn-copy-prev-inning" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 font-bold px-3 py-1.5 rounded-lg text-xs transition">前の回からコピー</button>
+                            <button id="btn-delete-sim-inning" class="text-red-500 hover:text-red-700 text-xs font-bold px-2 py-1.5 rounded-lg transition" title="現在のイニングを削除">🗑️ 削除</button>
+                        </div>
+                    </div>
+
+                    <!-- グラウンド描画コンテナ -->
+                    <div class="relative w-full max-w-[640px] mx-auto aspect-[4/3] bg-emerald-800 rounded-xl overflow-hidden shadow-md border border-emerald-900 select-none">
+                        <!-- SVGグラウンド -->
+                        <svg viewBox="0 0 800 600" class="w-full h-full text-white">
+                            <!-- 外野芝生（緑扇形） -->
+                            <path d="M 400,550 L 50,200 A 450,450 0 0,1 750,200 Z" fill="#1b5e20" />
+                            <!-- 内野土（オレンジダイヤモンド扇形） -->
+                            <path d="M 400,550 L 220,370 A 240,240 0 0,1 580,370 Z" fill="#e0a96d" />
+                            <!-- 内野芝生（ダイヤモンド内部） -->
+                            <path d="M 400,510 L 260,370 L 400,230 L 540,370 Z" fill="#2e7d32" />
+                            <!-- 各ベースライン（白線） -->
+                            <path d="M 400,510 L 260,370 L 400,230 L 540,370 Z" fill="none" stroke="#ffffff" stroke-width="3" />
+                            <!-- ファウルライン -->
+                            <line x1="400" y1="510" x2="30" y2="140" stroke="#ffffff" stroke-width="3" />
+                            <line x1="400" y1="510" x2="770" y2="140" stroke="#ffffff" stroke-width="3" />
+                            <!-- ピッチャーズプレート -->
+                            <rect x="390" y="365" width="20" height="6" fill="#ffffff" rx="1" />
+                            <!-- ホームプレート -->
+                            <polygon points="400,515 412,503 412,492 388,492 388,503" fill="#ffffff" />
+                            <!-- 1塁ベース -->
+                            <rect x="532" y="358" width="16" height="16" fill="#ffffff" transform="rotate(45 540 366)" />
+                            <!-- 2塁ベース -->
+                            <rect x="392" y="222" width="16" height="16" fill="#ffffff" transform="rotate(45 400 230)" />
+                            <!-- 3塁ベース -->
+                            <rect x="252" y="358" width="16" height="16" fill="#ffffff" transform="rotate(45 260 366)" />
+                        </svg>
+
+                        <!-- ポジションノード（HTML要素として絶対配置） -->
+                        <div id="sim-field-positions" class="absolute inset-0 pointer-events-none">
+                            <!-- 各ポジションが絶対配置される -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右側（1/3）: 選手管理 -->
+                <div class="flex flex-col gap-6">
+                    <!-- 選手登録・クイック追加 -->
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
+                            <span>👥</span><span>選手登録</span>
+                        </h3>
+                        <div class="flex gap-2">
+                            <input type="text" id="sim-new-player-input" placeholder="選手名を入力" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm flex-grow focus:ring-2 focus:ring-amber-500 focus:border-amber-500">
+                            <button id="btn-add-sim-player" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-1.5 rounded-lg text-sm transition">追加</button>
+                        </div>
+                        <p class="text-xs text-gray-400 mt-2">※選手名はブラウザに自動保存されます。</p>
+                    </div>
+
+                    <!-- 選手リスト・ベンチ -->
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-col flex-grow">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="font-bold text-gray-800 flex items-center gap-1">
+                                <span>📋</span><span>登録選手一覧</span>
+                            </h3>
+                            <span class="text-xs text-gray-500 font-bold" id="sim-player-count">0 人</span>
+                        </div>
+                        <!-- 選手一覧リスト -->
+                        <div id="sim-players-list" class="flex flex-wrap gap-2 max-h-[300px] overflow-y-auto p-1 border border-gray-100 rounded-lg flex-grow">
+                            <!-- JSで選手リストが挿入される -->
+                        </div>
+                        <p class="text-xs text-gray-400 mt-2">タップ（またはドラッグ）して守備位置に配置します。名前の右の [×] で削除できます。</p>
+                    </div>
+
+                    <!-- ベンチ（控え）選手表示エリア -->
+                    <div class="bg-white p-4 rounded-xl shadow border border-gray-200">
+                        <h3 class="font-bold text-gray-800 mb-3 flex items-center gap-1">
+                            <span>🪑</span><span>ベンチ (控え選手)</span>
+                        </h3>
+                        <div id="sim-bench-list" class="flex flex-wrap gap-2 min-h-[80px] p-2 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+                            <!-- 配置されていない選手がここに並ぶ -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

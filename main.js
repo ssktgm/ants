@@ -1,5 +1,6 @@
 import { initAttendanceApp } from './attendance.js';
 import { initDashboardApp } from './dashboard.js';
+import { initPositionSimulator } from './position_simulator.js';
 
 // ==========================================
 // ★Vercel環境変数からSupabase情報を読み込む
@@ -329,6 +330,38 @@ function initAppDOM() {
             btnAttendance.className = 'flex items-center justify-between w-full px-5 py-3.5 rounded-xl shadow-md transition duration-200 font-bold bg-green-600 hover:bg-green-700 hover:shadow-lg text-white text-left';
             btnAttendance.innerHTML = '<div class="flex items-center space-x-3 text-base sm:text-lg"><span class="text-2xl">📅</span><span>出欠管理</span></div><span class="text-white/60 text-sm font-normal">❯</span>';
         }
+
+        const btnSimulator = document.getElementById('btn-app-simulator');
+        if (btnSimulator) {
+            btnSimulator.className = 'flex items-center justify-between w-full px-5 py-3.5 rounded-xl shadow-md transition duration-200 font-bold bg-amber-600 hover:bg-amber-700 hover:shadow-lg text-white text-left';
+            btnSimulator.innerHTML = '<div class="flex items-center space-x-3 text-base sm:text-lg"><span class="text-2xl">⚾</span><span>ポジション設定</span></div><span class="text-white/60 text-sm font-normal">❯</span>';
+            btnSimulator.onclick = () => {
+                switchAuthScreen('position-simulator-view');
+                initPositionSimulator();
+            };
+        }
+
+        // ポジションナビゲーションイベント
+        document.getElementById('nav-simulator')?.addEventListener('click', () => {
+            switchAuthScreen('position-simulator-view');
+            initPositionSimulator();
+        });
+        document.getElementById('nav-simulator-att')?.addEventListener('click', () => {
+            switchAuthScreen('position-simulator-view');
+            initPositionSimulator();
+        });
+        document.getElementById('nav-dispatch-sim')?.addEventListener('click', () => {
+            switchAuthScreen('app-view', 'dispatch');
+            if (!isAppInitialized) {
+                initApp();
+            } else {
+                document.getElementById('nav-dispatch')?.click();
+            }
+        });
+        document.getElementById('nav-attendance-sim')?.addEventListener('click', async () => {
+            switchAuthScreen('attendance-view');
+            await withLoading(initAttendanceApp, '出欠管理画面を準備中...');
+        });
     } catch (e) {
         console.error("DOM Initialization failed:", e);
         forceHideLoading();
@@ -354,7 +387,7 @@ function pushHistoryState(screenId, subView = null) {
 
 // 画面切り替えヘルパー関数
 export function switchAuthScreen(screenId, subView = null) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings'].forEach(id => {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings', 'position-simulator-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -425,9 +458,10 @@ if (supabaseClient) {
                     let canUseDispatch = true;
                     let canUseDashboard = true;
                     let canUseAttendance = true;
+                    let canUseSimulator = true;
 
                     try {
-                        const { data: userData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance').eq('email', currentUser.email).single();
+                        const { data: userData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance, can_use_simulator').eq('email', currentUser.email).single();
                         
                         if (userData) {
                             currentUserRole = userData.role;
@@ -435,6 +469,7 @@ if (supabaseClient) {
                             if (userData.can_use_dispatch === false) canUseDispatch = false;
                             if (userData.can_use_dashboard === false) canUseDashboard = false;
                             if (userData.can_use_attendance === false) canUseAttendance = false;
+                            if (userData.can_use_simulator === false) canUseSimulator = false;
                         } else {
                             currentUserRole = 'user';
                         }
@@ -452,6 +487,7 @@ if (supabaseClient) {
                         canUseDispatch = true;
                         canUseDashboard = true;
                         canUseAttendance = true;
+                        canUseSimulator = true;
                     }
 
                     // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
@@ -540,8 +576,39 @@ if (supabaseClient) {
                         btnAppAttendance?.classList.add('hidden');
                     }
 
+                    // ポジション設定メニューの表示制御
+                    const btnAppSimulator = document.getElementById('btn-app-simulator');
+                    const navSimulator = document.getElementById('nav-simulator');
+                    const navSimulatorAtt = document.getElementById('nav-simulator-att');
+                    const navDispatchSim = document.getElementById('nav-dispatch-sim');
+                    const navAttendanceSim = document.getElementById('nav-attendance-sim');
+                    
+                    if (canUseSimulator) {
+                        btnAppSimulator?.classList.remove('hidden');
+                        navSimulator?.classList.remove('hidden');
+                        navSimulatorAtt?.classList.remove('hidden');
+                    } else {
+                        btnAppSimulator?.classList.add('hidden');
+                        navSimulator?.classList.add('hidden');
+                        navSimulatorAtt?.classList.add('hidden');
+                    }
+                    
+                    if (canUseDispatch) {
+                        navDispatchSim?.classList.remove('hidden');
+                    } else {
+                        navDispatchSim?.classList.add('hidden');
+                    }
+                    if (canUseAttendance) {
+                        navAttendanceSim?.classList.remove('hidden');
+                    } else {
+                        navAttendanceSim?.classList.add('hidden');
+                    }
+
                     const emailDisplay = document.getElementById('user-email-display');
                     if (emailDisplay) emailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email); // 名前があれば名前を表示
+
+                    const simEmailDisplay = document.getElementById('sim-user-email-display');
+                    if (simEmailDisplay) simEmailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email);
 
                     // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
                     const hash = window.location.hash;
@@ -1242,10 +1309,11 @@ async function loadAdminUsersData() {
                             <option value="leader" ${u.role === 'leader' ? 'selected' : ''}>リーダー</option>
                             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>管理者</option>
                         </select>
-                        <div class="flex items-center space-x-3 ml-2 border-l pl-2">
+                         <div class="flex items-center space-x-3 ml-2 border-l pl-2 flex-wrap gap-y-1">
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dispatch-${i}" class="rounded text-blue-600" ${u.can_use_dispatch !== false ? 'checked' : ''}><span>配車可</span></label>
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-attendance-${i}" class="rounded text-blue-600" ${u.can_use_attendance !== false ? 'checked' : ''}><span>出欠可</span></label>
+                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-simulator-${i}" class="rounded text-blue-600" ${u.can_use_simulator !== false ? 'checked' : ''}><span>シミュレータ可</span></label>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2 shrink-0">
@@ -1333,6 +1401,7 @@ async function saveAllAdminUsers() {
             const useDispatchEl = document.getElementById(`edit-use-dispatch-${index}`);
             const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
             const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
+            const useSimulatorEl = document.getElementById(`edit-use-simulator-${index}`);
             
             const newEmail = emailEl.disabled ? oldEmail : formatLoginId(emailEl.value.trim());
             const newName = nameEl.value.trim();
@@ -1341,6 +1410,7 @@ async function saveAllAdminUsers() {
             const canUseDispatch = useDispatchEl ? useDispatchEl.checked : true;
             const canUseDashboard = useDashboardEl ? useDashboardEl.checked : true;
             const canUseAttendance = useAttendanceEl ? useAttendanceEl.checked : true;
+            const canUseSimulator = useSimulatorEl ? useSimulatorEl.checked : true;
 
             if (!newEmail) {
                 throw new Error('メールアドレスが空のレコードがあります。');
@@ -1355,7 +1425,8 @@ async function saveAllAdminUsers() {
                 role: newRole,
                 can_use_dispatch: canUseDispatch,
                 can_use_dashboard: canUseDashboard,
-                can_use_attendance: canUseAttendance
+                can_use_attendance: canUseAttendance,
+                can_use_simulator: canUseSimulator
             };
             userUpdates.push({ oldEmail, updatePayload });
 
