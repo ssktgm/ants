@@ -43,6 +43,20 @@ const POSITION_NUMBERS = {
     rcf: '11'
 };
 
+const NUMBER_TO_POSITION = {
+    '1': 'p',
+    '2': 'c',
+    '3': '1b',
+    '4': '2b',
+    '5': '3b',
+    '6': 'ss',
+    '7': 'lf',
+    '8': 'cf',
+    '9': 'rf',
+    '10': 'lcf',
+    '11': 'rcf'
+};
+
 const POSITIONS_9 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'cf', 'rf'];
 const POSITIONS_10 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'lcf', 'rcf', 'rf'];
 
@@ -556,29 +570,8 @@ function initRuleFormSelects() {
     const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
     const base = currentPattern.basePositions || {};
     
-    const swapPos1 = document.getElementById('swap-pos1');
-    const swapPos2 = document.getElementById('swap-pos2');
     const subPos = document.getElementById('sub-pos');
     const subPlayerIn = document.getElementById('sub-player-in');
-    
-    if (swapPos1 && swapPos2) {
-        swapPos1.innerHTML = '';
-        swapPos2.innerHTML = '';
-        activePositions.forEach(pos => {
-            const pId = base[pos];
-            const name = players.find(p => p.id === pId)?.name || '未配置';
-            
-            const opt = document.createElement('option');
-            opt.value = pos;
-            opt.textContent = `${POSITION_LABELS[pos]} (${name})`;
-            
-            swapPos1.appendChild(opt.cloneNode(true));
-            swapPos2.appendChild(opt.cloneNode(true));
-        });
-        if (swapPos2.options.length > 1) {
-            swapPos2.selectedIndex = 1;
-        }
-    }
     
     if (subPos) {
         subPos.innerHTML = '';
@@ -613,67 +606,11 @@ function initRuleFormSelects() {
         }
     }
     
-    // 連鎖交代 (rotation) フォームの初期化
-    resetRotationForm();
-}
-
-/**
- * 連鎖移動 (rotation) のポジション追加
- */
-function resetRotationForm() {
-    const list = document.getElementById('rot-pos-list');
-    if (!list) return;
-    list.innerHTML = '';
-    
-    // 最初期状態で2つのポジション枠をデフォルトで設置する (連鎖には最低2ポジション必要)
-    addRotationPosSelector();
-    addRotationPosSelector();
-}
-
-function addRotationPosSelector() {
-    const list = document.getElementById('rot-pos-list');
-    if (!list) return;
-    
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    const base = currentPattern ? currentPattern.basePositions : {};
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
-    
-    const container = document.createElement('div');
-    container.className = 'rot-pos-item';
-    
-    const select = document.createElement('select');
-    select.className = 'flex-grow border rounded p-1 text-xs bg-white focus:ring-1 focus:ring-amber-500';
-    
-    activePositions.forEach(pos => {
-        const pId = base[pos];
-        const name = players.find(p => p.id === pId)?.name || '未配置';
-        const opt = document.createElement('option');
-        opt.value = pos;
-        opt.textContent = `${POSITION_LABELS[pos]} (${name})`;
-        select.appendChild(opt);
-    });
-    
-    // 適当に初期位置をずらす
-    const existingCount = list.querySelectorAll('.rot-pos-item').length;
-    if (existingCount < select.options.length) {
-        select.selectedIndex = existingCount;
+    // ポジション交代テキストのクリア
+    const rotInput = document.getElementById('rot-input-text');
+    if (rotInput) {
+        rotInput.value = '';
     }
-    
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'text-red-500 hover:text-red-700 font-bold px-1.5 text-xs';
-    deleteBtn.textContent = '×';
-    deleteBtn.onclick = () => {
-        // 最低2つの入力枠を確保
-        if (list.querySelectorAll('.rot-pos-item').length > 2) {
-            container.remove();
-        } else {
-            alert('連鎖移動には最低2つのポジションが必要です。');
-        }
-    };
-    
-    container.appendChild(select);
-    container.appendChild(deleteBtn);
-    list.appendChild(container);
 }
 
 // ==========================================
@@ -776,17 +713,7 @@ function handleCreateSubRule() {
     
     let details = {};
     
-    if (type === 'swap') {
-        const pos1 = document.getElementById('swap-pos1').value;
-        const pos2 = document.getElementById('swap-pos2').value;
-        
-        if (pos1 === pos2) {
-            alert('同じポジション同士は入れ替えられません。');
-            return;
-        }
-        
-        details = { pos1, pos2 };
-    } else if (type === 'sub') {
+    if (type === 'sub') {
         const pos = document.getElementById('sub-pos').value;
         const inPlayerId = document.getElementById('sub-player-in').value;
         
@@ -803,13 +730,53 @@ function handleCreateSubRule() {
         
         details = { pos, outPlayerId, inPlayerId };
     } else if (type === 'rotation') {
-        const selects = document.querySelectorAll('#rot-pos-list select');
-        const rotPositions = Array.from(selects).map(sel => sel.value);
+        const textInput = document.getElementById('rot-input-text');
+        const text = textInput ? textInput.value.trim() : '';
         
-        // 重複チェック
+        if (!text) {
+            alert('交代ルートを入力してください（例: 1-3-1）。');
+            return;
+        }
+        
+        // 半角数字とハイフンのみかチェック
+        if (!/^\d+(-\d+)*$/.test(text)) {
+            alert('入力形式が正しくありません。半角数字とハイフンで入力してください（例: 1-3-1）。');
+            return;
+        }
+        
+        const nums = text.split('-').filter(Boolean);
+        
+        if (nums.length < 2) {
+            alert('交代には最低2つのポジションが必要です（例: 1-3）。');
+            return;
+        }
+        
+        // 最初と最後が同じであれば、末尾をカットして循環を表す
+        if (nums.length > 2 && nums[0] === nums[nums.length - 1]) {
+            nums.pop();
+        }
+        
+        const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+        
+        // ポジションキーへの変換とバリデーション
+        const rotPositions = [];
+        for (const num of nums) {
+            const posKey = NUMBER_TO_POSITION[num];
+            if (!posKey) {
+                alert(`無効なポジション番号「${num}」が含まれています。1〜11の範囲で指定してください。`);
+                return;
+            }
+            if (!activePositions.includes(posKey)) {
+                alert(`ポジション番号「${num}」(${POSITION_LABELS[posKey] || posKey})は、現在の守備人数（${simulatorMode}人制）では使用できません。`);
+                return;
+            }
+            rotPositions.push(posKey);
+        }
+        
+        // ポジションの重複チェック
         const uniquePos = new Set(rotPositions);
         if (uniquePos.size !== rotPositions.length) {
-            alert('連鎖移動内に同じポジションを重複して指定することはできません。');
+            alert('交代ルート内で同じポジションを重複して指定することはできません（例: 1-3-3-1 は無効）。');
             return;
         }
         
@@ -1271,17 +1238,12 @@ function setupEventListeners() {
     // 交代種別切り替え
     document.getElementById('rule-type-select')?.addEventListener('change', (e) => {
         const val = e.target.value;
-        document.getElementById('form-swap').classList.add('hidden');
         document.getElementById('form-sub').classList.add('hidden');
         document.getElementById('form-rotation').classList.add('hidden');
         
-        if (val === 'swap') document.getElementById('form-swap').classList.remove('hidden');
-        else if (val === 'sub') document.getElementById('form-sub').classList.remove('hidden');
+        if (val === 'sub') document.getElementById('form-sub').classList.remove('hidden');
         else if (val === 'rotation') document.getElementById('form-rotation').classList.remove('hidden');
     });
-    
-    // 連鎖移動ポジション追加
-    document.getElementById('btn-add-rot-pos')?.addEventListener('click', addRotationPosSelector);
     
     // 交代ルール追加実行
     document.getElementById('btn-create-sub-rule')?.addEventListener('click', handleCreateSubRule);
