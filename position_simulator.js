@@ -1,17 +1,30 @@
 // ==========================================
-// ANTS_BB ポジションシミュレーター
+// ANTS_BB ポジションシミュレーター (打順・印刷 ＆ Supabase 同期対応)
 // ==========================================
 
 import { switchAuthScreen } from './main.js';
 
+// Supabase クライアント初期化
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+let supabaseClient = null;
+
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+        console.error('Supabase Client initialize error:', e);
+    }
+}
+
 // 状態管理
-let players = []; // { id, name }
-let patterns = []; // { id, name, mode, basePositions: { p: playerId, ... }, customSubstitutions: [{ id, type, active, details }] }
+let players = []; // { id, name, number }
+let patterns = []; // { id, name, mode (9:DHなし, 10:DHあり), basePositions: { p: playerId, ... }, customSubstitutions: [], battingOrder: { 1: playerId, ... }, headerInfo: { date, tournament, ... } }
 let currentPatternId = null;
-let activeTab = 'setup'; // 'setup' or 'subrules'
-let selectedPlayerId = null; // タップ選択用 (選手リストまたはグラウンド上のスロット)
-let selectedSourcePos = null; // タップ選択の移動元
-let simulatorMode = 9; // 9人制または10人制
+let activeTab = 'setup';
+let selectedPlayerId = null;
+let selectedSourcePos = null;
+let simulatorMode = 9; // 9: DH制なし, 10: DH制あり
 
 // 守備位置の日本語ラベル
 const POSITION_LABELS = {
@@ -24,8 +37,7 @@ const POSITION_LABELS = {
     lf: '左翼手',
     cf: '中堅手',
     rf: '右翼手',
-    lcf: '左中堅',
-    rcf: '右中堅'
+    dh: '指名打者'
 };
 
 // 守備番号 (スコアブック・アナウンス用)
@@ -39,8 +51,7 @@ const POSITION_NUMBERS = {
     lf: '7',
     cf: '8',
     rf: '9',
-    lcf: '10',
-    rcf: '11'
+    dh: 'DH'
 };
 
 const NUMBER_TO_POSITION = {
@@ -53,23 +64,25 @@ const NUMBER_TO_POSITION = {
     '7': 'lf',
     '8': 'cf',
     '9': 'rf',
-    '10': 'lcf',
-    '11': 'rcf'
+    '10': 'dh',
+    'd': 'dh',
+    'dh': 'dh',
+    'DH': 'dh'
 };
 
 const POSITIONS_9 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'cf', 'rf'];
-const POSITIONS_10 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'lcf', 'rcf', 'rf'];
+const POSITIONS_DH = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'cf', 'rf', 'dh'];
 
-// LocalStorage キー
+// LocalStorage キー (フォールバック用)
 const STORAGE_PLAYERS_KEY = 'ants_sim_players';
 const STORAGE_PATTERNS_KEY = 'ants_sim_patterns';
 
 /**
  * 初期化関数
  */
-export function initPositionSimulator() {
-    loadFromLocalStorage();
+export async function initPositionSimulator() {
     setupEventListeners();
+    await loadData();
     
     if (patterns.length > 0) {
         currentPatternId = patterns[0].id;
@@ -80,7 +93,7 @@ export function initPositionSimulator() {
             simulatorMode = pattern.mode || 9;
         }
     } else {
-        createNewPattern();
+        await createNewPattern('デフォルト配置');
     }
     
     updateModeUI();
@@ -90,29 +103,63 @@ export function initPositionSimulator() {
 }
 
 /**
- * LocalStorage からデータをロード
+ * Supabase ＆ LocalStorage からデータ読み込み
  */
+async function loadData() {
+    let success = false;
+    
+    if (supabaseClient) {
+        try {
+            const { data: dbPlayers, error: pError } = await supabaseClient.from('sim_players').select('*').order('created_at', { ascending: true });
+            const { data: dbPatterns, error: patError } = await supabaseClient.from('sim_patterns').select('*').order('created_at', { ascending: true });
+            
+            if (!pError && dbPlayers) {
+                players = dbPlayers;
+                success = true;
+            }
+            
+            if (!patError && dbPatterns) {
+                patterns = dbPatterns.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    mode: p.has_dh ? 10 : 9,
+                    basePositions: p.base_positions || {},
+                    customSubstitutions: p.custom_substitutions || [],
+                    battingOrder: p.batting_order || {},
+                    headerInfo: p.header_info || {}
+                }));
+                success = true;
+            }
+        } catch (err) {
+            console.error('Supabase load failed, falling back to local storage:', err);
+        }
+    }
+    
+    if (!success) {
+        loadFromLocalStorage();
+    } else {
+        savePlayersToLocalStorage();
+        savePatternsToLocalStorage();
+    }
+}
+
 function loadFromLocalStorage() {
     try {
         const storedPlayers = localStorage.getItem(STORAGE_PLAYERS_KEY);
         if (storedPlayers) {
             players = JSON.parse(storedPlayers);
         } else {
-            // 初期選手データ (サンプル)
             players = [
-                { id: 'p1', name: 'とあ' },
-                { id: 'p2', name: 'そうま' },
-                { id: 'p3', name: 'あきと' },
-                { id: 'p4', name: 'ゆうき' },
-                { id: 'p5', name: 'あいのすけ' },
-                { id: 'p6', name: 'けんせい' },
-                { id: 'p7', name: 'りゅうと' },
-                { id: 'p8', name: 'ながまさ' },
-                { id: 'p9', name: 'そうすけ' },
-                { id: 'p10', name: 'かーくん' },
-                { id: 'p11', name: 'たいち' },
-                { id: 'p12', name: 'れお' },
-                { id: 'p13', name: 'たもつ' }
+                { id: 'p1', name: 'とあ', number: '2' },
+                { id: 'p2', name: 'そうま', number: '10' },
+                { id: 'p3', name: 'あきと', number: '3' },
+                { id: 'p4', name: 'ゆうき', number: '4' },
+                { id: 'p5', name: 'あいのすけ', number: '1' },
+                { id: 'p6', name: 'けんせい', number: '6' },
+                { id: 'p7', name: 'りゅうと', number: '7' },
+                { id: 'p8', name: 'ながまさ', number: '8' },
+                { id: 'p9', name: 'そうすけ', number: '9' },
+                { id: 'p10', name: 'たいち', number: '5' }
             ];
             savePlayersToLocalStorage();
         }
@@ -120,7 +167,6 @@ function loadFromLocalStorage() {
         const storedPatterns = localStorage.getItem(STORAGE_PATTERNS_KEY);
         if (storedPatterns) {
             patterns = JSON.parse(storedPatterns);
-            // 旧イニング形式から新規モジュール型配置への自動移行（マイグレーション）
             patterns.forEach(pat => {
                 if (!pat.basePositions) {
                     if (pat.innings && pat.innings[0]) {
@@ -129,9 +175,9 @@ function loadFromLocalStorage() {
                         pat.basePositions = {};
                     }
                 }
-                if (!pat.customSubstitutions) {
-                    pat.customSubstitutions = [];
-                }
+                if (!pat.customSubstitutions) pat.customSubstitutions = [];
+                if (!pat.battingOrder) pat.battingOrder = {};
+                if (!pat.headerInfo) pat.headerInfo = {};
             });
         }
     } catch (e) {
@@ -148,20 +194,77 @@ function savePatternsToLocalStorage() {
 }
 
 /**
- * 新規パターン (保存データ) の作成
+ * Supabase 同期処理
  */
-function createNewPattern(name = '') {
+async function syncPlayerToDB(player, isDelete = false) {
+    if (!supabaseClient) return;
+    try {
+        if (isDelete) {
+            await supabaseClient.from('sim_players').delete().eq('id', player.id);
+        } else {
+            await supabaseClient.from('sim_players').upsert({
+                id: player.id,
+                name: player.name,
+                number: player.number
+            });
+        }
+    } catch (e) {
+        console.error('Supabase player sync error:', e);
+    }
+}
+
+async function syncPatternToDB(pattern, isDelete = false) {
+    if (!supabaseClient) return;
+    try {
+        if (isDelete) {
+            await supabaseClient.from('sim_patterns').delete().eq('id', pattern.id);
+        } else {
+            await supabaseClient.from('sim_patterns').upsert({
+                id: pattern.id,
+                name: pattern.name,
+                has_dh: pattern.mode === 10,
+                base_positions: pattern.basePositions,
+                custom_substitutions: pattern.customSubstitutions,
+                batting_order: pattern.battingOrder || {},
+                header_info: pattern.headerInfo || {},
+                updated_at: new Date().toISOString()
+            });
+        }
+    } catch (e) {
+        console.error('Supabase pattern sync error:', e);
+    }
+}
+
+/**
+ * 新規パターンの作成
+ */
+async function createNewPattern(name = '') {
     const id = 'pat_' + Date.now();
     const newPat = {
         id: id,
         name: name || '新規データ',
         mode: simulatorMode,
-        basePositions: {}, // ポジションキー: 選手ID (基本スタメン)
-        customSubstitutions: [] // 交代イベントのリスト
+        basePositions: {},
+        customSubstitutions: [],
+        battingOrder: {},
+        headerInfo: {
+            date: '',
+            tournament: '',
+            teamHome: 'ありんこアントス',
+            teamVisitor: '',
+            manager: '',
+            captain: '',
+            scorer: '',
+            stadium: '',
+            time: ''
+        }
     };
     patterns.push(newPat);
     currentPatternId = id;
+    
     savePatternsToLocalStorage();
+    await syncPatternToDB(newPat);
+    
     updatePatternSelectOptions();
     
     const select = document.getElementById('sim-pattern-select');
@@ -205,16 +308,14 @@ function updateModeUI() {
  */
 function getPositionsToDraw(pattern) {
     const currentPositions = { ...(pattern.basePositions || {}) };
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
     
-    // 現在のモードで使用するポジションのみに制限
     Object.keys(currentPositions).forEach(k => {
         if (!activePositions.includes(k)) {
             delete currentPositions[k];
         }
     });
     
-    // 有効な交代ルールを順次適用
     const activeSubs = (pattern.customSubstitutions || []).filter(s => s.active);
     
     activeSubs.forEach(sub => {
@@ -237,7 +338,6 @@ function getPositionsToDraw(pattern) {
             }
         } else if (sub.type === 'rotation') {
             const keys = sub.details.positions;
-            // モードで有効なポジションのみ処理
             const validKeys = keys.filter(k => activePositions.includes(k));
             if (validKeys.length > 1) {
                 const originalVals = validKeys.map(k => currentPositions[k]);
@@ -254,7 +354,6 @@ function getPositionsToDraw(pattern) {
 
 /**
  * 選手がすでに交代により退いている（再出場不可）かを調べる
- * 有効な 選手交代 (sub) ルールで 'outPlayerId' になっている選手
  */
 function getRetiredPlayerIds(pattern) {
     const retired = new Set();
@@ -270,6 +369,51 @@ function getRetiredPlayerIds(pattern) {
 }
 
 /**
+ * 打順の自動整合性・デフォルト割当ロジック
+ */
+function assignDefaultBattingOrder(pattern) {
+    if (!pattern.battingOrder) pattern.battingOrder = {};
+    
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+    const base = pattern.basePositions || {};
+    
+    // 現在スタメンとして配置されている選手IDの集合
+    const currentLineupPlayerIds = new Set();
+    activePositions.forEach(pos => {
+        if (base[pos]) {
+            currentLineupPlayerIds.add(base[pos]);
+        }
+    });
+    
+    // 1. スタメンから外れた選手を打順から削除
+    Object.keys(pattern.battingOrder).forEach(ord => {
+        const pId = pattern.battingOrder[ord];
+        if (!currentLineupPlayerIds.has(pId)) {
+            delete pattern.battingOrder[ord];
+        }
+    });
+    
+    // 2. 打順がまだ決まっていないスタメン選手を抽出
+    const assignedPlayerIds = new Set(Object.values(pattern.battingOrder));
+    const unassignedPlayerIds = [];
+    currentLineupPlayerIds.forEach(pId => {
+        if (!assignedPlayerIds.has(pId)) {
+            unassignedPlayerIds.push(pId);
+        }
+    });
+    
+    // 3. 空いている打順番号に順次割り当て
+    const maxOrder = activePositions.length;
+    for (let ord = 1; ord <= maxOrder; ord++) {
+        if (unassignedPlayerIds.length === 0) break;
+        if (!pattern.battingOrder[ord]) {
+            const nextPlayerId = unassignedPlayerIds.shift();
+            pattern.battingOrder[ord] = nextPlayerId;
+        }
+    }
+}
+
+/**
  * 全体レンダリング
  */
 function renderSimulator() {
@@ -280,22 +424,28 @@ function renderSimulator() {
     const drawPositions = getPositionsToDraw(currentPattern);
     const retiredPlayerIds = getRetiredPlayerIds(currentPattern);
     
-    // 1. 配置済み選手IDのリスト (グラウンドに立っている選手)
+    // 1. 配置済み選手IDのリスト
     const assignedPlayerIds = new Set(Object.values(drawPositions).filter(Boolean));
     
-    // 2. 選手リストの描画
+    // 2. 打順のデフォルト整合性補正
+    assignDefaultBattingOrder(currentPattern);
+    
+    // 3. 選手リストの描画
     renderPlayersList(assignedPlayerIds, retiredPlayerIds);
     
-    // 3. ベンチ（控え選手）の描画
+    // 4. ベンチ（控え選手）の描画
     renderBenchList(assignedPlayerIds, retiredPlayerIds);
     
-    // 4. グラウンドポジションスロットの描画
+    // 5. グラウンドポジションスロットの描画
     renderFieldPositions(drawPositions, currentPattern);
     
-    // 5. 交代ルールリストの描画
+    // 6. 打順設定リストの描画
+    renderBattingOrderList(currentPattern);
+    
+    // 7. 交代ルールリストの描画
     renderSubRulesList(currentPattern);
     
-    // 6. アナウンスログの描画
+    // 8. アナウンスログの描画
     renderAnnouncementLogs(currentPattern);
 }
 
@@ -329,8 +479,9 @@ function renderPlayersList(assignedPlayerIds, retiredPlayerIds) {
             badge.addEventListener('dragstart', handleDragStart);
         }
         
+        const numLabel = player.number ? `#${player.number} ` : '';
         badge.innerHTML = `
-            <span>${escapeHTML(player.name)}${isRetired ? ' (交代済)' : ''}</span>
+            <span>${numLabel}${escapeHTML(player.name)}${isRetired ? ' (交代済)' : ''}</span>
             <span class="sim-player-delete-btn" data-player-id="${player.id}">×</span>
         `;
         
@@ -356,7 +507,6 @@ function renderBenchList(assignedPlayerIds, retiredPlayerIds) {
     
     benchEl.innerHTML = '';
     
-    // 現在フィールドに立っておらず、かつ交代で退いてもいない選手
     const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
     
     if (benchPlayers.length === 0) {
@@ -372,7 +522,8 @@ function renderBenchList(assignedPlayerIds, retiredPlayerIds) {
         badge.setAttribute('data-player-id', player.id);
         badge.setAttribute('draggable', 'true');
         
-        badge.innerHTML = `<span>${escapeHTML(player.name)}</span>`;
+        const numLabel = player.number ? `#${player.number} ` : '';
+        badge.innerHTML = `<span>${numLabel}${escapeHTML(player.name)}</span>`;
         
         badge.addEventListener('dragstart', handleDragStart);
         badge.addEventListener('click', () => {
@@ -392,13 +543,12 @@ function renderFieldPositions(drawPositions, currentPattern) {
     
     container.innerHTML = '';
     
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
     
     activePositions.forEach(pos => {
         const playerId = drawPositions[pos];
         const player = players.find(p => p.id === playerId);
         
-        // 交代適用によって基本スタメンから変更されているかをチェック
         const isChanged = (currentPattern.basePositions || {})[pos] !== playerId && playerId;
         const isSelected = selectedPlayerId && selectedSourcePos === pos;
         
@@ -413,15 +563,136 @@ function renderFieldPositions(drawPositions, currentPattern) {
             handleFieldSlotClick(pos);
         });
         
+        const numLabel = (player && player.number) ? `#${player.number} ` : '';
         slot.innerHTML = `
             <div class="sim-pos-title">${POSITION_LABELS[pos]}</div>
             <div class="sim-pos-player ${isChanged ? 'player-changed' : ''}">
-                ${player ? escapeHTML(player.name) : '<span class="text-gray-300 text-xs font-normal">未配置</span>'}
+                ${player ? numLabel + escapeHTML(player.name) : '<span class="text-gray-300 text-xs font-normal">未配置</span>'}
             </div>
         `;
         
         container.appendChild(slot);
     });
+}
+
+/**
+ * 打順設定リストの描画
+ */
+function renderBattingOrderList(pattern) {
+    const container = document.getElementById('sim-batting-order-list');
+    if (!container) return;
+    
+    container.innerHTML = '';
+    
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+    const maxOrder = activePositions.length;
+    const base = pattern.basePositions || {};
+    
+    // 現在スタメンとして配置されている選手とポジションの逆引きマップを作成
+    const playerToPos = {};
+    activePositions.forEach(pos => {
+        const pId = base[pos];
+        if (pId) {
+            playerToPos[pId] = pos;
+        }
+    });
+    
+    // 打順 1番〜最大数 順に行をレンダリング
+    let hasLineup = false;
+    
+    for (let ord = 1; ord <= maxOrder; ord++) {
+        const playerId = pattern.battingOrder[ord];
+        if (!playerId) continue;
+        
+        const player = players.find(p => p.id === playerId);
+        if (!player) continue;
+        
+        hasLineup = true;
+        const pos = playerToPos[playerId];
+        const posLabel = pos ? POSITION_LABELS[pos] : '未配置';
+        
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between bg-amber-50/50 border border-amber-100 rounded-lg p-2 text-xs';
+        
+        // セレクトボックスの作成
+        const select = document.createElement('select');
+        select.className = 'border rounded p-1 text-[11px] font-bold bg-white text-gray-700';
+        for (let o = 1; o <= maxOrder; o++) {
+            const opt = document.createElement('option');
+            opt.value = o;
+            opt.textContent = `${o}番`;
+            if (o === ord) opt.selected = true;
+            select.appendChild(opt);
+        }
+        
+        select.addEventListener('change', (e) => {
+            handleBattingOrderChange(playerId, parseInt(e.target.value));
+        });
+        
+        const numText = player.number ? `#${player.number} ` : '';
+        row.innerHTML = `
+            <div class="flex items-center gap-2">
+                <span class="bg-amber-600 text-white font-bold rounded-full w-5 h-5 flex items-center justify-center text-[10px]">${ord}</span>
+                <span class="font-bold text-gray-800">${numText}${escapeHTML(player.name)}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">${posLabel}</span>
+            </div>
+        `;
+        row.appendChild(select);
+        container.appendChild(row);
+    }
+    
+    if (!hasLineup) {
+        container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">選手をスタメン配置すると打順が設定できます。</p>';
+    }
+}
+
+/**
+ * 打順変更時の相互スワップハンドラー
+ */
+async function handleBattingOrderChange(playerId, newOrder) {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    if (!currentPattern.battingOrder) currentPattern.battingOrder = {};
+    
+    // 変更対象選手の現在の打順を見つける
+    let oldOrder = null;
+    Object.keys(currentPattern.battingOrder).forEach(ord => {
+        if (currentPattern.battingOrder[ord] === playerId) {
+            oldOrder = parseInt(ord);
+        }
+    });
+    
+    // もし変更先の打順に別の選手が配置されていたら、その選手を以前の打順と入れ替える（スワップ）
+    const previousOccupantId = currentPattern.battingOrder[newOrder];
+    
+    if (previousOccupantId) {
+        if (oldOrder) {
+            currentPattern.battingOrder[oldOrder] = previousOccupantId;
+        } else {
+            // 前の打順がない場合は、空き番を探して割り振る
+            const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+            for (let o = 1; o <= activePositions.length; o++) {
+                if (!currentPattern.battingOrder[o] && o !== newOrder) {
+                    currentPattern.battingOrder[o] = previousOccupantId;
+                    break;
+                }
+            }
+        }
+    } else {
+        if (oldOrder) {
+            delete currentPattern.battingOrder[oldOrder];
+        }
+    }
+    
+    currentPattern.battingOrder[newOrder] = playerId;
+    
+    savePatternsToLocalStorage();
+    await syncPatternToDB(currentPattern);
+    
+    renderSimulator();
 }
 
 /**
@@ -439,14 +710,12 @@ function renderSubRulesList(pattern) {
         return;
     }
     
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
     let tempPositions = { ...(pattern.basePositions || {}) };
     
     rules.forEach(rule => {
-        // カードのテキスト用に、このルールが適用される時点（またはその直前）の tempPositions を渡す
         const title = getRuleSummaryText(rule, tempPositions, true);
         
-        // もしこのルールが有効なら、tempPositions を更新して次のルールの状態にする
         if (rule.active) {
             if (rule.type === 'swap') {
                 const { pos1, pos2 } = rule.details;
@@ -522,14 +791,12 @@ function renderAnnouncementLogs(pattern) {
         return;
     }
     
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
     let tempPositions = { ...(pattern.basePositions || {}) };
     
     activeRules.forEach(rule => {
-        // 直前状態の tempPositions を渡してテキストを取得
         const textObj = getRuleSummaryText(rule, tempPositions, false);
         
-        // tempPositions を更新
         if (rule.type === 'swap') {
             const { pos1, pos2 } = rule.details;
             if (activePositions.includes(pos1) && activePositions.includes(pos2)) {
@@ -569,80 +836,6 @@ function renderAnnouncementLogs(pattern) {
     });
 }
 
-/**
- * 交代ルールをアナウンス風テキストにパースする
- */
-function getRuleSummaryText(rule, tempPositions, shortVersion = false) {
-    const base = tempPositions || {};
-    
-    if (rule.type === 'swap') {
-        const { pos1, pos2 } = rule.details;
-        const num1 = POSITION_NUMBERS[pos1] || '?';
-        const num2 = POSITION_NUMBERS[pos2] || '?';
-        
-        const p1Id = base[pos1];
-        const p2Id = base[pos2];
-        const name1 = players.find(p => p.id === p1Id)?.name || '未配置';
-        const name2 = players.find(p => p.id === p2Id)?.name || '未配置';
-        
-        return {
-            code: `${num1}-${num2}-${num1}`,
-            desc: `${POSITION_LABELS[pos1]}(${escapeHTML(name1)}) ⇔ ${POSITION_LABELS[pos2]}(${escapeHTML(name2)})`,
-            fullDesc: `${POSITION_LABELS[pos1]}の${escapeHTML(name1)}が${POSITION_LABELS[pos2]}、${POSITION_LABELS[pos2]}の${escapeHTML(name2)}が${POSITION_LABELS[pos1]}`
-        };
-    } else if (rule.type === 'sub') {
-        const { outPlayerId, inPlayerId, pos } = rule.details;
-        
-        // outPlayerId がその時点で守っているポジションを特定
-        let detectedPos = null;
-        if (outPlayerId) {
-            detectedPos = Object.keys(base).find(k => base[k] === outPlayerId);
-        }
-        // 旧データ互換
-        if (!detectedPos && pos) {
-            detectedPos = pos;
-        }
-        
-        const num = detectedPos ? POSITION_NUMBERS[detectedPos] : '?';
-        const posLabel = detectedPos ? POSITION_LABELS[detectedPos] : '守備';
-        
-        const outName = players.find(p => p.id === outPlayerId)?.name || '未配置';
-        const inName = players.find(p => p.id === inPlayerId)?.name || '交代選手';
-        
-        return {
-            code: `${num}`,
-            desc: `${posLabel}(${escapeHTML(outName)}) ➔ ${escapeHTML(inName)}`,
-            fullDesc: `${posLabel}の${escapeHTML(outName)}に代わって、${escapeHTML(inName)}が${posLabel}`
-        };
-    } else if (rule.type === 'rotation') {
-        const keys = rule.details.positions;
-        const numbers = keys.map(k => POSITION_NUMBERS[k] || '?');
-        const numCode = [...numbers, numbers[0]].join('-'); // 例: 1-4-5-1
-        
-        const names = keys.map(k => {
-            const pId = base[k];
-            return players.find(p => p.id === pId)?.name || '未配置';
-        });
-        
-        // 概要テキスト
-        const descChain = keys.map((k, i) => `${POSITION_LABELS[k]}(${escapeHTML(names[i])})`).join(' ➔ ');
-        
-        // アナウンス風詳細テキスト
-        const announcementChain = keys.map((k, i) => {
-            const nextKey = keys[(i + 1) % keys.length];
-            return `${POSITION_LABELS[k]}の${escapeHTML(names[i])}が${POSITION_LABELS[nextKey]}`;
-        }).join('、');
-        
-        return {
-            code: numCode,
-            desc: descChain,
-            fullDesc: announcementChain
-        };
-    }
-    
-    return { code: '?', desc: '不明な交代', fullDesc: '不明な交代' };
-}
-
 // ==========================================
 // 交代作成フォームのセレクトボックス初期化
 // ==========================================
@@ -650,13 +843,11 @@ function initRuleFormSelects() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
-    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
-    const base = currentPattern.basePositions || {};
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
     
     const subPlayerOut = document.getElementById('sub-player-out');
     const subPlayerIn = document.getElementById('sub-player-in');
     
-    // その時点の交代適用後の配置を取得
     const currentPositions = getPositionsToDraw(currentPattern);
     const assignedPlayerIds = new Set(Object.values(currentPositions).filter(Boolean));
     const retiredIds = getRetiredPlayerIds(currentPattern);
@@ -677,7 +868,6 @@ function initRuleFormSelects() {
     
     if (subPlayerIn) {
         subPlayerIn.innerHTML = '';
-        // 現在グラウンドに立っておらず、退いてもいない選手
         const availableIn = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredIds.has(p.id));
         
         if (availableIn.length === 0) {
@@ -692,7 +882,6 @@ function initRuleFormSelects() {
         }
     }
     
-    // ポジション交代テキストのクリア
     const rotInput = document.getElementById('rot-input-text');
     if (rotInput) {
         rotInput.value = '';
@@ -703,11 +892,7 @@ function initRuleFormSelects() {
 // 交代の適用・解除ロジック & 競合チェック
 // ==========================================
 
-/**
- * 交代ルール適用時の競合チェック
- * 有効にしようとするルールが、既に有効な他のルールと衝突（同じ選手またはポジションを重複変更）しないか確認する
- */
-function handleToggleSubRule(ruleId, active) {
+async function handleToggleSubRule(ruleId, active) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
@@ -715,30 +900,29 @@ function handleToggleSubRule(ruleId, active) {
     if (!rule) return;
     
     if (active) {
-        // 競合チェックを実行
         const conflict = checkSubstitutionConflict(rule, currentPattern);
         if (conflict) {
             alert(`適用エラー: 他の有効な交代と競合するため適用できません。\n理由: ${conflict}`);
-            // トグルをOFFに戻す
             renderSimulator();
             return;
         }
     }
     
     rule.active = active;
+    
     savePatternsToLocalStorage();
-    initRuleFormSelects(); // 交代可能選手のリストアップに影響があるため再構築
+    await syncPatternToDB(currentPattern);
+    
+    initRuleFormSelects();
     renderSimulator();
 }
 
 /**
- * 競合検出のコアロジック
+ * 競合検出
  */
 function checkSubstitutionConflict(newRule, pattern) {
     const activeRules = (pattern.customSubstitutions || []).filter(s => s.active && s.id !== newRule.id);
     
-    // 1. ポジション交代（rotation）同士のポジション重複チェック
-    // 同じポジションが複数の有効なポジション交代ルールに登場する場合、適用順序の競合を避けるためエラーとする
     if (newRule.type === 'rotation') {
         const newPositions = new Set(newRule.details.positions);
         for (const activeRule of activeRules) {
@@ -753,8 +937,6 @@ function checkSubstitutionConflict(newRule, pattern) {
         }
     }
     
-    // 2. 選手交代（sub）同士の選手重複チェック
-    // 選手交代に関わる選手のみをチェックする。ポジション交代で移動する選手は除外する
     const newInPlayers = new Set();
     const newOutPlayers = new Set();
     
@@ -764,12 +946,11 @@ function checkSubstitutionConflict(newRule, pattern) {
     }
     
     for (const activeRule of activeRules) {
-        if (activeRule.type !== 'sub') continue; // 選手交代同士のみチェック
+        if (activeRule.type !== 'sub') continue;
         
         const activeInPlayerId = activeRule.details.inPlayerId;
         const activeOutPlayerId = activeRule.details.outPlayerId;
         
-        // A. 同じ選手が二重にグラウンドに入る(inPlayerId)チェック
         for (const pId of newInPlayers) {
             if (activeInPlayerId === pId) {
                 const name = players.find(p => p.id === pId)?.name || '選手';
@@ -777,7 +958,6 @@ function checkSubstitutionConflict(newRule, pattern) {
             }
         }
         
-        // B. 同じ選手が二重に退場する(outPlayerId)チェック
         for (const pId of newOutPlayers) {
             if (activeOutPlayerId === pId) {
                 const name = players.find(p => p.id === pId)?.name || '選手';
@@ -786,18 +966,18 @@ function checkSubstitutionConflict(newRule, pattern) {
         }
     }
     
-    return null; // 競合なし
+    return null;
 }
 
 /**
  * 交代ルールの新規作成
  */
-function handleCreateSubRule() {
+async function handleCreateSubRule() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     const typeSelect = document.getElementById('rule-type-select');
-    const type = typeSelect ? typeSelect.value : 'swap';
+    const type = typeSelect ? typeSelect.value : 'rotation';
     
     let details = {};
     
@@ -824,9 +1004,8 @@ function handleCreateSubRule() {
             return;
         }
         
-        // 半角数字とハイフンのみかチェック
-        if (!/^\d+(-\d+)*$/.test(text)) {
-            alert('入力形式が正しくありません。半角数字とハイフンで入力してください（例: 1-3-1）。');
+        if (!/^[0-9a-zA-Z]+(-[0-9a-zA-Z]+)*$/.test(text)) {
+            alert('入力形式が正しくありません。半角数字・英字とハイフンで入力してください（例: 1-3-1）。');
             return;
         }
         
@@ -837,32 +1016,29 @@ function handleCreateSubRule() {
             return;
         }
         
-        // 最初と最後が同じであれば、末尾をカットして循環を表す
         if (nums.length > 2 && nums[0] === nums[nums.length - 1]) {
             nums.pop();
         }
         
-        const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
+        const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
         
-        // ポジションキーへの変換とバリデーション
         const rotPositions = [];
         for (const num of nums) {
             const posKey = NUMBER_TO_POSITION[num];
             if (!posKey) {
-                alert(`無効なポジション番号「${num}」が含まれています。1〜11の範囲で指定してください。`);
+                alert(`無効なポジション番号「${num}」が含まれています。1〜9またはDHを指定してください。`);
                 return;
             }
             if (!activePositions.includes(posKey)) {
-                alert(`ポジション番号「${num}」(${POSITION_LABELS[posKey] || posKey})は、現在の守備人数（${simulatorMode}人制）では使用できません。`);
+                alert(`ポジション「${num}」(${POSITION_LABELS[posKey] || posKey})は、現在の守備モード（DH${simulatorMode === 10 ? 'あり' : 'なし'}）では使用できません。`);
                 return;
             }
             rotPositions.push(posKey);
         }
         
-        // ポジションの重複チェック
         const uniquePos = new Set(rotPositions);
         if (uniquePos.size !== rotPositions.length) {
-            alert('交代ルート内で同じポジションを重複して指定することはできません（例: 1-3-3-1 は無効）。');
+            alert('交代ルート内で同じポジションを重複して指定することはできません。');
             return;
         }
         
@@ -872,7 +1048,7 @@ function handleCreateSubRule() {
     const newRule = {
         id: 'rule_' + Date.now(),
         type: type,
-        active: false, // 初期はOFF状態で追加
+        active: false,
         details: details
     };
     
@@ -881,25 +1057,27 @@ function handleCreateSubRule() {
     }
     
     currentPattern.customSubstitutions.push(newRule);
-    savePatternsToLocalStorage();
     
-    // フォームとUIの更新
+    savePatternsToLocalStorage();
+    await syncPatternToDB(currentPattern);
+    
     initRuleFormSelects();
     renderSimulator();
-    
-    // 交代ルール管理タブの表示に切り替え
     switchTab('subrules');
 }
 
 /**
  * 交代ルールの削除
  */
-function handleDeleteSubRule(ruleId) {
+async function handleDeleteSubRule(ruleId) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     currentPattern.customSubstitutions = currentPattern.customSubstitutions.filter(s => s.id !== ruleId);
+    
     savePatternsToLocalStorage();
+    await syncPatternToDB(currentPattern);
+    
     initRuleFormSelects();
     renderSimulator();
 }
@@ -966,13 +1144,12 @@ function handleDrop(e) {
 /**
  * 選手を基本配置（スタメン）に登録する
  */
-function assignPlayerToMasterPosition(playerId, targetPos) {
+async function assignPlayerToMasterPosition(playerId, targetPos) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     if (!currentPattern.basePositions) currentPattern.basePositions = {};
     
-    // 基本配置の設定はスタメン決定であるため、交代ルールに影響しないようにする
     let currentPosOfPlayer = null;
     Object.keys(currentPattern.basePositions).forEach(pos => {
         if (currentPattern.basePositions[pos] === playerId) {
@@ -983,20 +1160,22 @@ function assignPlayerToMasterPosition(playerId, targetPos) {
     const previousPlayerAtTarget = currentPattern.basePositions[targetPos];
     
     if (currentPosOfPlayer) {
-        // スタメン内の移動 (スワップ)
         currentPattern.basePositions[currentPosOfPlayer] = previousPlayerAtTarget;
         currentPattern.basePositions[targetPos] = playerId;
     } else {
-        // 新規スタメン配置
         currentPattern.basePositions[targetPos] = playerId;
     }
     
+    // 打順の同期
+    assignDefaultBattingOrder(currentPattern);
+    
     savePatternsToLocalStorage();
+    await syncPatternToDB(currentPattern);
     
     selectedPlayerId = null;
     selectedSourcePos = null;
     
-    initRuleFormSelects(); // 選択可能な交代対象を更新するためにリビルド
+    initRuleFormSelects();
     renderSimulator();
 }
 
@@ -1017,7 +1196,7 @@ function handleSelectPlayer(playerId, source) {
 /**
  * 基本配置のグラウンド枠タップ処理
  */
-function handleFieldSlotClick(clickedPos) {
+async function handleFieldSlotClick(clickedPos) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
@@ -1027,19 +1206,22 @@ function handleFieldSlotClick(clickedPos) {
     
     if (selectedPlayerId) {
         if (selectedSourcePos !== 'players-list' && selectedSourcePos !== 'bench') {
-            // グラウンド内でのスワップ
             const playerAtSource = currentPattern.basePositions[selectedSourcePos];
             
             currentPattern.basePositions[selectedSourcePos] = playerAtSlot;
             currentPattern.basePositions[clickedPos] = playerAtSource;
             
+            // 打順の同期
+            assignDefaultBattingOrder(currentPattern);
+            
             savePatternsToLocalStorage();
+            await syncPatternToDB(currentPattern);
+            
             selectedPlayerId = null;
             selectedSourcePos = null;
             initRuleFormSelects();
             renderSimulator();
         } else {
-            // 新規配置
             assignPlayerToMasterPosition(selectedPlayerId, clickedPos);
         }
     } else {
@@ -1054,14 +1236,20 @@ function handleFieldSlotClick(clickedPos) {
 /**
  * 基本配置から選手を外す
  */
-function removePlayerFromMasterPosition(pos) {
+async function removePlayerFromMasterPosition(pos) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     if (!currentPattern.basePositions) currentPattern.basePositions = {};
     
     currentPattern.basePositions[pos] = null;
+    
+    // 打順の同期
+    assignDefaultBattingOrder(currentPattern);
+    
     savePatternsToLocalStorage();
+    await syncPatternToDB(currentPattern);
+    
     selectedPlayerId = null;
     selectedSourcePos = null;
     
@@ -1073,61 +1261,86 @@ function removePlayerFromMasterPosition(pos) {
 // 選手管理 (登録・削除)
 // ==========================================
 
-function handleAddPlayer() {
+async function handleAddPlayer() {
     const input = document.getElementById('sim-new-player-input');
+    const numberInput = document.getElementById('sim-new-player-number');
     if (!input) return;
     
     const name = input.value.trim();
+    const number = numberInput ? numberInput.value.trim() : '';
     if (!name) return;
     
     if (players.some(p => p.name === name)) {
-        alert('同じ名前の選手が既に登録されています。');
+        alert('同じフルネームの選手が既に登録されています。');
         return;
     }
     
     const newPlayer = {
         id: 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        name: name
+        name: name,
+        number: number
     };
     
     players.push(newPlayer);
     savePlayersToLocalStorage();
+    await syncPlayerToDB(newPlayer);
+    
     input.value = '';
+    if (numberInput) numberInput.value = '';
     
     initRuleFormSelects();
     renderSimulator();
 }
 
-function handleDeletePlayer(playerId) {
+async function handleDeletePlayer(playerId) {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
     
-    if (!confirm(`選手「${player.name}」を削除しますか？\n（全てのデータ配置・交代設定からも削除されます）`)) {
+    if (!confirm(`選手「${player.name}」を削除しますか？\n（SQL/ローカルの全データ配置・交代設定からも削除されます）`)) {
         return;
     }
     
     players = players.filter(p => p.id !== playerId);
     savePlayersToLocalStorage();
+    await syncPlayerToDB(player, true);
     
-    patterns.forEach(pat => {
-        // スタメン配置から削除
+    for (const pat of patterns) {
+        let changed = false;
         if (!pat.basePositions) pat.basePositions = {};
+        
         Object.keys(pat.basePositions).forEach(pos => {
             if (pat.basePositions[pos] === playerId) {
                 pat.basePositions[pos] = null;
+                changed = true;
             }
         });
         
-        // 交代ルールから削除、または交代ルール自体の無効化
+        if (pat.battingOrder) {
+            Object.keys(pat.battingOrder).forEach(ord => {
+                if (pat.battingOrder[ord] === playerId) {
+                    delete pat.battingOrder[ord];
+                    changed = true;
+                }
+            });
+        }
+        
         if (pat.customSubstitutions) {
+            const beforeCount = pat.customSubstitutions.length;
             pat.customSubstitutions = pat.customSubstitutions.filter(rule => {
                 if (rule.type === 'sub') {
                     return rule.details.outPlayerId !== playerId && rule.details.inPlayerId !== playerId;
                 }
-                return true; // swap, rotationはポジションベースなので維持されるが、基本配置から選手が消えると表示は空になる
+                return true;
             });
+            if (pat.customSubstitutions.length !== beforeCount) {
+                changed = true;
+            }
         }
-    });
+        
+        if (changed) {
+            await syncPatternToDB(pat);
+        }
+    }
     
     savePatternsToLocalStorage();
     
@@ -1141,10 +1354,10 @@ function handleDeletePlayer(playerId) {
 }
 
 // ==========================================
-// 保存データの読み込み・保存・JSON操作
+// 保存データの読み込み・保存・削除
 // ==========================================
 
-function handleSavePattern() {
+async function handleSavePattern() {
     const nameInput = document.getElementById('sim-pattern-name-input');
     if (!nameInput) return;
     
@@ -1158,27 +1371,32 @@ function handleSavePattern() {
     if (currentPattern) {
         currentPattern.name = name;
         currentPattern.mode = simulatorMode;
+        
         savePatternsToLocalStorage();
+        await syncPatternToDB(currentPattern);
+        
         updatePatternSelectOptions();
-        alert(`データ「${name}」を保存しました。`);
+        alert(`データ「${name}」をDBに保存しました。`);
     }
 }
 
-function handleDeletePattern() {
+async function handleDeletePattern() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
-    if (!confirm(`データ「${currentPattern.name}」を削除しますか？`)) {
+    if (!confirm(`配置データ「${currentPattern.name}」を削除しますか？\n（SQL/ローカルの双方から削除されます）`)) {
         return;
     }
     
     patterns = patterns.filter(p => p.id !== currentPatternId);
+    
     savePatternsToLocalStorage();
+    await syncPatternToDB(currentPattern, true);
     
     if (patterns.length > 0) {
         currentPatternId = patterns[0].id;
     } else {
-        createNewPattern();
+        await createNewPattern('デフォルト配置');
     }
     
     updatePatternSelectOptions();
@@ -1198,7 +1416,7 @@ function handleDeletePattern() {
     renderSimulator();
 }
 
-function handlePatternSelectChange(e) {
+async function handlePatternSelectChange(e) {
     const targetId = e.target.value;
     
     if (!targetId) {
@@ -1207,7 +1425,7 @@ function handlePatternSelectChange(e) {
             e.target.value = currentPatternId || '';
             return;
         }
-        createNewPattern(name);
+        await createNewPattern(name);
         initRuleFormSelects();
         renderSimulator();
     } else {
@@ -1229,12 +1447,607 @@ function handlePatternSelectChange(e) {
     }
 }
 
+// ==========================================
+// メンバー表テキスト生成＆モーダル制御
+// ==========================================
+function handleExportMemberTable() {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    const drawPositions = getPositionsToDraw(currentPattern);
+    const retiredPlayerIds = getRetiredPlayerIds(currentPattern);
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+    
+    // モーダル入力欄の初期化（headerInfo から復元）
+    const info = currentPattern.headerInfo || {};
+    document.getElementById('member-input-date').value = info.date || '';
+    document.getElementById('member-input-tournament').value = info.tournament || '';
+    document.getElementById('member-input-team-home').value = info.teamHome || 'ありんこアントス';
+    document.getElementById('member-input-team-visitor').value = info.teamVisitor || '';
+    document.getElementById('member-input-manager').value = info.manager || '';
+    document.getElementById('member-input-captain').value = info.captain || '';
+    document.getElementById('member-input-scorer').value = info.scorer || '';
+    document.getElementById('member-input-stadium').value = info.stadium || '';
+    document.getElementById('member-input-time').value = info.time || '';
+    
+    // コピー用のテキストエリア生成
+    updateMemberTextarea(currentPattern, drawPositions, retiredPlayerIds);
+    
+    const modal = document.getElementById('sim-member-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+/**
+ * 試合詳細変更の監視と自動DB保存
+ */
+function handleHeaderInfoChange() {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    if (!currentPattern.headerInfo) currentPattern.headerInfo = {};
+    
+    currentPattern.headerInfo.date = document.getElementById('member-input-date').value.trim();
+    currentPattern.headerInfo.tournament = document.getElementById('member-input-tournament').value.trim();
+    currentPattern.headerInfo.teamHome = document.getElementById('member-input-team-home').value.trim();
+    currentPattern.headerInfo.teamVisitor = document.getElementById('member-input-team-visitor').value.trim();
+    currentPattern.headerInfo.manager = document.getElementById('member-input-manager').value.trim();
+    currentPattern.headerInfo.captain = document.getElementById('member-input-captain').value.trim();
+    currentPattern.headerInfo.scorer = document.getElementById('member-input-scorer').value.trim();
+    currentPattern.headerInfo.stadium = document.getElementById('member-input-stadium').value.trim();
+    currentPattern.headerInfo.time = document.getElementById('member-input-time').value.trim();
+    
+    // 保存
+    savePatternsToLocalStorage();
+    syncPatternToDB(currentPattern);
+    
+    // テキストエリア更新
+    const drawPositions = getPositionsToDraw(currentPattern);
+    const retiredPlayerIds = getRetiredPlayerIds(currentPattern);
+    updateMemberTextarea(currentPattern, drawPositions, retiredPlayerIds);
+}
+
+function updateMemberTextarea(currentPattern, drawPositions, retiredPlayerIds) {
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+    const info = currentPattern.headerInfo || {};
+    
+    let text = `【 メンバー表 (Ants) 】\n`;
+    text += `日時: ${info.date || '未設定'}  時間: ${info.time || '未設定'}\n`;
+    text += `大会: ${info.tournament || '未設定'}  球場: ${info.stadium || '未設定'}\n`;
+    text += `対戦: ${info.teamHome || '未設定'} vs ${info.teamVisitor || '未設定'}\n`;
+    text += `監督: ${info.manager || '未設定'}  主将: ${info.captain || '未設定'}  スコアラー: ${info.scorer || '未設定'}\n`;
+    text += `------------------------------------\n\n`;
+    
+    text += `◆ スターティングメンバー (打順順)\n`;
+    
+    // 打順情報が存在する場合は打順順、なければ守備位置順で出力
+    const maxOrder = activePositions.length;
+    const base = currentPattern.basePositions || {};
+    
+    // 現在スタメンの選手IDとポジションの逆引き
+    const playerToPos = {};
+    activePositions.forEach(pos => {
+        const pId = base[pos];
+        if (pId) playerToPos[pId] = pos;
+    });
+    
+    for (let ord = 1; ord <= maxOrder; ord++) {
+        const pId = currentPattern.battingOrder[ord];
+        if (pId) {
+            const player = players.find(p => p.id === pId);
+            const pos = playerToPos[pId];
+            if (player && pos) {
+                const posNum = POSITION_NUMBERS[pos];
+                const numText = player.number ? ` [#${player.number}]` : '';
+                text += `${ord}. [${posNum}] ${POSITION_LABELS[pos]} : ${player.name}${numText}\n`;
+            }
+        }
+    }
+    
+    text += `\n◆ 控え選手 (ベンチ)\n`;
+    const assignedPlayerIds = new Set(Object.values(drawPositions).filter(Boolean));
+    const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
+    
+    if (benchPlayers.length === 0) {
+        text += `(なし)\n`;
+    } else {
+        benchPlayers.forEach(p => {
+            const numText = p.number ? ` [#${p.number}]` : '';
+            text += `・${p.name}${numText}\n`;
+        });
+    }
+    
+    text += `\n◆ 交代履歴\n`;
+    const activeRules = (currentPattern.customSubstitutions || []).filter(s => s.active);
+    if (activeRules.length === 0) {
+        text += `(なし: 基本配置のままです)\n`;
+    } else {
+        let tempPositions = { ...(currentPattern.basePositions || {}) };
+        activeRules.forEach((rule, idx) => {
+            const textObj = getRuleSummaryText(rule, tempPositions, false);
+            text += `${idx + 1}. [${textObj.code}] ${textObj.fullDesc}\n`;
+            
+            if (rule.type === 'swap') {
+                const { pos1, pos2 } = rule.details;
+                const temp = tempPositions[pos1];
+                tempPositions[pos1] = tempPositions[pos2];
+                tempPositions[pos2] = temp;
+            } else if (rule.type === 'sub') {
+                const { outPlayerId, inPlayerId } = rule.details;
+                const posKey = Object.keys(tempPositions).find(k => tempPositions[k] === outPlayerId);
+                if (posKey) tempPositions[posKey] = inPlayerId;
+            } else if (rule.type === 'rotation') {
+                const keys = rule.details.positions;
+                const originalVals = keys.map(k => tempPositions[k]);
+                for (let i = 0; i < keys.length; i++) {
+                    const prevVal = originalVals[(i - 1 + keys.length) % keys.length];
+                    tempPositions[keys[i]] = prevVal;
+                }
+            }
+        });
+    }
+    
+    const textarea = document.getElementById('sim-member-text');
+    if (textarea) {
+        textarea.value = text;
+    }
+}
+
+function handleCopyMemberText() {
+    const textarea = document.getElementById('sim-member-text');
+    if (textarea) {
+        textarea.select();
+        document.execCommand('copy');
+        alert('メンバー表をクリップボードにコピーしました！');
+    }
+}
+
+function handleCloseMemberModal() {
+    const modal = document.getElementById('sim-member-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+// ==========================================
+// 4枚綴り (A4横) 印刷画面の生成と出力
+// ==========================================
+function handlePrintMemberTable() {
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    const drawPositions = getPositionsToDraw(currentPattern);
+    const retiredPlayerIds = getRetiredPlayerIds(currentPattern);
+    const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
+    const info = currentPattern.headerInfo || {};
+    
+    // スタメン打順順のリストを取得
+    const base = currentPattern.basePositions || {};
+    const playerToPos = {};
+    activePositions.forEach(pos => {
+        const pId = base[pos];
+        if (pId) playerToPos[pId] = pos;
+    });
+    
+    const maxOrder = activePositions.length;
+    const lineup = [];
+    for (let ord = 1; ord <= maxOrder; ord++) {
+        const pId = currentPattern.battingOrder[ord];
+        if (pId) {
+            const player = players.find(p => p.id === pId);
+            const pos = playerToPos[pId];
+            if (player && pos) {
+                lineup.push({
+                    order: ord,
+                    posNum: POSITION_NUMBERS[pos],
+                    name: player.name,
+                    number: player.number || ''
+                });
+            }
+        }
+    }
+    
+    // もしスタメンが空なら、空き枠を埋める
+    while (lineup.length < 9) {
+        lineup.push({ order: lineup.length + 1, posNum: '', name: '', number: '' });
+    }
+    
+    // 控え選手（左右2列表示用にペア化）
+    const assignedPlayerIds = new Set(Object.values(drawPositions).filter(Boolean));
+    const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
+    
+    const benchPairs = [];
+    // 10行(合計20枠)程度作っておき、手書き用の空行を確保
+    for (let i = 0; i < 9; i++) {
+        const leftIdx = i * 2;
+        const rightIdx = i * 2 + 1;
+        const leftPlayer = benchPlayers[leftIdx];
+        const rightPlayer = benchPlayers[rightIdx];
+        
+        benchPairs.push({
+            leftName: leftPlayer ? leftPlayer.name : '',
+            leftNumber: leftPlayer ? (leftPlayer.number || '') : '',
+            rightName: rightPlayer ? rightPlayer.name : '',
+            rightNumber: rightPlayer ? (rightPlayer.number || '') : ''
+        });
+    }
+    
+    // HTML構築
+    let cardsHtml = '';
+    for (let sheet = 1; sheet <= 4; sheet++) {
+        // 各カード（1/4 〜 4/4）
+        let lineupRows = '';
+        lineup.forEach(item => {
+            lineupRows += `
+                <tr>
+                    <td class="cell-order">${item.order}</td>
+                    <td class="cell-pos">${item.posNum}</td>
+                    <td class="cell-name">${escapeHTML(item.name)}</td>
+                    <td class="cell-number">${item.number}</td>
+                </tr>
+            `;
+        });
+        // もしDHありで10行なら、さらにもう1行追加
+        if (simulatorMode === 10 && lineup.length < 10) {
+            lineupRows += `<tr><td class="cell-order">10</td><td class="cell-pos"></td><td class="cell-name"></td><td class="cell-number"></td></tr>`;
+        }
+        // 足りない枠がある場合の予備空行(通常9行+2行のバッファ、合計11行にしておく)
+        const totalRowsNeeded = simulatorMode === 10 ? 11 : 10;
+        const currentCount = lineup.length;
+        for (let j = currentCount; j < totalRowsNeeded; j++) {
+            lineupRows += `<tr><td class="cell-order"></td><td class="cell-pos"></td><td class="cell-name"></td><td class="cell-number"></td></tr>`;
+        }
+        
+        // 控え選手行
+        let benchRows = '';
+        benchPairs.forEach(pair => {
+            benchRows += `
+                <tr>
+                    <td class="cell-bench-name">${escapeHTML(pair.leftName)}</td>
+                    <td class="cell-bench-num">${pair.leftNumber}</td>
+                    <td class="cell-bench-name">${escapeHTML(pair.rightName)}</td>
+                    <td class="cell-bench-num">${pair.rightNumber}</td>
+                </tr>
+            `;
+        });
+        
+        cardsHtml += `
+            <div class="sheet-card">
+                <div class="card-page-idx">(${sheet}/4)</div>
+                <div class="card-title">メンバー表</div>
+                
+                <div class="header-table-wrapper">
+                    <table class="table-header">
+                        <tr>
+                            <td colspan="3" class="cell-date font-serif">${escapeHTML(info.date || '')}</td>
+                            <td class="cell-tournament-label">大会名</td>
+                            <td class="cell-tournament font-serif">${escapeHTML(info.tournament || '')}</td>
+                        </tr>
+                        <tr>
+                            <td class="cell-team-label-l">チーム</td>
+                            <td class="cell-team font-serif font-bold">${escapeHTML(info.teamHome || '')}</td>
+                            <td class="cell-vs">対</td>
+                            <td class="cell-team-label-r font-serif text-[8px] font-normal leading-none" style="font-size: 7px; padding: 2px 0;">相手<br>チーム</td>
+                            <td class="cell-team font-serif font-bold">${escapeHTML(info.teamVisitor || '')}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <table class="table-lineup">
+                    <thead>
+                        <tr>
+                            <th style="width: 13%;">打順</th>
+                            <th style="width: 15%;">守備位置</th>
+                            <th style="width: 54%;">選手名</th>
+                            <th style="width: 18%;">背番号</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${lineupRows}
+                    </tbody>
+                </table>
+                
+                <div class="bench-section-label">控え選手</div>
+                <table class="table-bench">
+                    <thead>
+                        <tr>
+                            <th style="width: 37%;">選手名</th>
+                            <th style="width: 13%;">背番号</th>
+                            <th style="width: 37%;">選手名</th>
+                            <th style="width: 13%;">背番号</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${benchRows}
+                    </tbody>
+                </table>
+                
+                <table class="table-footer">
+                    <tr>
+                        <td class="footer-label">監督</td>
+                        <td class="footer-val font-serif">${escapeHTML(info.manager || '')}</td>
+                        <td class="footer-label">主将</td>
+                        <td class="footer-val font-serif">${escapeHTML(info.captain || '')}</td>
+                        <td class="footer-label font-sans leading-none text-[7px]" style="font-size: 6.5px; padding: 0;">スコ<br>アラー</td>
+                        <td class="footer-val font-serif">${escapeHTML(info.scorer || '')}</td>
+                    </tr>
+                    <tr>
+                        <td class="footer-label">球場</td>
+                        <td colspan="3" class="footer-val font-serif">${escapeHTML(info.stadium || '')}</td>
+                        <td class="footer-label">時間</td>
+                        <td class="footer-val font-serif">${escapeHTML(info.time || '')}</td>
+                    </tr>
+                </table>
+            </div>
+        `;
+    }
+    
+    // 印刷ウィンドウを開く
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        alert('ポップアップブロックが有効になっているため、印刷用画面を開けませんでした。許可してください。');
+        return;
+    }
+    
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>印刷用メンバー表 (4枚綴り)</title>
+            <meta charset="utf-8">
+            <style>
+                @page {
+                    size: A4 landscape;
+                    margin: 0;
+                }
+                body {
+                    margin: 0;
+                    padding: 0;
+                    font-family: "MS Mincho", "Hiragino Mincho ProN", serif;
+                    background-color: #fff;
+                    -webkit-print-color-adjust: exact;
+                }
+                .print-container {
+                    width: 297mm;
+                    height: 210mm;
+                    box-sizing: border-box;
+                    padding: 3mm 4mm;
+                    display: flex;
+                    justify-content: space-between;
+                }
+                .sheet-card {
+                    width: 68mm;
+                    height: 204mm;
+                    box-sizing: border-box;
+                    border: 1px solid #333;
+                    padding: 2mm 3.5mm;
+                    display: flex;
+                    flex-direction: column;
+                    position: relative;
+                }
+                /* カット用の境界点線 (隣のカードとの間) */
+                .sheet-card:not(:last-child) {
+                    position: relative;
+                }
+                /* カット用点線ガイド（印刷用紙の外側） */
+                .sheet-card:not(:last-child)::after {
+                    content: "";
+                    position: absolute;
+                    top: 0;
+                    right: -4mm;
+                    width: 1px;
+                    height: 204mm;
+                    border-right: 1px dashed #777;
+                }
+                .card-page-idx {
+                    position: absolute;
+                    top: 1.5mm;
+                    right: 2.5mm;
+                    font-size: 8px;
+                    font-family: sans-serif;
+                    color: #555;
+                }
+                .card-title {
+                    text-align: center;
+                    font-size: 17px;
+                    font-weight: bold;
+                    letter-spacing: 2px;
+                    margin-bottom: 2mm;
+                    margin-top: 1mm;
+                    text-decoration: underline;
+                    text-underline-offset: 3px;
+                }
+                .header-table-wrapper {
+                    margin-bottom: 1.5mm;
+                }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 9px;
+                    table-layout: fixed;
+                }
+                th, td {
+                    border: 1px solid #333;
+                    text-align: center;
+                    vertical-align: middle;
+                    height: 5.2mm;
+                    box-sizing: border-box;
+                }
+                /* ヘッダーテーブル */
+                .table-header {
+                    font-size: 8px;
+                }
+                .table-header td {
+                    height: 4.8mm;
+                    padding: 0 1px;
+                }
+                .cell-date {
+                    width: 48%;
+                    font-size: 7.5px;
+                }
+                .cell-tournament-label {
+                    width: 12%;
+                    background-color: #f2f2f2;
+                    font-weight: bold;
+                }
+                .cell-tournament {
+                    width: 40%;
+                    font-size: 7.5px;
+                    text-align: left;
+                    padding-left: 2px;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                }
+                .cell-team-label-l, .cell-team-label-r {
+                    width: 12%;
+                    background-color: #f2f2f2;
+                    font-weight: bold;
+                }
+                .cell-team {
+                    width: 36%;
+                    font-size: 9px;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                }
+                .cell-vs {
+                    width: 4%;
+                    font-weight: bold;
+                    font-size: 7px;
+                    background-color: #f9f9f9;
+                }
+                
+                /* スタメンテーブル */
+                .table-lineup {
+                    margin-bottom: 1.5mm;
+                }
+                .table-lineup th {
+                    background-color: #f2f2f2;
+                    font-weight: bold;
+                    font-size: 8.5px;
+                    height: 4.5mm;
+                }
+                .table-lineup td {
+                    height: 6.2mm;
+                }
+                .cell-order {
+                    font-family: sans-serif;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                .cell-pos {
+                    font-size: 10px;
+                    font-weight: bold;
+                }
+                .cell-name {
+                    font-size: 11.5px;
+                    font-weight: bold;
+                    text-align: center;
+                }
+                .cell-number {
+                    font-family: sans-serif;
+                    font-size: 11px;
+                    font-weight: bold;
+                }
+                
+                /* 控え選手 */
+                .bench-section-label {
+                    font-size: 8px;
+                    font-weight: bold;
+                    background-color: #e5e5e5;
+                    border: 1px solid #333;
+                    border-bottom: none;
+                    text-align: center;
+                    height: 4mm;
+                    line-height: 4mm;
+                    box-sizing: border-box;
+                }
+                .table-bench {
+                    margin-bottom: 1.5mm;
+                }
+                .table-bench th {
+                    background-color: #f2f2f2;
+                    font-size: 7px;
+                    height: 3.5mm;
+                    font-weight: bold;
+                }
+                .table-bench td {
+                    height: 5.6mm;
+                    font-size: 8.5px;
+                }
+                .cell-bench-name {
+                    text-align: center;
+                    font-weight: bold;
+                    font-size: 9.5px;
+                    padding: 0 1px;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                }
+                .cell-bench-num {
+                    font-family: sans-serif;
+                    font-size: 8.5px;
+                    font-weight: bold;
+                }
+                
+                /* フッターテーブル */
+                .table-footer {
+                    font-size: 8px;
+                }
+                .table-footer td {
+                    height: 4.8mm;
+                }
+                .footer-label {
+                    width: 14%;
+                    background-color: #f2f2f2;
+                    font-weight: bold;
+                }
+                .footer-val {
+                    width: 19%;
+                    font-size: 8.5px;
+                    overflow: hidden;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
+                }
+                
+                /* 印刷時の設定 */
+                @media print {
+                    .sheet-card::after {
+                        border-right-color: #000;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-container">
+                ${cardsHtml}
+            </div>
+            <script>
+                // 読み込み完了後に自動的に印刷ダイアログを表示
+                window.onload = function() {
+                    setTimeout(function() {
+                        window.print();
+                    }, 500);
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+}
+
+// ==========================================
+// JSON インポート/エクスポート
+// ==========================================
+
 function handleExportJSON() {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
     const exportData = {
-        version: 'ants-sim-2.0',
+        version: 'ants-sim-3.0',
         players: players,
         pattern: currentPattern
     };
@@ -1255,33 +2068,43 @@ function handleImportJSON(e) {
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onload = function(evt) {
+    reader.onload = async function(evt) {
         try {
             const data = JSON.parse(evt.target.result);
-            if (data.version !== 'ants-sim-2.0' && data.version !== 'ants-sim-1.0') {
+            if (data.version !== 'ants-sim-3.0' && data.version !== 'ants-sim-2.0' && data.version !== 'ants-sim-1.0') {
                 alert('ファイル形式が正しくありません。');
                 return;
             }
             
             if (confirm('インポートを実行しますか？\n※既存の選手リストと配置データがマージ/追加されます。')) {
-                // 選手リストのマージ
-                data.players.forEach(newP => {
+                for (const newP of data.players) {
                     if (!players.some(p => p.id === newP.id || p.name === newP.name)) {
                         players.push(newP);
+                        await syncPlayerToDB(newP);
                     }
-                });
+                }
                 savePlayersToLocalStorage();
                 
-                // バージョン2.0のデータ構造をロード
-                if (data.version === 'ants-sim-2.0') {
+                if (data.version === 'ants-sim-3.0') {
                     const newPat = data.pattern;
                     newPat.id = 'pat_' + Date.now();
                     newPat.name = newPat.name + ' (インポート)';
                     patterns.push(newPat);
                     currentPatternId = newPat.id;
-                    simulatorMode = newPat.mode || 9;
+                    simulatorMode = newPat.mode;
+                    await syncPatternToDB(newPat);
+                } else if (data.version === 'ants-sim-2.0') {
+                    const newPat = data.pattern;
+                    newPat.id = 'pat_' + Date.now();
+                    newPat.name = newPat.name + ' (インポート)';
+                    newPat.mode = newPat.mode || 9;
+                    newPat.battingOrder = {};
+                    newPat.headerInfo = {};
+                    patterns.push(newPat);
+                    currentPatternId = newPat.id;
+                    simulatorMode = newPat.mode;
+                    await syncPatternToDB(newPat);
                 } else {
-                    // 旧バージョン (1.0) のイニングデータを移行
                     const oldPat = data.pattern;
                     const baseInning = oldPat.innings && oldPat.innings[0] ? oldPat.innings[0].positions : {};
                     
@@ -1290,11 +2113,14 @@ function handleImportJSON(e) {
                         name: oldPat.name + ' (旧移行)',
                         mode: oldPat.mode || 9,
                         basePositions: baseInning,
-                        customSubstitutions: []
+                        customSubstitutions: [],
+                        battingOrder: {},
+                        headerInfo: {}
                     };
                     patterns.push(newPat);
                     currentPatternId = newPat.id;
-                    simulatorMode = newPat.mode || 9;
+                    simulatorMode = newPat.mode;
+                    await syncPatternToDB(newPat);
                 }
                 
                 savePatternsToLocalStorage();
@@ -1331,12 +2157,31 @@ function setupEventListeners() {
         else if (val === 'rotation') document.getElementById('form-rotation').classList.remove('hidden');
     });
     
+    // メンバー表モーダルイベント
+    document.getElementById('btn-export-member-table')?.addEventListener('click', handleExportMemberTable);
+    document.getElementById('btn-copy-member-text')?.addEventListener('click', handleCopyMemberText);
+    document.getElementById('btn-close-member-modal')?.addEventListener('click', handleCloseMemberModal);
+    document.getElementById('btn-close-member-modal-footer')?.addEventListener('click', handleCloseMemberModal);
+    document.getElementById('btn-print-member-table')?.addEventListener('click', handlePrintMemberTable);
+    
+    // 試合情報入力の自動セーブ登録
+    const headerInputs = [
+        'member-input-date', 'member-input-tournament', 'member-input-team-home', 'member-input-team-visitor',
+        'member-input-manager', 'member-input-captain', 'member-input-scorer', 'member-input-stadium', 'member-input-time'
+    ];
+    headerInputs.forEach(id => {
+        document.getElementById(id)?.addEventListener('input', handleHeaderInfoChange);
+    });
+    
     // 交代ルール追加実行
     document.getElementById('btn-create-sub-rule')?.addEventListener('click', handleCreateSubRule);
     
     // 選手追加
     document.getElementById('btn-add-sim-player')?.addEventListener('click', handleAddPlayer);
     document.getElementById('sim-new-player-input')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleAddPlayer();
+    });
+    document.getElementById('sim-new-player-number')?.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleAddPlayer();
     });
     
@@ -1346,25 +2191,33 @@ function setupEventListeners() {
     document.getElementById('btn-delete-sim-pattern')?.addEventListener('click', handleDeletePattern);
     
     // モード切替
-    document.getElementById('btn-sim-mode-9')?.addEventListener('click', () => {
+    document.getElementById('btn-sim-mode-9')?.addEventListener('click', async () => {
         if (simulatorMode !== 9) {
             simulatorMode = 9;
             updateModeUI();
             const pat = patterns.find(p => p.id === currentPatternId);
-            if (pat) pat.mode = 9;
-            savePatternsToLocalStorage();
+            if (pat) {
+                pat.mode = 9;
+                assignDefaultBattingOrder(pat);
+                savePatternsToLocalStorage();
+                await syncPatternToDB(pat);
+            }
             initRuleFormSelects();
             renderSimulator();
         }
     });
     
-    document.getElementById('btn-sim-mode-10')?.addEventListener('click', () => {
+    document.getElementById('btn-sim-mode-10')?.addEventListener('click', async () => {
         if (simulatorMode !== 10) {
             simulatorMode = 10;
             updateModeUI();
             const pat = patterns.find(p => p.id === currentPatternId);
-            if (pat) pat.mode = 10;
-            savePatternsToLocalStorage();
+            if (pat) {
+                pat.mode = 10;
+                assignDefaultBattingOrder(pat);
+                savePatternsToLocalStorage();
+                await syncPatternToDB(pat);
+            }
             initRuleFormSelects();
             renderSimulator();
         }

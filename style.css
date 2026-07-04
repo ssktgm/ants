@@ -161,9 +161,8 @@
 .pos-cf { top: 14%; left: 50%; }
 .pos-rf { top: 22%; left: 80%; }
 
-/* 10人制用の外野ポジション */
-.pos-lcf { top: 16%; left: 37%; }
-.pos-rcf { top: 16%; left: 63%; }
+/* DH制用の指名打者ポジション（グラウンド左下に絶対配置） */
+.pos-dh { top: 85%; left: 10%; }
 
 /* 交代で移動した選手の赤字強調（添付画像3の仕様） */
 .player-changed {
