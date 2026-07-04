@@ -666,21 +666,19 @@ function renderBattingOrderList(pattern) {
     });
     
     // 打順 1番〜最大数 順に行をレンダリング
-    let hasLineup = false;
-    
     for (let ord = 1; ord <= maxOrder; ord++) {
         const playerId = pattern.battingOrder[ord];
-        if (!playerId) continue;
+        const player = playerId ? players.find(p => p.id === playerId) : null;
         
-        const player = players.find(p => p.id === playerId);
-        if (!player) continue;
-        
-        hasLineup = true;
-        const pos = playerToPos[playerId];
+        const pos = player ? playerToPos[player.id] : null;
         const posLabel = pos ? POSITION_LABELS[pos] : '未配置';
         
         const row = document.createElement('div');
-        row.className = 'flex items-center justify-between bg-amber-50/50 border border-amber-100 rounded-lg p-2 text-xs';
+        if (player) {
+            row.className = 'flex items-center justify-between bg-amber-50/50 border border-amber-100 rounded-lg p-2 text-xs transition-colors duration-150';
+        } else {
+            row.className = 'flex items-center justify-between bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-2 text-xs text-gray-400 transition-colors duration-150';
+        }
         
         // 矢印ボタンエリア
         const btnContainer = document.createElement('div');
@@ -701,23 +699,33 @@ function renderBattingOrderList(pattern) {
         btnContainer.appendChild(btnUp);
         btnContainer.appendChild(btnDown);
         
-        const numText = player.number ? `#${player.number} ` : '';
-        row.innerHTML = `
-            <div class="flex items-center gap-2">
-                <span class="bg-amber-600 text-white font-bold rounded-full w-5 h-5 flex items-center justify-center text-[10px]">${ord}</span>
-                <span class="font-bold text-gray-800">${numText}${escapeHTML(player.name)}</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">${posLabel}</span>
-            </div>
-        `;
+        let playerDisplay = '';
+        if (player) {
+            const numText = player.number ? `#${player.number} ` : '';
+            playerDisplay = `
+                <div class="flex items-center gap-2">
+                    <span class="bg-amber-600 text-white font-bold rounded-full w-5 h-5 flex items-center justify-center text-[10px]">${ord}</span>
+                    <span class="font-bold text-gray-800">${numText}${escapeHTML(player.name)}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded">${posLabel}</span>
+                </div>
+            `;
+        } else {
+            playerDisplay = `
+                <div class="flex items-center gap-2">
+                    <span class="bg-gray-400 text-white font-bold rounded-full w-5 h-5 flex items-center justify-center text-[10px]">${ord}</span>
+                    <span class="italic text-gray-400">（未設定）</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] bg-gray-100 text-gray-400 font-bold px-1.5 py-0.5 rounded">${posLabel}</span>
+                </div>
+            `;
+        }
         
+        row.innerHTML = playerDisplay;
         row.appendChild(btnContainer);
         container.appendChild(row);
-    }
-    
-    if (!hasLineup) {
-        container.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">選手をスタメン配置すると打順が設定できます。</p>';
     }
 }
 
@@ -747,6 +755,9 @@ async function handleSwapBattingOrder(order, direction) {
     } else if (playerA) {
         currentPattern.battingOrder[targetOrder] = playerA;
         delete currentPattern.battingOrder[order];
+    } else if (playerB) {
+        currentPattern.battingOrder[order] = playerB;
+        delete currentPattern.battingOrder[targetOrder];
     }
     
     await autoSavePattern(currentPattern);
