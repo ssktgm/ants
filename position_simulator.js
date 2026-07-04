@@ -138,6 +138,36 @@ async function loadData() {
     if (!success) {
         loadFromLocalStorage();
     } else {
+        // 双方向同期：ローカルの未同期データをDBにマージ
+        const dbPlayerIds = new Set(players.map(p => p.id));
+        const dbPatIds = new Set(patterns.map(p => p.id));
+        
+        try {
+            const storedP = localStorage.getItem(STORAGE_PLAYERS_KEY);
+            if (storedP) {
+                const localP = JSON.parse(storedP);
+                localP.forEach(p => {
+                    if (!dbPlayerIds.has(p.id)) {
+                        players.push(p);
+                        syncPlayerToDB(p);
+                    }
+                });
+            }
+            
+            const storedPat = localStorage.getItem(STORAGE_PATTERNS_KEY);
+            if (storedPat) {
+                const localPats = JSON.parse(storedPat);
+                localPats.forEach(pat => {
+                    if (!dbPatIds.has(pat.id)) {
+                        patterns.push(pat);
+                        syncPatternToDB(pat);
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('LocalStorage sync merge error:', e);
+        }
+        
         savePlayersToLocalStorage();
         savePatternsToLocalStorage();
     }
@@ -199,14 +229,19 @@ function savePatternsToLocalStorage() {
 async function syncPlayerToDB(player, isDelete = false) {
     if (!supabaseClient) return;
     try {
+        let res;
         if (isDelete) {
-            await supabaseClient.from('sim_players').delete().eq('id', player.id);
+            res = await supabaseClient.from('sim_players').delete().eq('id', player.id);
         } else {
-            await supabaseClient.from('sim_players').upsert({
+            res = await supabaseClient.from('sim_players').upsert({
                 id: player.id,
                 name: player.name,
                 number: player.number
             });
+        }
+        if (res && res.error) {
+            console.error('Supabase player sync error:', res.error);
+            alert(`データベースとの同期に失敗しました。\nエラー詳細: ${res.error.message}\n(入力内容は一時的にブラウザに保存されますが、解決されるまでサーバーへ同期されません。)`);
         }
     } catch (e) {
         console.error('Supabase player sync error:', e);
@@ -216,10 +251,11 @@ async function syncPlayerToDB(player, isDelete = false) {
 async function syncPatternToDB(pattern, isDelete = false) {
     if (!supabaseClient) return;
     try {
+        let res;
         if (isDelete) {
-            await supabaseClient.from('sim_patterns').delete().eq('id', pattern.id);
+            res = await supabaseClient.from('sim_patterns').delete().eq('id', pattern.id);
         } else {
-            await supabaseClient.from('sim_patterns').upsert({
+            res = await supabaseClient.from('sim_patterns').upsert({
                 id: pattern.id,
                 name: pattern.name,
                 has_dh: pattern.mode === 10,
@@ -229,6 +265,10 @@ async function syncPatternToDB(pattern, isDelete = false) {
                 header_info: pattern.headerInfo || {},
                 updated_at: new Date().toISOString()
             });
+        }
+        if (res && res.error) {
+            console.error('Supabase pattern sync error:', res.error);
+            alert(`データベースとの同期に失敗しました。\nエラー詳細: ${res.error.message}\n(配置や打順は一時的にブラウザに保存されますが、解決されるまでサーバーへ同期されません。)`);
         }
     } catch (e) {
         console.error('Supabase pattern sync error:', e);
@@ -1368,8 +1408,48 @@ async function handleSavePattern() {
         await syncPatternToDB(currentPattern);
         
         updatePatternSelectOptions();
-        alert(`データ「${name}」をDBに保存しました。`);
+        alert(`データ「${name}」を上書き保存しました。`);
     }
+}
+
+async function handleSaveAsNewPattern() {
+    const nameInput = document.getElementById('sim-pattern-name-input');
+    if (!nameInput) return;
+    
+    const name = nameInput.value.trim();
+    if (!name) {
+        alert('新規データ名を入力してください。');
+        return;
+    }
+    
+    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    if (!currentPattern) return;
+    
+    // 現在の設定情報を複製して新規作成
+    const id = 'pat_' + Date.now();
+    const newPat = {
+        id: id,
+        name: name,
+        mode: simulatorMode,
+        basePositions: { ...(currentPattern.basePositions || {}) },
+        customSubstitutions: JSON.parse(JSON.stringify(currentPattern.customSubstitutions || [])),
+        battingOrder: { ...(currentPattern.battingOrder || {}) },
+        headerInfo: JSON.parse(JSON.stringify(currentPattern.headerInfo || {}))
+    };
+    
+    patterns.push(newPat);
+    currentPatternId = id;
+    
+    savePatternsToLocalStorage();
+    await syncPatternToDB(newPat);
+    
+    updatePatternSelectOptions();
+    
+    const select = document.getElementById('sim-pattern-select');
+    if (select) select.value = id;
+    
+    alert(`データ「${name}」を新規別名で保存しました。`);
+    renderSimulator();
 }
 
 async function handleDeletePattern() {
@@ -2190,6 +2270,7 @@ function setupEventListeners() {
     // パターン操作
     document.getElementById('sim-pattern-select')?.addEventListener('change', handlePatternSelectChange);
     document.getElementById('btn-save-sim-pattern')?.addEventListener('click', handleSavePattern);
+    document.getElementById('btn-save-as-new-pattern')?.addEventListener('click', handleSaveAsNewPattern);
     document.getElementById('btn-delete-sim-pattern')?.addEventListener('click', handleDeletePattern);
     
     // モード切替
