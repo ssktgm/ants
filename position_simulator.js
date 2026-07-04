@@ -106,6 +106,19 @@ function loadFromLocalStorage() {
         const storedPatterns = localStorage.getItem(STORAGE_PATTERNS_KEY);
         if (storedPatterns) {
             patterns = JSON.parse(storedPatterns);
+            // 旧イニング形式から新規モジュール型配置への自動移行（マイグレーション）
+            patterns.forEach(pat => {
+                if (!pat.basePositions) {
+                    if (pat.innings && pat.innings[0]) {
+                        pat.basePositions = pat.innings[0].positions || {};
+                    } else {
+                        pat.basePositions = {};
+                    }
+                }
+                if (!pat.customSubstitutions) {
+                    pat.customSubstitutions = [];
+                }
+            });
         }
     } catch (e) {
         console.error('LocalStorage load error:', e);
@@ -177,7 +190,7 @@ function updateModeUI() {
  * 交代を重ね合わせた最終的なポジション配置を算出する
  */
 function getPositionsToDraw(pattern) {
-    const currentPositions = { ...pattern.basePositions };
+    const currentPositions = { ...(pattern.basePositions || {}) };
     const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_10;
     
     // 現在のモードで使用するポジションのみに制限
@@ -367,7 +380,7 @@ function renderFieldPositions(drawPositions, currentPattern) {
         const player = players.find(p => p.id === playerId);
         
         // 交代適用によって基本スタメンから変更されているかをチェック
-        const isChanged = currentPattern.basePositions[pos] !== playerId && playerId;
+        const isChanged = (currentPattern.basePositions || {})[pos] !== playerId && playerId;
         const isSelected = selectedPlayerId && selectedSourcePos === pos;
         
         const slot = document.createElement('div');
@@ -782,7 +795,7 @@ function handleCreateSubRule() {
             return;
         }
         
-        const outPlayerId = currentPattern.basePositions[pos];
+        const outPlayerId = (currentPattern.basePositions || {})[pos];
         if (!outPlayerId) {
             alert('対象のポジションに基本スタメンが配置されていません。');
             return;
@@ -904,6 +917,8 @@ function assignPlayerToMasterPosition(playerId, targetPos) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
+    if (!currentPattern.basePositions) currentPattern.basePositions = {};
+    
     // 基本配置の設定はスタメン決定であるため、交代ルールに影響しないようにする
     let currentPosOfPlayer = null;
     Object.keys(currentPattern.basePositions).forEach(pos => {
@@ -953,6 +968,8 @@ function handleFieldSlotClick(clickedPos) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
     
+    if (!currentPattern.basePositions) currentPattern.basePositions = {};
+    
     const playerAtSlot = currentPattern.basePositions[clickedPos];
     
     if (selectedPlayerId) {
@@ -987,6 +1004,8 @@ function handleFieldSlotClick(clickedPos) {
 function removePlayerFromMasterPosition(pos) {
     const currentPattern = patterns.find(p => p.id === currentPatternId);
     if (!currentPattern) return;
+    
+    if (!currentPattern.basePositions) currentPattern.basePositions = {};
     
     currentPattern.basePositions[pos] = null;
     savePatternsToLocalStorage();
@@ -1039,6 +1058,7 @@ function handleDeletePlayer(playerId) {
     
     patterns.forEach(pat => {
         // スタメン配置から削除
+        if (!pat.basePositions) pat.basePositions = {};
         Object.keys(pat.basePositions).forEach(pos => {
             if (pat.basePositions[pos] === playerId) {
                 pat.basePositions[pos] = null;
