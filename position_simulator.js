@@ -755,6 +755,87 @@ async function handleSwapBattingOrder(order, direction) {
 }
 
 /**
+ * 交代ルールの概要テキスト（守備番号・アナウンス調テキスト）を取得
+ */
+function getRuleSummaryText(rule, tempPositions, isHTML) {
+    if (!rule) return { code: '', desc: '', fullDesc: '' };
+    
+    if (rule.type === 'sub') {
+        const { outPlayerId, inPlayerId } = rule.details;
+        const outPlayer = players.find(p => p.id === outPlayerId);
+        const inPlayer = players.find(p => p.id === inPlayerId);
+        
+        const outName = outPlayer ? outPlayer.name : '不明';
+        const inName = inPlayer ? inPlayer.name : '不明';
+        
+        // 元の守備位置を探す
+        const posKey = Object.keys(tempPositions).find(k => tempPositions[k] === outPlayerId);
+        const posNum = posKey ? POSITION_NUMBERS[posKey] || '' : '';
+        const posLabel = posKey ? POSITION_LABELS[posKey] || '' : '選手';
+        
+        const code = posNum ? `交代 (${posNum})` : '交代';
+        
+        const desc = isHTML 
+            ? `<span class="font-bold text-amber-900">${escapeHTML(outName)}</span>に代わって<span class="font-bold text-amber-900">${escapeHTML(inName)}</span>`
+            : `${outName}に代わって${inName}`;
+            
+        const fullDesc = `${posLabel}の${outName}に代わりまして、${inName}が入ります。`;
+        
+        return { code, desc, fullDesc };
+        
+    } else if (rule.type === 'rotation') {
+        const keys = rule.details.positions || [];
+        const nums = keys.map(k => POSITION_NUMBERS[k] || k);
+        const code = nums.join('-');
+        
+        const steps = [];
+        for (let i = 0; i < keys.length - 1; i++) {
+            const fromPos = keys[i];
+            const toPos = keys[i + 1];
+            const pId = tempPositions[fromPos];
+            const player = players.find(p => p.id === pId);
+            if (player) {
+                const name = isHTML 
+                    ? `<span class="font-bold text-amber-900">${escapeHTML(player.name)}</span>` 
+                    : player.name;
+                steps.push(`${name}が${POSITION_LABELS[toPos]}`);
+            }
+        }
+        
+        const desc = steps.join('、');
+        const fullDesc = desc ? `${desc}へ。` : 'ポジション交代';
+        
+        return { code, desc, fullDesc };
+        
+    } else if (rule.type === 'swap') {
+        const { pos1, pos2 } = rule.details;
+        const pId1 = tempPositions[pos1];
+        const pId2 = tempPositions[pos2];
+        const player1 = players.find(p => p.id === pId1);
+        const player2 = players.find(p => p.id === pId2);
+        
+        const num1 = POSITION_NUMBERS[pos1] || pos1;
+        const num2 = POSITION_NUMBERS[pos2] || pos2;
+        const label1 = POSITION_LABELS[pos1] || '';
+        const label2 = POSITION_LABELS[pos2] || '';
+        
+        const name1 = player1 ? player1.name : '未配置';
+        const name2 = player2 ? player2.name : '未配置';
+        
+        const code = `${num1}⇔${num2}`;
+        const desc = isHTML
+            ? `<span class="font-bold text-amber-900">${escapeHTML(name1)}</span>と<span class="font-bold text-amber-900">${escapeHTML(name2)}</span>の入れ替え`
+            : `${name1}と${name2}の入れ替え`;
+            
+        const fullDesc = `${label1}の${name1}と${label2}の${name2}が入れ替わります。`;
+        
+        return { code, desc, fullDesc };
+    }
+    
+    return { code: '', desc: '', fullDesc: '' };
+}
+
+/**
  * 交代定義リストの描画
  */
 function renderSubRulesList(pattern) {
