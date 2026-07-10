@@ -2047,7 +2047,7 @@ function handlePrintMemberTable() {
                     table-layout: fixed;
                 }
                 th, td {
-                    border: 0.25px solid #000;
+                    border: 0.15px solid #000;
                     text-align: center;
                     vertical-align: middle;
                     height: 5.2mm;
@@ -2077,12 +2077,12 @@ function handlePrintMemberTable() {
                 .table-header td {
                     height: 7.5mm;
                     padding: 0 2px;
-                    border: 0.25px solid #000;
+                    border: 0.15px solid #000;
                     box-sizing: border-box;
                     vertical-align: middle;
                 }
                 .table-header-bottom {
-                    margin-top: -0.25px;
+                    margin-top: -0.15px;
                 }
                 .table-header-top .cell-date {
                     width: 45%;
@@ -2150,7 +2150,7 @@ function handlePrintMemberTable() {
                 .bench-section-label {
                     font-size: 11px;
                     background-color: #e5e5e5;
-                    border: 0.25px solid #000;
+                    border: 0.15px solid #000;
                     border-bottom: none;
                     text-align: center;
                     height: 4mm;
