@@ -2082,7 +2082,7 @@ function handlePrintMemberTable() {
                     margin-top: -1px;
                 }
                 .table-header-top .cell-date {
-                    width: 34%;
+                    width: 37%;
                     font-size: 7.5px;
                 }
                 .cell-label-vertical {
@@ -2100,7 +2100,7 @@ function handlePrintMemberTable() {
                     white-space: nowrap;
                 }
                 .table-header-top .cell-tournament {
-                    width: 60%;
+                    width: 57%;
                     font-size: 9px;
                     font-weight: bold;
                     text-align: left;
