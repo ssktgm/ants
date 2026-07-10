@@ -1889,7 +1889,6 @@ function handlePrintMemberTable() {
                     <table class="table-header table-header-top">
                         <tr>
                             <td class="cell-date font-variable">${escapeHTML(info.date || '')}</td>
-                            <td class="cell-tournament-label cell-label-vertical">大会名</td>
                             <td class="cell-tournament font-variable">${escapeHTML(info.tournament || '')}</td>
                         </tr>
                     </table>
@@ -2082,8 +2081,9 @@ function handlePrintMemberTable() {
                     margin-top: -1px;
                 }
                 .table-header-top .cell-date {
-                    width: 37%;
-                    font-size: 7.5px;
+                    width: 45%;
+                    font-size: 10px;
+                    border-right: none;
                 }
                 .cell-label-vertical {
                     width: 6%;
@@ -2100,11 +2100,11 @@ function handlePrintMemberTable() {
                     white-space: nowrap;
                 }
                 .table-header-top .cell-tournament {
-                    width: 57%;
-                    font-size: 9px;
+                    width: 55%;
+                    font-size: 10px;
                     font-weight: bold;
-                    text-align: left;
-                    padding-left: 4px;
+                    text-align: center;
+                    border-left: none;
                     white-space: normal;
                     word-break: break-all;
                     line-height: 1.1;
@@ -2112,7 +2112,7 @@ function handlePrintMemberTable() {
                 }
                 .table-header-bottom .cell-team-val {
                     width: 44%;
-                    font-size: 9px;
+                    font-size: 10px;
                     font-weight: bold;
                     white-space: normal;
                     word-break: break-all;
