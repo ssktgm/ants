@@ -1889,16 +1889,16 @@ function handlePrintMemberTable() {
                     <table class="table-header table-header-top">
                         <tr>
                             <td class="cell-date font-variable">${escapeHTML(info.date || '')}</td>
-                            <td class="cell-tournament-label">大会名</td>
+                            <td class="cell-tournament-label cell-label-vertical">大会名</td>
                             <td class="cell-tournament font-variable">${escapeHTML(info.tournament || '')}</td>
                         </tr>
                     </table>
                     <!-- 2行目: 自チーム・相手チーム -->
                     <table class="table-header table-header-bottom">
                         <tr>
-                            <td class="cell-team-label-l">チーム</td>
+                            <td class="cell-team-label-l cell-label-vertical">チーム</td>
                             <td class="cell-team-val font-variable">${escapeHTML(info.teamHome || '')}</td>
-                            <td class="cell-team-label-r">相手チーム</td>
+                            <td class="cell-team-label-r cell-label-vertical">相手チーム</td>
                             <td class="cell-team-val font-variable">${escapeHTML(info.teamVisitor || '')}</td>
                         </tr>
                     </table>
@@ -2072,10 +2072,11 @@ function handlePrintMemberTable() {
                     table-layout: fixed;
                 }
                 .table-header td {
-                    height: 6.5mm;
+                    height: 7.5mm;
                     padding: 0 2px;
                     border: 1px solid #333;
                     box-sizing: border-box;
+                    vertical-align: middle;
                 }
                 .table-header-bottom {
                     margin-top: -1px;
@@ -2084,27 +2085,11 @@ function handlePrintMemberTable() {
                     width: 34%;
                     font-size: 7.5px;
                 }
-                .table-header-top .cell-tournament-label {
-                    width: 6%;
-                    background-color: #f2f2f2;
-                    font-weight: bold;
-                }
-                .table-header-top .cell-tournament {
-                    width: 60%;
-                    font-size: 6.5px;
-                    text-align: left;
-                    padding-left: 2px;
-                    white-space: normal;
-                    word-break: break-all;
-                    line-height: 1.0;
-                    letter-spacing: -0.3px;
-                }
-                .table-header-bottom .cell-team-label-l, 
-                .table-header-bottom .cell-team-label-r {
+                .cell-label-vertical {
                     width: 6%;
                     font-size: 5.5px;
                     line-height: 0.95;
-                    padding: 0;
+                    padding: 0 !important;
                     margin: 0;
                     background-color: #f2f2f2;
                     writing-mode: vertical-rl;
@@ -2113,6 +2098,17 @@ function handlePrintMemberTable() {
                     text-align: center;
                     vertical-align: middle;
                     white-space: nowrap;
+                }
+                .table-header-top .cell-tournament {
+                    width: 60%;
+                    font-size: 9px;
+                    font-weight: bold;
+                    text-align: left;
+                    padding-left: 4px;
+                    white-space: normal;
+                    word-break: break-all;
+                    line-height: 1.1;
+                    letter-spacing: -0.1px;
                 }
                 .table-header-bottom .cell-team-val {
                     width: 44%;
