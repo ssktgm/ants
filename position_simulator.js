@@ -2047,7 +2047,7 @@ function handlePrintMemberTable() {
                     table-layout: fixed;
                 }
                 th, td {
-                    border: 1px solid #000;
+                    border: 0.5px solid #000;
                     text-align: center;
                     vertical-align: middle;
                     height: 5.2mm;
@@ -2058,7 +2058,7 @@ function handlePrintMemberTable() {
                 th, .card-title, .bench-section-label, .cell-tournament-label, 
                 .cell-team-label-l, .cell-team-label-r, .footer-label {
                     font-family: 'Noto Serif JP', serif;
-                    font-weight: 700;
+                    font-weight: 400;
                 }
                 .font-variable, .cell-date, .cell-tournament, .cell-team-val, 
                 .cell-name, .cell-bench-name, .footer-val,
@@ -2077,12 +2077,12 @@ function handlePrintMemberTable() {
                 .table-header td {
                     height: 7.5mm;
                     padding: 0 2px;
-                    border: 1px solid #000;
+                    border: 0.5px solid #000;
                     box-sizing: border-box;
                     vertical-align: middle;
                 }
                 .table-header-bottom {
-                    margin-top: -1px;
+                    margin-top: -0.5px;
                 }
                 .table-header-top .cell-date {
                     width: 45%;
@@ -2106,7 +2106,6 @@ function handlePrintMemberTable() {
                 .table-header-top .cell-tournament {
                     width: 55%;
                     font-size: 10px;
-                    font-weight: bold;
                     text-align: center;
                     border-left: none;
                     white-space: normal;
@@ -2117,7 +2116,6 @@ function handlePrintMemberTable() {
                 .table-header-bottom .cell-team-val {
                     width: 44%;
                     font-size: 10px;
-                    font-weight: bold;
                     white-space: normal;
                     word-break: break-all;
                     line-height: 1.1;
@@ -2129,7 +2127,6 @@ function handlePrintMemberTable() {
                 }
                 .table-lineup th {
                     background-color: #f2f2f2;
-                    font-weight: bold;
                     font-size: 8.5px;
                     height: 5.2mm;
                 }
@@ -2152,9 +2149,8 @@ function handlePrintMemberTable() {
                 /* 控え選手 */
                 .bench-section-label {
                     font-size: 11px;
-                    font-weight: bold;
                     background-color: #e5e5e5;
-                    border: 1px solid #000;
+                    border: 0.5px solid #000;
                     border-bottom: none;
                     text-align: center;
                     height: 4mm;
@@ -2168,7 +2164,6 @@ function handlePrintMemberTable() {
                     background-color: #f2f2f2;
                     font-size: 7px;
                     height: 3.5mm;
-                    font-weight: bold;
                 }
                 .table-bench td {
                     height: 5.6mm;
@@ -2196,7 +2191,6 @@ function handlePrintMemberTable() {
                 .footer-label {
                     width: 14%;
                     background-color: #f2f2f2;
-                    font-weight: bold;
                 }
                 .footer-val {
                     width: 19%;
