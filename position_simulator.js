@@ -1998,7 +1998,7 @@ function handlePrintMemberTable() {
                     box-sizing: border-box;
                     /* 一番外側の外枠は不要のためborder削除 */
                     border: none;
-                    padding: 2mm 3.5mm;
+                    padding: 4mm 3.5mm;
                     display: flex;
                     flex-direction: column;
                     position: relative;
@@ -2012,7 +2012,7 @@ function handlePrintMemberTable() {
                     content: "";
                     position: absolute;
                     top: 0;
-                    right: -4mm;
+                    right: -2.83mm;
                     width: 1px;
                     height: 204mm;
                     border-right: 0.5px dashed #ccc;
@@ -2031,14 +2031,14 @@ function handlePrintMemberTable() {
                     font-size: 17px;
                     font-weight: bold;
                     letter-spacing: 2px;
-                    margin-bottom: 2mm;
-                    margin-top: 1mm;
+                    margin-top: 3mm;
+                    margin-bottom: 4mm;
                     text-decoration: underline;
                     text-underline-offset: 3px;
                     font-family: "Helvetica Neue", Arial, sans-serif;
                 }
                 .header-table-wrapper {
-                    margin-bottom: 1.5mm;
+                    margin-bottom: 2.5mm;
                 }
                 table {
                     width: 100%;
@@ -2123,7 +2123,7 @@ function handlePrintMemberTable() {
                 
                 /* スタメンテーブル */
                 .table-lineup {
-                    margin-bottom: 1.5mm;
+                    margin-bottom: 2.5mm;
                 }
                 .table-lineup th {
                     background-color: #f2f2f2;
@@ -2156,9 +2156,10 @@ function handlePrintMemberTable() {
                     height: 4mm;
                     line-height: 4mm;
                     box-sizing: border-box;
+                    margin-top: 1.5mm;
                 }
                 .table-bench {
-                    margin-bottom: 1.5mm;
+                    margin-bottom: 2.5mm;
                 }
                 .table-bench th {
                     background-color: #f2f2f2;
