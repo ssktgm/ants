@@ -2072,7 +2072,7 @@ function handlePrintMemberTable() {
                     table-layout: fixed;
                 }
                 .table-header td {
-                    height: 5.0mm;
+                    height: 6.5mm;
                     padding: 0 2px;
                     border: 1px solid #333;
                     box-sizing: border-box;
@@ -2081,36 +2081,41 @@ function handlePrintMemberTable() {
                     margin-top: -1px;
                 }
                 .table-header-top .cell-date {
-                    width: 35%;
+                    width: 34%;
                     font-size: 7.5px;
                 }
                 .table-header-top .cell-tournament-label {
-                    width: 5%;
+                    width: 6%;
                     background-color: #f2f2f2;
                     font-weight: bold;
                 }
                 .table-header-top .cell-tournament {
                     width: 60%;
-                    font-size: 7.5px;
+                    font-size: 6.5px;
                     text-align: left;
                     padding-left: 2px;
                     white-space: normal;
                     word-break: break-all;
-                    line-height: 1.1;
+                    line-height: 1.0;
+                    letter-spacing: -0.3px;
                 }
                 .table-header-bottom .cell-team-label-l, 
                 .table-header-bottom .cell-team-label-r {
-                    width: 5%;
-                    font-size: 6px;
-                    line-height: 1.0;
-                    padding: 1px 0;
+                    width: 6%;
+                    font-size: 5.5px;
+                    line-height: 0.95;
+                    padding: 0;
+                    margin: 0;
                     background-color: #f2f2f2;
                     writing-mode: vertical-rl;
                     text-orientation: upright;
-                    letter-spacing: 0.5px;
+                    letter-spacing: -0.5px;
+                    text-align: center;
+                    vertical-align: middle;
+                    white-space: nowrap;
                 }
                 .table-header-bottom .cell-team-val {
-                    width: 45%;
+                    width: 44%;
                     font-size: 9px;
                     font-weight: bold;
                     white-space: normal;
