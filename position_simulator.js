@@ -1825,8 +1825,8 @@ function handlePrintMemberTable() {
     const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
     
     const benchPairs = [];
-    // 10行(合計20枠)程度作っておき、手書き用の空行を確保
-    for (let i = 0; i < 9; i++) {
+    // 6行(合計12枠)作っておき、手書き用の空行を確保
+    for (let i = 0; i < 6; i++) {
         const leftIdx = i * 2;
         const rightIdx = i * 2 + 1;
         const leftPlayer = benchPlayers[leftIdx];
@@ -1938,7 +1938,7 @@ function handlePrintMemberTable() {
                         <td class="footer-val font-variable">${escapeHTML(info.manager || '')}</td>
                         <td class="footer-label">主将</td>
                         <td class="footer-val font-variable">${escapeHTML(info.captain || '')}</td>
-                        <td class="footer-label font-sans leading-none text-[7px]" style="font-size: 6.5px; padding: 0;">スコ<br>アラー</td>
+                        <td class="footer-label font-sans leading-none" style="font-size: 6.5px; padding: 0; text-align: center; white-space: nowrap;"><span style="display: inline-block; transform: scaleX(0.75); transform-origin: center;">スコアラー</span></td>
                         <td class="footer-val font-variable">${escapeHTML(info.scorer || '')}</td>
                     </tr>
                     <tr>
@@ -2130,24 +2130,24 @@ function handlePrintMemberTable() {
                     height: 5.2mm;
                 }
                 .table-lineup td {
-                    height: 6.2mm;
+                    height: 7.2mm;
                 }
                 .cell-order {
                     font-size: 11px;
                 }
                 .cell-pos {
-                    font-size: 10px;
+                    font-size: 14px;
                 }
                 .cell-name {
-                    font-size: 11.5px;
+                    font-size: 14px;
                 }
                 .cell-number {
-                    font-size: 11px;
+                    font-size: 14px;
                 }
                 
                 /* 控え選手 */
                 .bench-section-label {
-                    font-size: 8.5px;
+                    font-size: 11px;
                     font-weight: bold;
                     background-color: #e5e5e5;
                     border: 1px solid #333;
@@ -2168,18 +2168,18 @@ function handlePrintMemberTable() {
                 }
                 .table-bench td {
                     height: 5.6mm;
-                    font-size: 8.5px;
+                    font-size: 10.5px;
                 }
                 .cell-bench-name {
                     text-align: center;
-                    font-size: 9.5px;
+                    font-size: 11.5px;
                     padding: 0 1px;
                     white-space: normal;
                     word-break: break-all;
                     line-height: 1.1;
                 }
                 .cell-bench-num {
-                    font-size: 8.5px;
+                    font-size: 10.5px;
                 }
                 
                 /* フッターテーブル */
