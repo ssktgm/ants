@@ -2069,16 +2069,16 @@ function handlePrintMemberTable() {
                     padding: 0 2px;
                 }
                 .cell-date {
-                    width: 50%;
+                    width: 35%;
                     font-size: 7.5px;
                 }
                 .cell-tournament-label {
-                    width: 10%;
+                    width: 5%;
                     background-color: #f2f2f2;
                     font-weight: bold;
                 }
                 .cell-tournament {
-                    width: 40%;
+                    width: 60%;
                     font-size: 7.5px;
                     text-align: left;
                     padding-left: 2px;
@@ -2087,7 +2087,7 @@ function handlePrintMemberTable() {
                     line-height: 1.1;
                 }
                 .cell-team-label-l, .cell-team-label-r {
-                    width: 7%;
+                    width: 5%;
                     font-size: 6px;
                     line-height: 1.0;
                     padding: 1px 0;
@@ -2097,7 +2097,7 @@ function handlePrintMemberTable() {
                     letter-spacing: 0.5px;
                 }
                 .cell-team-val {
-                    width: 43%;
+                    width: 45%;
                     font-size: 9px;
                     font-weight: bold;
                     white-space: normal;
