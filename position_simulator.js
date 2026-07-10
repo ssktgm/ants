@@ -1979,6 +1979,10 @@ function handlePrintMemberTable() {
                     font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Segoe UI", sans-serif;
                     background-color: #fff;
                     -webkit-print-color-adjust: exact;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                    text-rendering: optimizeLegibility;
+                    color: #000;
                 }
                 .print-container {
                     width: 297mm;
@@ -2011,7 +2015,7 @@ function handlePrintMemberTable() {
                     right: -4mm;
                     width: 1px;
                     height: 204mm;
-                    border-right: 1px dashed #777;
+                    border-right: 0.5px dashed #ccc;
                 }
                 .card-page-idx {
                     position: absolute;
@@ -2043,7 +2047,7 @@ function handlePrintMemberTable() {
                     table-layout: fixed;
                 }
                 th, td {
-                    border: 1px solid #333;
+                    border: 1px solid #000;
                     text-align: center;
                     vertical-align: middle;
                     height: 5.2mm;
@@ -2073,7 +2077,7 @@ function handlePrintMemberTable() {
                 .table-header td {
                     height: 7.5mm;
                     padding: 0 2px;
-                    border: 1px solid #333;
+                    border: 1px solid #000;
                     box-sizing: border-box;
                     vertical-align: middle;
                 }
@@ -2150,7 +2154,7 @@ function handlePrintMemberTable() {
                     font-size: 11px;
                     font-weight: bold;
                     background-color: #e5e5e5;
-                    border: 1px solid #333;
+                    border: 1px solid #000;
                     border-bottom: none;
                     text-align: center;
                     height: 4mm;
@@ -2205,7 +2209,7 @@ function handlePrintMemberTable() {
                 /* 印刷時の設定 */
                 @media print {
                     .sheet-card::after {
-                        border-right-color: #000;
+                        border-right-color: #bbb;
                     }
                 }
             </style>
