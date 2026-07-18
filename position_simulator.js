@@ -23,7 +23,35 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY) {
 // 状態管理
 let players = []; // { id, name, number }
 let patterns = []; // { id, name, mode (9:DHなし, 10:DHあり), basePositions: { p: playerId, ... }, customSubstitutions: [], battingOrder: { 1: playerId, ... }, headerInfo: { date, tournament, ... } }
-let currentPatternId = null;
+let currentPatternId = '';
+let tempPattern = null;
+function getTempPattern() {
+    if (!tempPattern) {
+        tempPattern = {
+            id: '',
+            name: '新規配置データ',
+            mode: simulatorMode,
+            basePositions: {},
+            customSubstitutions: [],
+            battingOrder: {},
+            headerInfo: {
+                date: '',
+                tournament: '',
+                teamHome: 'ありんこアントス',
+                teamVisitor: '',
+                manager: '',
+                captain: '',
+                scorer: '',
+                stadium: '',
+                time: ''
+            }
+        };
+    }
+    return tempPattern;
+}
+function getCurrentPattern() {
+    return patterns.find(p => p.id === currentPatternId) || getTempPattern();
+}
 let activeTab = 'setup';
 let selectedPlayerId = null;
 let selectedSourcePos = null;
@@ -76,10 +104,6 @@ const NUMBER_TO_POSITION = {
 const POSITIONS_9 = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'cf', 'rf'];
 const POSITIONS_DH = ['p', 'c', '1b', '2b', '3b', 'ss', 'lf', 'cf', 'rf', 'dh'];
 
-// LocalStorage キー (フォールバック用)
-const STORAGE_PLAYERS_KEY = 'ants_sim_players';
-const STORAGE_PATTERNS_KEY = 'ants_sim_patterns';
-
 /**
  * 初期化関数
  */
@@ -94,7 +118,7 @@ export async function initPositionSimulator() {
             currentPatternId = patterns[0].id;
             const select = document.getElementById('sim-pattern-select');
             if (select) select.value = currentPatternId;
-            const pattern = patterns.find(p => p.id === currentPatternId);
+            const pattern = getCurrentPattern();
             if (pattern) {
                 simulatorMode = pattern.mode || 9;
             }
@@ -122,12 +146,11 @@ function sanitizePattern(pat) {
     if (!pat.battingOrder) pat.battingOrder = {};
     if (!pat.headerInfo) pat.headerInfo = {};
     if (pat.mode === undefined) pat.mode = 9;
-    if (pat.isSynced === undefined) pat.isSynced = false;
     return pat;
 }
 
 /**
- * Supabase ＆ LocalStorage からデータ読み込み
+ * サーバー（Supabase）からデータ読み込み
  */
 async function loadData() {
     let success = false;
@@ -155,95 +178,26 @@ async function loadData() {
                 if (patError) console.error('Supabase load patterns error:', patError);
             }
         } catch (err) {
-            console.error('Supabase load failed, falling back to local storage:', err);
+            console.error('Supabase load failed:', err);
         }
     }
     
     if (!success) {
-        loadFromLocalStorage();
-    } else {
-        // 双方向同期：ローカルの未同期データをDBにマージ
-        const dbPlayerIds = new Set(players.map(p => p.id));
-        const dbPatIds = new Set(patterns.map(p => p.id));
-        
-        try {
-            const storedP = localStorage.getItem(STORAGE_PLAYERS_KEY);
-            if (storedP) {
-                const localP = JSON.parse(storedP);
-                localP.forEach(p => {
-                    if (!dbPlayerIds.has(p.id)) {
-                        players.push(p);
-                        syncPlayerToDB(p);
-                    }
-                });
-            }
-            
-            const storedPat = localStorage.getItem(STORAGE_PATTERNS_KEY);
-            if (storedPat) {
-                const localPats = JSON.parse(storedPat);
-                localPats.forEach(async (pat) => {
-                    if (!dbPatIds.has(pat.id)) {
-                        const sanitized = sanitizePattern(pat);
-                        sanitized.isSynced = false;
-                        patterns.push(sanitized);
-                        // 非同期でDBへ自動プッシュし、成功したら同期済みに更新
-                        const err = await syncPatternToDB(sanitized);
-                        sanitized.isSynced = !err;
-                        updatePatternSelectOptions();
-                    }
-                });
-            }
-        } catch (e) {
-            console.error('LocalStorage sync merge error:', e);
-        }
-        
-        savePlayersToLocalStorage();
-        savePatternsToLocalStorage();
+        // サーバーからの取得失敗時のデフォルト初期選手
+        players = [
+            { id: 'p1', name: 'とあ', number: '2' },
+            { id: 'p2', name: 'そうま', number: '10' },
+            { id: 'p3', name: 'あきと', number: '3' },
+            { id: 'p4', name: 'ゆうき', number: '4' },
+            { id: 'p5', name: 'あいのすけ', number: '1' },
+            { id: 'p6', name: 'けんせい', number: '6' },
+            { id: 'p7', name: 'りゅうと', number: '7' },
+            { id: 'p8', name: 'ながまさ', number: '8' },
+            { id: 'p9', name: 'そうすけ', number: '9' },
+            { id: 'p10', name: 'たいち', number: '5' }
+        ];
+        patterns = [];
     }
-}
-
-function loadFromLocalStorage() {
-    try {
-        const storedPlayers = localStorage.getItem(STORAGE_PLAYERS_KEY);
-        if (storedPlayers) {
-            players = JSON.parse(storedPlayers);
-        } else {
-            players = [
-                { id: 'p1', name: 'とあ', number: '2' },
-                { id: 'p2', name: 'そうま', number: '10' },
-                { id: 'p3', name: 'あきと', number: '3' },
-                { id: 'p4', name: 'ゆうき', number: '4' },
-                { id: 'p5', name: 'あいのすけ', number: '1' },
-                { id: 'p6', name: 'けんせい', number: '6' },
-                { id: 'p7', name: 'りゅうと', number: '7' },
-                { id: 'p8', name: 'ながまさ', number: '8' },
-                { id: 'p9', name: 'そうすけ', number: '9' },
-                { id: 'p10', name: 'たいち', number: '5' }
-            ];
-            savePlayersToLocalStorage();
-        }
-        
-        const storedPatterns = localStorage.getItem(STORAGE_PATTERNS_KEY);
-        if (storedPatterns) {
-            patterns = JSON.parse(storedPatterns).map(pat => {
-                // 互換性補正
-                if (!pat.basePositions && pat.innings && pat.innings[0]) {
-                    pat.basePositions = pat.innings[0].positions || {};
-                }
-                return sanitizePattern(pat);
-            });
-        }
-    } catch (e) {
-        console.error('LocalStorage load error:', e);
-    }
-}
-
-function savePlayersToLocalStorage() {
-    localStorage.setItem(STORAGE_PLAYERS_KEY, JSON.stringify(players));
-}
-
-function savePatternsToLocalStorage() {
-    localStorage.setItem(STORAGE_PATTERNS_KEY, JSON.stringify(patterns));
 }
 
 /**
@@ -299,9 +253,7 @@ async function syncPatternToDB(pattern, isDelete = false) {
  */
 async function autoSavePattern(pattern) {
     if (!pattern) return;
-    savePatternsToLocalStorage();
-    const err = await syncPatternToDB(pattern);
-    pattern.isSynced = !err;
+    await syncPatternToDB(pattern);
     updatePatternSelectOptions();
 }
 
@@ -336,8 +288,6 @@ async function createNewPattern(name = '') {
     
     const select = document.getElementById('sim-pattern-select');
     if (select) select.value = id;
-    const nameInput = document.getElementById('sim-pattern-name-input');
-    if (nameInput) nameInput.value = newPat.name;
 }
 
 function updatePatternSelectOptions() {
@@ -485,7 +435,7 @@ function assignDefaultBattingOrder(pattern) {
  * 全体レンダリング
  */
 function renderSimulator() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     // 交代適用後のポジション算出
@@ -733,7 +683,7 @@ function renderBattingOrderList(pattern) {
  * 打順スワップハンドラー
  */
 async function handleSwapBattingOrder(order, direction) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     if (!currentPattern.battingOrder) currentPattern.battingOrder = {};
@@ -995,7 +945,7 @@ function renderAnnouncementLogs(pattern) {
 // 交代作成フォームのセレクトボックス初期化
 // ==========================================
 function initRuleFormSelects() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     const activePositions = simulatorMode === 9 ? POSITIONS_9 : POSITIONS_DH;
@@ -1048,7 +998,7 @@ function initRuleFormSelects() {
 // ==========================================
 
 async function handleToggleSubRule(ruleId, active) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     const rule = currentPattern.customSubstitutions.find(s => s.id === ruleId);
@@ -1083,7 +1033,7 @@ function checkSubstitutionConflict(newRule, pattern) {
  * 交代ルールの新規作成
  */
 async function handleCreateSubRule() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     const typeSelect = document.getElementById('rule-type-select');
@@ -1185,7 +1135,7 @@ async function handleCreateSubRule() {
  * 交代ルールの削除
  */
 async function handleDeleteSubRule(ruleId) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     currentPattern.customSubstitutions = currentPattern.customSubstitutions.filter(s => s.id !== ruleId);
@@ -1259,7 +1209,7 @@ function handleDrop(e) {
  * 選手を基本配置（スタメン）に登録する
  */
 async function assignPlayerToMasterPosition(playerId, targetPos) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     if (!currentPattern.basePositions) currentPattern.basePositions = {};
@@ -1310,7 +1260,7 @@ function handleSelectPlayer(playerId, source) {
  * 基本配置のグラウンド枠タップ処理
  */
 async function handleFieldSlotClick(clickedPos) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     if (!currentPattern.basePositions) currentPattern.basePositions = {};
@@ -1349,7 +1299,7 @@ async function handleFieldSlotClick(clickedPos) {
  * 基本配置から選手を外す
  */
 async function removePlayerFromMasterPosition(pos) {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     if (!currentPattern.basePositions) currentPattern.basePositions = {};
@@ -1393,7 +1343,6 @@ async function handleAddPlayer() {
     };
     
     players.push(newPlayer);
-    savePlayersToLocalStorage();
     await syncPlayerToDB(newPlayer);
     
     input.value = '';
@@ -1407,12 +1356,11 @@ async function handleDeletePlayer(playerId) {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
     
-    if (!confirm(`選手「${player.name}」を削除しますか？\n（SQL/ローカルの全データ配置・交代設定からも削除されます）`)) {
+    if (!confirm(`選手「${player.name}」を削除しますか？\n（データベースの全データ配置・交代設定からも削除されます）`)) {
         return;
     }
     
     players = players.filter(p => p.id !== playerId);
-    savePlayersToLocalStorage();
     await syncPlayerToDB(player, true);
     
     for (const pat of patterns) {
@@ -1467,114 +1415,117 @@ async function handleDeletePlayer(playerId) {
 // ==========================================
 
 async function handleSavePattern() {
-    const nameInput = document.getElementById('sim-pattern-name-input');
-    if (!nameInput) return;
+    const selectEl = document.getElementById('sim-pattern-select');
+    if (!selectEl) return;
+    const selectedId = selectEl.value;
     
-    const name = nameInput.value.trim();
-    if (!name) {
-        alert('データ名を入力してください。');
-        return;
+    let isOverwrite = false;
+    let targetIdToOverwrite = null;
+    let nameToSave = '';
+    
+    const currentPattern = getCurrentPattern();
+    
+    if (selectedId) {
+        const selectedOption = selectEl.options[selectEl.selectedIndex];
+        const confirmOverwrite = confirm(`現在「${selectedOption.text}」が選択されています。\nこのデータに上書き保存しますか？\n（「キャンセル」を選ぶと新規保存になります）`);
+        
+        if (confirmOverwrite) {
+            isOverwrite = true;
+            nameToSave = selectedOption.text;
+            targetIdToOverwrite = selectedId;
+        }
     }
     
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (currentPattern) {
-        currentPattern.name = name;
-        currentPattern.mode = simulatorMode;
-        
-        savePatternsToLocalStorage();
-        const err = await syncPatternToDB(currentPattern);
+    if (!isOverwrite) {
+        const defaultName = currentPattern ? currentPattern.name : '新規配置データ';
+        const promptName = prompt("保存名を入力してください：", defaultName);
+        if (!promptName) return; // キャンセルされた場合は何もしない
+        nameToSave = promptName.trim();
+        if (!nameToSave) {
+            alert('有効な保存名を入力してください。');
+            return;
+        }
+    }
+    
+    try {
+        if (isOverwrite && targetIdToOverwrite) {
+            if (currentPattern) {
+                currentPattern.name = nameToSave;
+                currentPattern.mode = simulatorMode;
+                const err = await syncPatternToDB(currentPattern);
+                if (err) throw err;
+                alert(`データ「${nameToSave}」を上書き保存しました。`);
+            }
+        } else {
+            const id = 'pat_' + Date.now();
+            const newPat = {
+                id: id,
+                name: nameToSave,
+                mode: simulatorMode,
+                basePositions: currentPattern ? { ...(currentPattern.basePositions || {}) } : {},
+                customSubstitutions: currentPattern ? JSON.parse(JSON.stringify(currentPattern.customSubstitutions || [])) : [],
+                battingOrder: currentPattern ? { ...(currentPattern.battingOrder || {}) } : {},
+                headerInfo: currentPattern ? JSON.parse(JSON.stringify(currentPattern.headerInfo || {})) : {
+                    date: '',
+                    tournament: '',
+                    teamHome: 'ありんこアントス',
+                    teamVisitor: '',
+                    manager: '',
+                    captain: '',
+                    scorer: '',
+                    stadium: '',
+                    time: ''
+                }
+            };
+            
+            patterns.push(newPat);
+            currentPatternId = id;
+            
+            const err = await syncPatternToDB(newPat);
+            if (err) throw err;
+            alert(`データ「${nameToSave}」を保存しました。`);
+        }
         
         updatePatternSelectOptions();
         
-        if (err) {
-            alert(`データ「${name}」をローカルに保存しましたが、データベースとの同期に失敗しました。\nエラー詳細: ${err.message || err}`);
-        } else {
-            alert(`データ「${name}」を上書き保存しました。`);
-        }
+        const newSelect = document.getElementById('sim-pattern-select');
+        if (newSelect) newSelect.value = currentPatternId;
+        
+        renderSimulator();
+    } catch (err) {
+        console.error('Save pattern error:', err);
+        alert(`保存に失敗しました。\nエラー詳細: ${err.message || err}`);
     }
-}
-
-async function handleSaveAsNewPattern() {
-    const nameInput = document.getElementById('sim-pattern-name-input');
-    if (!nameInput) return;
-    
-    const name = nameInput.value.trim();
-    if (!name) {
-        alert('新規データ名を入力してください。');
-        return;
-    }
-    
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
-    
-    // 現在の設定情報を複製して新規作成
-    const id = 'pat_' + Date.now();
-    const newPat = {
-        id: id,
-        name: name,
-        mode: simulatorMode,
-        basePositions: { ...(currentPattern.basePositions || {}) },
-        customSubstitutions: JSON.parse(JSON.stringify(currentPattern.customSubstitutions || [])),
-        battingOrder: { ...(currentPattern.battingOrder || {}) },
-        headerInfo: JSON.parse(JSON.stringify(currentPattern.headerInfo || {}))
-    };
-    
-    patterns.push(newPat);
-    currentPatternId = id;
-    
-    savePatternsToLocalStorage();
-    const err = await syncPatternToDB(newPat);
-    
-    updatePatternSelectOptions();
-    
-    const select = document.getElementById('sim-pattern-select');
-    if (select) select.value = id;
-    
-    if (err) {
-        alert(`データ「${name}」を新規ローカル登録しましたが、データベースとの同期に失敗しました。\nエラー詳細: ${err.message || err}`);
-    } else {
-        alert(`データ「${name}」を新規別名で保存しました。`);
-    }
-    renderSimulator();
 }
 
 async function handleDeletePattern() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
-    if (!currentPattern) return;
+    const currentPattern = getCurrentPattern();
+    if (!currentPattern || !currentPattern.id) {
+        alert('削除する配置データが選択されていません。');
+        return;
+    }
     
-    if (!confirm(`配置データ「${currentPattern.name}」を削除しますか？\n（SQL/ローカルの双方から削除されます）`)) {
+    if (!confirm(`配置データ「${currentPattern.name}」を削除しますか？\n（データベースから削除されます）`)) {
         return;
     }
     
     patterns = patterns.filter(p => p.id !== currentPatternId);
     
-    savePatternsToLocalStorage();
     const err = await syncPatternToDB(currentPattern, true);
     
     if (patterns.length > 0) {
         currentPatternId = patterns[0].id;
     } else {
-        currentPatternId = null;
+        currentPatternId = '';
     }
     
     updatePatternSelectOptions();
     
     if (err) {
-        alert(`データ「${currentPattern.name}」をローカルから削除しましたが、データベースとの同期（削除）に失敗しました。\nエラー詳細: ${err.message || err}`);
+        alert(`データ「${currentPattern.name}」のデータベースからの削除に失敗しました。\nエラー詳細: ${err.message || err}`);
     } else {
         alert(`データ「${currentPattern.name}」を削除しました。`);
     }
-    
-    if (!currentPatternId) {
-        await createNewPattern('デフォルト配置');
-    }
-    
-    const select = document.getElementById('sim-pattern-select');
-    if (select) select.value = currentPatternId;
-    
-    const nameInput = document.getElementById('sim-pattern-name-input');
-    const pat = patterns.find(p => p.id === currentPatternId);
-    if (nameInput && pat) nameInput.value = pat.name;
     
     selectedPlayerId = null;
     selectedSourcePos = null;
@@ -1588,24 +1539,17 @@ async function handlePatternSelectChange(e) {
     const targetId = e.target.value;
     
     if (!targetId) {
-        const name = prompt('新しいデータ名を入力してください:');
-        if (name === null) {
-            e.target.value = currentPatternId || '';
-            return;
-        }
-        await createNewPattern(name);
-        initRuleFormSelects();
+        currentPatternId = '';
+        tempPattern = null; // リセットして新規作成状態にする
+        selectedPlayerId = null;
+        selectedSourcePos = null;
         renderSimulator();
     } else {
         currentPatternId = targetId;
-        
-        const pattern = patterns.find(p => p.id === currentPatternId);
+        const pattern = getCurrentPattern();
         if (pattern) {
             simulatorMode = pattern.mode || 9;
-            const nameInput = document.getElementById('sim-pattern-name-input');
-            if (nameInput) nameInput.value = pattern.name;
         }
-        
         selectedPlayerId = null;
         selectedSourcePos = null;
         
@@ -1619,7 +1563,7 @@ async function handlePatternSelectChange(e) {
 // メンバー表テキスト生成＆モーダル制御
 // ==========================================
 function handleExportMemberTable() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     const drawPositions = getPositionsToDraw(currentPattern);
@@ -1651,7 +1595,7 @@ function handleExportMemberTable() {
  * 試合詳細変更の監視と自動DB保存
  */
 function handleHeaderInfoChange() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     if (!currentPattern.headerInfo) currentPattern.headerInfo = {};
@@ -1781,7 +1725,7 @@ function handleCloseMemberModal() {
 // 4枚綴り (A4横) 印刷画面の生成と出力
 // ==========================================
 function handlePrintMemberTable() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     const drawPositions = getPositionsToDraw(currentPattern);
@@ -2232,7 +2176,7 @@ function handlePrintMemberTable() {
 // ==========================================
 
 function handleExportJSON() {
-    const currentPattern = patterns.find(p => p.id === currentPatternId);
+    const currentPattern = getCurrentPattern();
     if (!currentPattern) return;
     
     const exportData = {
@@ -2272,7 +2216,6 @@ function handleImportJSON(e) {
                         await syncPlayerToDB(newP);
                     }
                 }
-                savePlayersToLocalStorage();
                 
                 if (data.version === 'ants-sim-3.0') {
                     const newPat = data.pattern;
@@ -2395,7 +2338,6 @@ function setupEventListeners() {
     // パターン操作
     document.getElementById('sim-pattern-select')?.addEventListener('change', handlePatternSelectChange);
     document.getElementById('btn-save-sim-pattern')?.addEventListener('click', handleSavePattern);
-    document.getElementById('btn-save-as-new-pattern')?.addEventListener('click', handleSaveAsNewPattern);
     document.getElementById('btn-delete-sim-pattern')?.addEventListener('click', handleDeletePattern);
     
     // モード切替
@@ -2403,7 +2345,7 @@ function setupEventListeners() {
         if (simulatorMode !== 9) {
             simulatorMode = 9;
             updateModeUI();
-            const pat = patterns.find(p => p.id === currentPatternId);
+            const pat = getCurrentPattern();
             if (pat) {
                 pat.mode = 9;
                 assignDefaultBattingOrder(pat);
@@ -2418,7 +2360,7 @@ function setupEventListeners() {
         if (simulatorMode !== 10) {
             simulatorMode = 10;
             updateModeUI();
-            const pat = patterns.find(p => p.id === currentPatternId);
+            const pat = getCurrentPattern();
             if (pat) {
                 pat.mode = 10;
                 assignDefaultBattingOrder(pat);
