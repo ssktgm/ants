@@ -150,19 +150,122 @@ function setupDashboardUI() {
             </div>
 
             <div id="tab-content-personal-summary" class="hidden space-y-6">
-                <div class="bg-white p-4 rounded-lg shadow-md flex flex-wrap gap-4 items-end text-sm">
-                    <div><label class="block font-bold text-gray-600 mb-1">選手</label><select id="ps-player" class="border p-2 rounded w-48"></select></div>
-                    <div><label class="block font-bold text-gray-600 mb-1">役割</label><select id="ps-role" class="border p-2 rounded w-24"><option value="batter">打撃</option><option value="pitcher">投手</option></select></div>
-                    <div><label class="block font-bold text-gray-600 mb-1">集計単位</label><select id="ps-unit" class="border p-2 rounded w-32"><option value="game">試合別</option><option value="month" selected>月別</option><option value="3month">3ヶ月ごと</option></select></div>
+                <!-- コントロールパネル -->
+                <div class="bg-white p-4 rounded-lg shadow-md text-sm space-y-4 no-print">
+                    <div class="flex flex-wrap gap-4 items-end">
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1">表示モード</label>
+                            <select id="ps-mode" class="border-2 border-blue-500 font-bold p-2 rounded w-44 bg-blue-50 text-blue-900">
+                                <option value="single">👤 個人詳細モード</option>
+                                <option value="all">👥 全選手一括モード</option>
+                            </select>
+                        </div>
+                        <div id="ps-player-select-wrap">
+                            <label class="block font-bold text-gray-700 mb-1">選手</label>
+                            <select id="ps-player" class="border p-2 rounded w-48 font-bold text-gray-800 bg-white"></select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1">役割</label>
+                            <select id="ps-role" class="border p-2 rounded w-28 font-bold">
+                                <option value="batter">⚾ 打撃</option>
+                                <option value="pitcher">🥎 投手</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1">直近試合数</label>
+                            <select id="ps-limit-games" class="border p-2 rounded w-36 font-bold">
+                                <option value="all">全試合</option>
+                                <option value="3">直近 3 試合</option>
+                                <option value="5" selected>直近 5 試合</option>
+                                <option value="10">直近 10 試合</option>
+                                <option value="20">直近 20 試合</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1">移動平均 単位</label>
+                            <select id="ps-ma-unit" class="border p-2 rounded w-32">
+                                <option value="ab">打数/登板単位</option>
+                                <option value="game">試合単位</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-1">平均ウィンドウ</label>
+                            <div class="flex items-center space-x-1">
+                                <input type="number" id="ps-ma-window" value="10" min="1" max="100" class="border p-2 rounded w-20 text-center font-bold">
+                                <span class="text-xs text-gray-500 font-semibold" id="ps-ma-window-label">打数</span>
+                            </div>
+                        </div>
+                        <div class="flex space-x-2 ml-auto">
+                            <button id="btn-export-ps-csv" class="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded font-bold shadow-sm text-xs flex items-center space-x-1">
+                                <span>📥 CSV出力</span>
+                            </button>
+                            <button id="btn-print-ps" class="bg-gray-700 hover:bg-gray-800 text-white px-3 py-2 rounded font-bold shadow-sm text-xs flex items-center space-x-1">
+                                <span>🖨️ 印刷/PDF</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <div id="ps-batter-charts" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-b-cum"></canvas></div>
-                    <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-b-rate"></canvas></div>
-                    <div class="bg-white p-4 rounded shadow-md md:col-span-2 relative min-h-[300px] md:min-h-[400px]"><canvas id="chart-ps-b-game"></canvas></div>
+
+                <!-- 個人選択モード用コンテナ -->
+                <div id="ps-single-container" class="space-y-6">
+                    <!-- 直近コンディション & ハイライト -->
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="ps-highlight-cards">
+                        <!-- 動的に挿入 -->
+                    </div>
+
+                    <!-- 移動平均 推移グラフ -->
+                    <div class="bg-white p-4 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center mb-2 border-b pb-2">
+                            <h4 class="font-bold text-gray-800 text-sm flex items-center space-x-2">
+                                <span>📈 移動平均 推移グラフ</span>
+                                <span id="ps-ma-graph-subtitle" class="text-xs font-normal text-gray-500"></span>
+                            </h4>
+                        </div>
+                        <div class="h-64 md:h-80 relative">
+                            <canvas id="chart-ps-moving-avg"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 移動平均 成績推移テーブル -->
+                    <div class="bg-white p-4 rounded-lg shadow-md">
+                        <h4 class="font-bold text-gray-800 text-sm border-b pb-2 mb-3">🔄 移動平均 成績推移（一覧）</h4>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs text-left border border-gray-200">
+                                <thead class="bg-gray-100 text-gray-700" id="ps-ma-thead"></thead>
+                                <tbody id="ps-ma-tbody" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 試合別詳細成績一覧テーブル -->
+                    <div class="bg-white p-4 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center border-b pb-2 mb-3">
+                            <h4 class="font-bold text-gray-800 text-sm">📋 試合別 詳細成績一覧</h4>
+                            <span class="text-xs text-gray-500" id="ps-game-count-label"></span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs text-left border border-gray-200">
+                                <thead class="bg-gray-100 text-gray-700" id="ps-game-thead"></thead>
+                                <tbody id="ps-game-tbody" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-                <div id="ps-pitcher-charts" class="grid grid-cols-1 md:grid-cols-2 gap-6 hidden">
-                    <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-p-cum"></canvas></div>
-                    <div class="bg-white p-4 rounded shadow-md"><canvas id="chart-ps-p-rate"></canvas></div>
+
+                <!-- 全選手一括モード用コンテナ -->
+                <div id="ps-all-container" class="space-y-6 hidden">
+                    <div class="bg-white p-4 rounded-lg shadow-md">
+                        <div class="flex justify-between items-center border-b pb-2 mb-4">
+                            <h4 class="font-bold text-gray-800 text-base" id="ps-all-title">👥 全選手成績一覧（直近試合＆移動平均）</h4>
+                            <span class="text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full font-bold border border-blue-200" id="ps-all-subtitle"></span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs text-left border border-gray-200">
+                                <thead class="bg-gray-100 text-gray-700" id="ps-all-thead"></thead>
+                                <tbody id="ps-all-tbody" class="divide-y divide-gray-200"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -498,7 +601,17 @@ function setupDashboardUI() {
             applyFiltersAndRender();
         });
 
-        ['ps-player', 'ps-role', 'ps-unit'].forEach(id => document.getElementById(id)?.addEventListener('change', renderPersonalSummary));
+        ['ps-mode', 'ps-player', 'ps-role', 'ps-limit-games', 'ps-ma-unit', 'ps-ma-window'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+            const unit = document.getElementById('ps-ma-unit')?.value;
+            const labelEl = document.getElementById('ps-ma-window-label');
+            if (labelEl) labelEl.textContent = unit === 'ab' ? '打数/登板' : '試合';
+            const isSingle = document.getElementById('ps-mode')?.value === 'single';
+            document.getElementById('ps-player-select-wrap')?.classList.toggle('hidden', !isSingle);
+            renderPersonalSummary();
+        }));
+        document.getElementById('btn-export-ps-csv')?.addEventListener('click', handleExportPsCsv);
+        document.getElementById('btn-print-ps')?.addEventListener('click', () => window.print());
+
         ['tm-role', 'tm-window'].forEach(id => document.getElementById(id)?.addEventListener('change', renderTestMode));
         document.getElementById('tm-players-list')?.addEventListener('change', renderTestMode);
         document.getElementById('comp-players-list')?.addEventListener('change', renderComparison);
@@ -889,18 +1002,28 @@ async function drawCharts(games, bStats, pStats) {
     });
 }
 
-// --- 共通成績計算ロジック ---
 function calcBatterStats(stats) {
     let pa=0, ab=0, h=0, tb=0, rbi=0, r=0, sb=0, bb=0, hbp=0, so=0, hr=0;
     stats.forEach(s => {
         pa+=s.plate_appearances||0; ab+=s.at_bats||0; h+=s.hits||0; hr+=s.home_runs||0;
         tb+=s.total_bases||0; rbi+=s.runs_batted_in||0; r+=s.runs||0; sb+=s.stolen_bases||0;
-        bb+=s.walks||0; hbp+=s.hit_by_pitch||0; so+=s.strike_outs||0;
+        bb+=s.walks||0; hbp+=s.hit_by_pitch||0; so+=s.strike_outs||(s.strikeouts||0);
     });
     const avg = ab > 0 ? h / ab : 0;
     const obp = pa > 0 ? (h + bb + hbp) / pa : 0;
     const slg = ab > 0 ? tb / ab : 0;
-    return { pa, ab, h, bb, hbp, rbi, r, sb, hr, avg, obp, slg, ops: obp+slg, bbRate: pa>0?(bb+hbp)/pa:0, soRate: pa>0?so/pa:0 };
+    const ops = obp + slg;
+
+    return {
+        pa, ab, h, bb, hbp, rbi, r, sb, hr, so,
+        avg, obp, slg, ops,
+        avgStr: avg.toFixed(3).replace(/^0/, ''),
+        obpStr: obp.toFixed(3).replace(/^0/, ''),
+        slgStr: slg.toFixed(3).replace(/^0/, ''),
+        opsStr: ops.toFixed(3),
+        bbRate: pa > 0 ? (bb + hbp) / pa : 0,
+        soRate: pa > 0 ? so / pa : 0
+    };
 }
 
 function calcPitcherStats(stats) {
@@ -911,79 +1034,653 @@ function calcPitcherStats(stats) {
         bf+=s.batters_faced||0; pc+=s.pitch_count||0; st+=s.strikes||0;
     });
     const ip = outs / 3;
-    return { outs, era: ip>0?(er*7)/ip:0, whip: ip>0?(h+bb)/ip:0, k7: ip>0?(so*7)/ip:0, bb7: ip>0?(bb*7)/ip:0, kRate: bf>0?so/bf:0, bbRate: bf>0?bb/bf:0, kbb: bb>0?so/bb:(so>0?99.9:0), sRate: pc>0?st/pc:0 };
+    const era = ip > 0 ? (er * 7) / ip : 0;
+    const whip = ip > 0 ? (h + bb) / ip : 0;
+    const k7 = ip > 0 ? (so * 7) / ip : 0;
+    const bb7 = ip > 0 ? (bb * 7) / ip : 0;
+
+    return {
+        outs, er, h, bb, so, bf, pc, st,
+        era, whip, k7, bb7,
+        eraStr: era.toFixed(2),
+        whipStr: whip.toFixed(2),
+        k7Str: k7.toFixed(2),
+        bb7Str: bb7.toFixed(2),
+        kRate: bf > 0 ? so / bf : 0,
+        bbRate: bf > 0 ? bb / bf : 0,
+        kbb: bb > 0 ? so / bb : (so > 0 ? 99.9 : 0),
+        sRate: pc > 0 ? st / pc : 0
+    };
 }
 
-// --- タブ2: 個人成績 ---
+// --- タブ2: 個人成績・履歴・移動平均分析 ---
 async function renderPersonalSummary() {
     await loadChartJs();
-    const pid = document.getElementById('ps-player').value;
-    const role = document.getElementById('ps-role').value;
-    const unit = document.getElementById('ps-unit').value;
-    if(!pid) return;
+    const mode = document.getElementById('ps-mode')?.value || 'single';
+    const pid = document.getElementById('ps-player')?.value;
+    const role = document.getElementById('ps-role')?.value || 'batter';
+    const limitGamesVal = document.getElementById('ps-limit-games')?.value || '5';
+    const maUnit = document.getElementById('ps-ma-unit')?.value || 'ab';
+    const maWindow = parseInt(document.getElementById('ps-ma-window')?.value || '10', 10);
 
-    document.getElementById('ps-batter-charts').classList.toggle('hidden', role !== 'batter');
-    document.getElementById('ps-pitcher-charts').classList.toggle('hidden', role !== 'pitcher');
+    const singleContainer = document.getElementById('ps-single-container');
+    const allContainer = document.getElementById('ps-all-container');
+    
+    if (mode === 'single') {
+        singleContainer?.classList.remove('hidden');
+        allContainer?.classList.add('hidden');
+        if (pid) {
+            renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindow);
+        }
+    } else {
+        singleContainer?.classList.add('hidden');
+        allContainer?.classList.remove('hidden');
+        renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow);
+    }
+}
 
+// 単一選手の試合別履歴＆移動平均ビューのレンダリング
+function renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindow) {
     const { games, bStats, pStats } = currentFiltered;
+    const playerName = allPlayers.find(p => p.id == pid)?.name || '選手';
     const targetStats = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == pid);
-    const merged = targetStats.map(s => ({ date: games.find(x => x.id === s.game_id)?.date || '', stats: s, game: games.find(x => x.id === s.game_id) })).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
+    
+    // 試合データとマージして日付順ソート
+    const allMerged = targetStats.map(s => {
+        const game = games.find(g => g.id === s.game_id);
+        return {
+            date: game?.date || '',
+            game: game,
+            stats: s
+        };
+    }).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
 
-    // 指定された集計単位（game, month, 3month）でグループ化
-    const groupedStats = [];
-    merged.forEach((m, idx) => {
-        let lbl = '';
-        if (unit === 'game') lbl = `G${idx+1}`;
-        else if (unit === 'month') lbl = m.date.substring(0, 7);
-        else lbl = `${m.date.substring(0,4)}-Q${Math.ceil(parseInt(m.date.substring(5,7))/3)}`;
+    // 全期間（通算）データ
+    const totalCalc = role === 'batter' ? calcBatterStats(allMerged.map(x => x.stats)) : calcPitcherStats(allMerged.map(x => x.stats));
 
-        let group = groupedStats.find(g => g.label === lbl);
-        if (!group) {
-            group = { label: lbl, stats: [], game: m.game };
-            groupedStats.push(group);
+    // 直近N試合フィルター適用
+    let merged = [...allMerged];
+    if (limitGamesVal !== 'all') {
+        const limit = parseInt(limitGamesVal, 10);
+        if (merged.length > limit) {
+            merged = merged.slice(merged.length - limit);
         }
-        group.stats.push(m.stats);
-    });
+    }
 
-    const labels = [], dataPoints = [], periodDataPoints = [];
-    let totalCumStats = [];
+    const periodCalc = role === 'batter' ? calcBatterStats(merged.map(x => x.stats)) : calcPitcherStats(merged.map(x => x.stats));
 
-    groupedStats.forEach(group => {
-        // 区間ごとのデータ
-        periodDataPoints.push(role === 'batter' ? calcBatterStats(group.stats) : calcPitcherStats(group.stats));
-        // 累積データ
-        totalCumStats = totalCumStats.concat(group.stats);
-        dataPoints.push(role === 'batter' ? calcBatterStats(totalCumStats) : calcPitcherStats(totalCumStats));
-        
-        let displayLabel = group.label;
-        if (unit === 'game' && group.game) {
-            const oppTeam = isHomeTeam(group.game.team_first) ? group.game.team_second : group.game.team_first;
-            displayLabel = [group.label, oppTeam || ''];
-        }
-        labels.push(displayLabel);
-    });
+    // 1. 直近ハイライトカード描画
+    renderHighlightCards(playerName, role, periodCalc, totalCalc, merged);
 
-    Object.values(personalCharts).forEach(c => c.destroy());
-    personalCharts = {};
+    // 2. 移動平均データ計算
+    const maData = calculateMovingAverageData(merged, role, maUnit, maWindow);
 
-    const heightClass = unit === 'game' ? 'h-[450px]' : 'h-[300px]';
-    const bGameHeightClass = unit === 'game' ? 'h-[600px]' : 'h-[400px]';
-    ['chart-ps-b-cum', 'chart-ps-b-rate', 'chart-ps-p-cum', 'chart-ps-p-rate'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el && el.parentElement) el.parentElement.className = `bg-white p-4 rounded shadow-md relative ${heightClass}`;
-    });
-    const bGameWrap = document.getElementById('chart-ps-b-game')?.parentElement;
-    if (bGameWrap) bGameWrap.className = `bg-white p-4 rounded shadow-md md:col-span-2 relative ${bGameHeightClass}`;
+    // 3. 移動平均グラフ描画
+    drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow);
+
+    // 4. 移動平均テーブル描画
+    renderMovingAvgTable(role, maData);
+
+    // 5. 試合別詳細一覧テーブル描画
+    renderGameDetailTable(role, merged);
+}
+
+// 直近コンディション＆ハイライトカードの表示
+function renderHighlightCards(playerName, role, periodCalc, totalCalc, merged) {
+    const container = document.getElementById('ps-highlight-cards');
+    if (!container) return;
 
     if (role === 'batter') {
-        personalCharts.bCum = new window.Chart(document.getElementById('chart-ps-b-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '打率', data: dataPoints.map(d=>d.avg), borderColor: 'red' }, { label: '出塁率', data: dataPoints.map(d=>d.obp), borderColor: 'blue' }, { label: '長打率', data: dataPoints.map(d=>d.slg), borderColor: 'green' }, { label: 'OPS', data: dataPoints.map(d=>d.ops), borderColor: 'purple', borderDash: [5,5] } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積打撃成績' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
-        personalCharts.bRate = new window.Chart(document.getElementById('chart-ps-b-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '四死球率(%)', data: dataPoints.map(d=>d.bbRate*100), borderColor: 'orange' }, { label: '三振率(%)', data: dataPoints.map(d=>d.soRate*100), borderColor: 'gray' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積四死球・三振率' } }, scales:{ y:{min:0, max:100}, x: { ticks: { font: { size: 10 } } } } } });
-        const periodTitle = unit === 'game' ? '試合別 打数・安打' : (unit === 'month' ? '月別 打数・安打' : '3ヶ月毎 打数・安打');
-        personalCharts.bGame = new window.Chart(document.getElementById('chart-ps-b-game').getContext('2d'), { type: 'bar', data: { labels, datasets: [ { label: '安打', data: periodDataPoints.map(d=>d.h), backgroundColor: 'blue' }, { label: '打数', data: periodDataPoints.map(d=>d.ab), backgroundColor: 'rgba(0,0,0,0.1)' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: periodTitle } }, scales: { x: { ticks: { font: { size: 10 } } } } } });
+        const avgDiff = periodCalc.avg - totalCalc.avg;
+        const diffStr = (avgDiff >= 0 ? '+' : '') + avgDiff.toFixed(3).replace(/^0/, '');
+        const isHot = avgDiff >= 0.03;
+        const isCold = avgDiff <= -0.05;
+        const conditionBadge = isHot ? '🔥 好調' : (isCold ? '❄️ 不調' : '⚖️ 安定');
+        const badgeBg = isHot ? 'bg-red-100 text-red-700 border-red-200' : (isCold ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-700 border-gray-200');
+
+        // 連続試合安打数
+        let streak = 0;
+        for (let i = merged.length - 1; i >= 0; i--) {
+            const h = merged[i].stats.hits || 0;
+            const ab = merged[i].stats.at_bats || 0;
+            if (h > 0) streak++;
+            else if (ab > 0) break;
+        }
+
+        container.innerHTML = `
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1 flex justify-between items-center">
+                    <span>直近打率 vs 通算</span>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded border ${badgeBg}">${conditionBadge}</span>
+                </div>
+                <div class="text-2xl font-black text-blue-600">${periodCalc.avgStr}</div>
+                <div class="text-xs ${avgDiff >= 0 ? 'text-red-500' : 'text-blue-500'} font-bold mt-0.5">
+                    通算 (${totalCalc.avgStr}) 比: ${diffStr}
+                </div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 OPS / 出塁率</div>
+                <div class="text-2xl font-black text-purple-600">${periodCalc.opsStr}</div>
+                <div class="text-xs text-gray-500 mt-0.5">出塁率: <span class="font-bold text-gray-800">${periodCalc.obpStr}</span></div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">連続試合安打</div>
+                <div class="text-2xl font-black ${streak > 0 ? 'text-green-600' : 'text-gray-400'}">${streak} <span class="text-xs font-normal text-gray-600">試合</span></div>
+                <div class="text-xs text-gray-500 mt-0.5">直近安打数: <span class="font-bold text-gray-800">${periodCalc.h}</span> 本</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 打数・打点・HR</div>
+                <div class="text-xl font-black text-gray-800">${periodCalc.ab} <span class="text-xs font-normal text-gray-500">打数</span> ${periodCalc.rbi} <span class="text-xs font-normal text-gray-500">打点</span></div>
+                <div class="text-xs text-gray-500 mt-0.5">本塁打: <span class="font-bold text-red-600">${periodCalc.hr}</span> 本 / 四死球: ${periodCalc.bb + periodCalc.hbp}</div>
+            </div>
+        `;
     } else {
-        personalCharts.pCum = new window.Chart(document.getElementById('chart-ps-p-cum').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: '防御率', data: dataPoints.map(d=>d.era), borderColor: 'red' }, { label: 'WHIP', data: dataPoints.map(d=>d.whip), borderColor: 'blue' }, { label: 'S率(%)', data: dataPoints.map(d=>d.sRate*100), borderColor: 'green', yAxisID: 'y1' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積防御率・WHIP・S率' } }, scales: { y: { min:0, position: 'left' }, y1: { position: 'right', min: 0, max: 100 }, x: { ticks: { font: { size: 10 } } } } } });
-        personalCharts.pRate = new window.Chart(document.getElementById('chart-ps-p-rate').getContext('2d'), { type: 'line', data: { labels, datasets: [ { label: 'K/7', data: dataPoints.map(d=>d.k7), borderColor: 'red' }, { label: 'BB/7', data: dataPoints.map(d=>d.bb7), borderColor: 'blue' } ]}, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: '累積 K/7・BB/7' } }, scales:{ y:{min:0}, x: { ticks: { font: { size: 10 } } } } } });
+        const eraDiff = periodCalc.era - totalCalc.era;
+        const diffStr = (eraDiff <= 0 ? '' : '+') + eraDiff.toFixed(2);
+        container.innerHTML = `
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 防御率 vs 通算</div>
+                <div class="text-2xl font-black text-red-600">${periodCalc.eraStr}</div>
+                <div class="text-xs ${eraDiff <= 0 ? 'text-green-600' : 'text-red-500'} font-bold mt-0.5">
+                    通算 (${totalCalc.eraStr}) 比: ${diffStr}
+                </div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 WHIP</div>
+                <div class="text-2xl font-black text-blue-600">${periodCalc.whipStr}</div>
+                <div class="text-xs text-gray-500 mt-0.5">被安打: ${periodCalc.h} / 与四死: ${periodCalc.bb}</div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 投球回・奪三振</div>
+                <div class="text-xl font-black text-gray-800">${(periodCalc.outs/3).toFixed(1)} <span class="text-xs font-normal text-gray-500">回</span> ${periodCalc.so} <span class="text-xs font-normal text-gray-500">K</span></div>
+                <div class="text-xs text-gray-500 mt-0.5">K/7: <span class="font-bold text-gray-800">${periodCalc.k7Str}</span></div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">ストライク率</div>
+                <div class="text-2xl font-black text-green-600">${(periodCalc.sRate * 100).toFixed(1)}%</div>
+                <div class="text-xs text-gray-500 mt-0.5">球数: ${periodCalc.pc} (S: ${periodCalc.st})</div>
+            </div>
+        `;
     }
+}
+
+// 移動平均データの計算処理
+function calculateMovingAverageData(merged, role, maUnit, maWindow) {
+    const results = [];
+    if (merged.length === 0) return results;
+
+    if (maUnit === 'game') {
+        // 試合単位の移動平均
+        for (let i = 0; i < merged.length; i++) {
+            const startIdx = Math.max(0, i - maWindow + 1);
+            const windowSlice = merged.slice(startIdx, i + 1);
+            const stats = windowSlice.map(x => x.stats);
+            const calc = role === 'batter' ? calcBatterStats(stats) : calcPitcherStats(stats);
+            const currentGame = merged[i];
+            const opp = isHomeTeam(currentGame.game?.team_first) ? currentGame.game?.team_second : currentGame.game?.team_first;
+
+            results.push({
+                label: `${currentGame.date.substring(5)} vs ${opp || ''}`,
+                date: currentGame.date,
+                windowSpan: `${startIdx + 1}〜${i + 1}試合目 (${windowSlice.length}試合)`,
+                calc,
+                stats
+            });
+        }
+    } else {
+        // 打数/登板単位の移動平均
+        for (let i = 0; i < merged.length; i++) {
+            let accCount = 0;
+            const windowSlice = [];
+            for (let j = i; j >= 0; j--) {
+                windowSlice.unshift(merged[j]);
+                const count = role === 'batter' ? (merged[j].stats.at_bats || 0) : 1;
+                accCount += count;
+                if (accCount >= maWindow) break;
+            }
+            const stats = windowSlice.map(x => x.stats);
+            const calc = role === 'batter' ? calcBatterStats(stats) : calcPitcherStats(stats);
+            const currentGame = merged[i];
+            const opp = isHomeTeam(currentGame.game?.team_first) ? currentGame.game?.team_second : currentGame.game?.team_first;
+
+            results.push({
+                label: `${currentGame.date.substring(5)} vs ${opp || ''}`,
+                date: currentGame.date,
+                windowSpan: role === 'batter' ? `直近 ${calc.ab} 打数` : `直近 ${windowSlice.length} 登板`,
+                calc,
+                stats
+            });
+        }
+    }
+    return results;
+}
+
+// 移動平均グラフの描画
+function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
+    const subtitleEl = document.getElementById('ps-ma-graph-subtitle');
+    if (subtitleEl) {
+        subtitleEl.textContent = `(${playerName} - 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'}移動平均)`;
+    }
+
+    if (personalCharts.maGraph) {
+        personalCharts.maGraph.destroy();
+    }
+
+    const labels = maData.map(d => d.label);
+    const canvas = document.getElementById('chart-ps-moving-avg');
+    if (!canvas) return;
+
+    if (role === 'batter') {
+        personalCharts.maGraph = new window.Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: '移動平均 打率', data: maData.map(d => parseFloat(d.calc.avg)), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
+                    { label: '移動平均 出塁率', data: maData.map(d => parseFloat(d.calc.obp)), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 },
+                    { label: '移動平均 OPS', data: maData.map(d => parseFloat(d.calc.ops)), borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderDash: [4, 4], tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { min: 0, ticks: { font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    } else {
+        personalCharts.maGraph = new window.Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: '移動平均 防御率', data: maData.map(d => parseFloat(d.calc.era)), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
+                    { label: '移動平均 WHIP', data: maData.map(d => parseFloat(d.calc.whip)), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { min: 0, ticks: { font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    }
+}
+
+// 移動平均成績推移テーブルのレンダリング
+function renderMovingAvgTable(role, maData) {
+    const thead = document.getElementById('ps-ma-thead');
+    const tbody = document.getElementById('ps-ma-tbody');
+    if (!thead || !tbody) return;
+
+    if (role === 'batter') {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">日付 / 試合</th>
+                <th class="p-2 border">平均範囲</th>
+                <th class="p-2 border text-right">打数</th>
+                <th class="p-2 border text-right">安打</th>
+                <th class="p-2 border text-right">HR</th>
+                <th class="p-2 border text-right">打点</th>
+                <th class="p-2 border text-right">四死球</th>
+                <th class="p-2 border text-right font-bold text-red-600">打率</th>
+                <th class="p-2 border text-right font-bold text-blue-600">出塁率</th>
+                <th class="p-2 border text-right">長打率</th>
+                <th class="p-2 border text-right font-bold text-purple-600">OPS</th>
+            </tr>
+        `;
+        tbody.innerHTML = maData.map(d => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 border font-bold">${d.label}</td>
+                <td class="p-2 border text-gray-500">${d.windowSpan}</td>
+                <td class="p-2 border text-right font-semibold">${d.calc.ab}</td>
+                <td class="p-2 border text-right text-green-600 font-bold">${d.calc.h}</td>
+                <td class="p-2 border text-right">${d.calc.hr}</td>
+                <td class="p-2 border text-right">${d.calc.rbi}</td>
+                <td class="p-2 border text-right">${d.calc.bb + d.calc.hbp}</td>
+                <td class="p-2 border text-right font-black text-red-600">${d.calc.avgStr}</td>
+                <td class="p-2 border text-right font-bold text-blue-600">${d.calc.obpStr}</td>
+                <td class="p-2 border text-right">${d.calc.slgStr}</td>
+                <td class="p-2 border text-right font-black text-purple-700 bg-purple-50">${d.calc.opsStr}</td>
+            </tr>
+        `).join('');
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">日付 / 試合</th>
+                <th class="p-2 border">平均範囲</th>
+                <th class="p-2 border text-right">投球回</th>
+                <th class="p-2 border text-right">被安打</th>
+                <th class="p-2 border text-right">与四死</th>
+                <th class="p-2 border text-right">奪三振</th>
+                <th class="p-2 border text-right font-bold text-red-600">防御率</th>
+                <th class="p-2 border text-right font-bold text-blue-600">WHIP</th>
+                <th class="p-2 border text-right">K/7</th>
+                <th class="p-2 border text-right">S率(%)</th>
+            </tr>
+        `;
+        tbody.innerHTML = maData.map(d => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 border font-bold">${d.label}</td>
+                <td class="p-2 border text-gray-500">${d.windowSpan}</td>
+                <td class="p-2 border text-right font-semibold">${(d.calc.outs/3).toFixed(1)}</td>
+                <td class="p-2 border text-right">${d.calc.h}</td>
+                <td class="p-2 border text-right">${d.calc.bb}</td>
+                <td class="p-2 border text-right font-bold text-green-600">${d.calc.so}</td>
+                <td class="p-2 border text-right font-black text-red-600">${d.calc.eraStr}</td>
+                <td class="p-2 border text-right font-bold text-blue-600">${d.calc.whipStr}</td>
+                <td class="p-2 border text-right">${d.calc.k7Str}</td>
+                <td class="p-2 border text-right">${(d.calc.sRate * 100).toFixed(1)}%</td>
+            </tr>
+        `).join('');
+    }
+}
+
+// 試合別詳細成績一覧テーブルの描画
+function renderGameDetailTable(role, merged) {
+    const thead = document.getElementById('ps-game-thead');
+    const tbody = document.getElementById('ps-game-tbody');
+    const labelEl = document.getElementById('ps-game-count-label');
+    if (!thead || !tbody) return;
+
+    if (labelEl) labelEl.textContent = `対象全 ${merged.length} 試合（最新順）`;
+
+    // テーブル用に新しい順にソート
+    const reversedMerged = [...merged].reverse();
+
+    if (role === 'batter') {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">日付</th>
+                <th class="p-2 border">相手チーム</th>
+                <th class="p-2 border text-center">打席</th>
+                <th class="p-2 border text-center">打数</th>
+                <th class="p-2 border text-center font-bold text-green-600">安打</th>
+                <th class="p-2 border text-center">1B</th>
+                <th class="p-2 border text-center">2B</th>
+                <th class="p-2 border text-center">3B</th>
+                <th class="p-2 border text-center text-red-600">HR</th>
+                <th class="p-2 border text-center">打点</th>
+                <th class="p-2 border text-center">得点</th>
+                <th class="p-2 border text-center">四球</th>
+                <th class="p-2 border text-center">死球</th>
+                <th class="p-2 border text-center">三振</th>
+                <th class="p-2 border text-center">犠打/飛</th>
+                <th class="p-2 border text-center">盗塁</th>
+                <th class="p-2 border text-center">失策</th>
+                <th class="p-2 border text-center font-bold text-red-600">打率</th>
+                <th class="p-2 border text-center font-bold text-purple-600">OPS</th>
+            </tr>
+        `;
+
+        tbody.innerHTML = reversedMerged.map(m => {
+            const s = m.stats;
+            const opp = isHomeTeam(m.game?.team_first) ? m.game?.team_second : m.game?.team_first;
+            const pa = s.plate_appearances || 0;
+            const ab = s.at_bats || 0;
+            const h = s.hits || 0;
+            const h1 = s.singles || 0;
+            const h2 = s.doubles || 0;
+            const h3 = s.triples || 0;
+            const hr = s.home_runs || 0;
+            const rbi = s.runs_batted_in || 0;
+            const r = s.runs || 0;
+            const bb = s.walks || 0;
+            const hbp = s.hit_by_pitch || 0;
+            const so = s.strikeouts || 0;
+            const sh = (s.sac_flies || 0) + (s.sac_bunts || 0);
+            const sb = s.stolen_bases || 0;
+            const err = s.errors || 0;
+            const avg = ab > 0 ? (h / ab).toFixed(3).replace(/^0/, '') : '.000';
+            const obp = (ab + bb + hbp + (s.sac_flies||0)) > 0 ? ((h + bb + hbp) / (ab + bb + hbp + (s.sac_flies||0))).toFixed(3).replace(/^0/, '') : '.000';
+            const tb = h1 + (h2 * 2) + (h3 * 3) + (hr * 4);
+            const slg = ab > 0 ? (tb / ab).toFixed(3).replace(/^0/, '') : '.000';
+            const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3);
+
+            return `
+                <tr class="hover:bg-gray-50">
+                    <td class="p-2 border font-bold">${m.date}</td>
+                    <td class="p-2 border">${opp || '不明'}</td>
+                    <td class="p-2 border text-center">${pa}</td>
+                    <td class="p-2 border text-center font-bold">${ab}</td>
+                    <td class="p-2 border text-center text-green-600 font-bold ${h > 0 ? 'bg-green-50' : ''}">${h}</td>
+                    <td class="p-2 border text-center">${h1}</td>
+                    <td class="p-2 border text-center">${h2}</td>
+                    <td class="p-2 border text-center">${h3}</td>
+                    <td class="p-2 border text-center text-red-600 font-bold ${hr > 0 ? 'bg-red-50' : ''}">${hr}</td>
+                    <td class="p-2 border text-center font-bold">${rbi}</td>
+                    <td class="p-2 border text-center">${r}</td>
+                    <td class="p-2 border text-center">${bb}</td>
+                    <td class="p-2 border text-center">${hbp}</td>
+                    <td class="p-2 border text-center text-gray-500">${so}</td>
+                    <td class="p-2 border text-center">${sh}</td>
+                    <td class="p-2 border text-center">${sb}</td>
+                    <td class="p-2 border text-center text-gray-500">${err}</td>
+                    <td class="p-2 border text-center font-black text-red-600">${avg}</td>
+                    <td class="p-2 border text-center font-bold text-purple-700 bg-purple-50">${ops}</td>
+                </tr>
+            `;
+        }).join('');
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">日付</th>
+                <th class="p-2 border">相手チーム</th>
+                <th class="p-2 border text-center">投球回</th>
+                <th class="p-2 border text-center">球数(S)</th>
+                <th class="p-2 border text-center">被安打</th>
+                <th class="p-2 border text-center">被HR</th>
+                <th class="p-2 border text-center">与四球</th>
+                <th class="p-2 border text-center">与死球</th>
+                <th class="p-2 border text-center font-bold text-green-600">奪三振</th>
+                <th class="p-2 border text-center text-red-600">失点</th>
+                <th class="p-2 border text-center text-red-600">自責点</th>
+                <th class="p-2 border text-center font-bold text-red-600">防御率</th>
+                <th class="p-2 border text-center font-bold text-blue-600">WHIP</th>
+            </tr>
+        `;
+
+        tbody.innerHTML = reversedMerged.map(m => {
+            const s = m.stats;
+            const opp = isHomeTeam(m.game?.team_first) ? m.game?.team_second : m.game?.team_first;
+            const outs = s.outs || 0;
+            const ipStr = `${Math.floor(outs/3)}${outs%3 !== 0 ? '.'+outs%3 : ''}`;
+            const pc = s.pitch_count || 0;
+            const st = s.strikes || 0;
+            const h = s.hits_allowed || 0;
+            const hr = s.home_runs_allowed || 0;
+            const bb = s.walks_allowed || 0;
+            const hbp = s.hit_batters || 0;
+            const so = s.strike_outs || 0;
+            const r = s.runs_allowed || 0;
+            const er = s.earned_runs || 0;
+            const ip = outs / 3;
+            const era = ip > 0 ? ((er * 7) / ip).toFixed(2) : '0.00';
+            const whip = ip > 0 ? ((h + bb) / ip).toFixed(2) : '0.00';
+
+            return `
+                <tr class="hover:bg-gray-50">
+                    <td class="p-2 border font-bold">${m.date}</td>
+                    <td class="p-2 border">${opp || '不明'}</td>
+                    <td class="p-2 border text-center font-bold">${ipStr}</td>
+                    <td class="p-2 border text-center">${pc} (${st})</td>
+                    <td class="p-2 border text-center">${h}</td>
+                    <td class="p-2 border text-center text-red-600">${hr}</td>
+                    <td class="p-2 border text-center">${bb}</td>
+                    <td class="p-2 border text-center">${hbp}</td>
+                    <td class="p-2 border text-center text-green-600 font-bold">${so}</td>
+                    <td class="p-2 border text-center text-red-600">${r}</td>
+                    <td class="p-2 border text-center text-red-600 font-bold">${er}</td>
+                    <td class="p-2 border text-center font-black text-red-600">${era}</td>
+                    <td class="p-2 border text-center font-bold text-blue-600">${whip}</td>
+                </tr>
+            `;
+        }).join('');
+    }
+}
+
+// 全選手一括モードの描画
+function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
+    const titleEl = document.getElementById('ps-all-title');
+    const subtitleEl = document.getElementById('ps-all-subtitle');
+    const thead = document.getElementById('ps-all-thead');
+    const tbody = document.getElementById('ps-all-tbody');
+    if (!thead || !tbody) return;
+
+    const { games, bStats, pStats } = currentFiltered;
+    const limitLabel = limitGamesVal === 'all' ? '全試合' : `直近 ${limitGamesVal} 試合`;
+    if (titleEl) titleEl.textContent = `👥 全選手成績一覧 (${role === 'batter' ? '打撃' : '投手'})`;
+    if (subtitleEl) subtitleEl.textContent = `対象: ${limitLabel} / 移動平均: 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'}`;
+
+    const activePlayerIds = new Set();
+    bStats.forEach(s => activePlayerIds.add(s.player_id));
+    pStats.forEach(s => activePlayerIds.add(s.player_id));
+    const activePlayers = allPlayers.filter(p => activePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+
+    const rows = activePlayers.map(player => {
+        const pStatsList = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == player.id);
+        const merged = pStatsList.map(s => {
+            const g = games.find(x => x.id === s.game_id);
+            return { date: g?.date || '', game: g, stats: s };
+        }).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
+
+        // 直近N試合フィルター
+        let filteredMerged = [...merged];
+        if (limitGamesVal !== 'all') {
+            const limit = parseInt(limitGamesVal, 10);
+            if (filteredMerged.length > limit) {
+                filteredMerged = filteredMerged.slice(filteredMerged.length - limit);
+            }
+        }
+
+        const calcPeriod = role === 'batter' ? calcBatterStats(filteredMerged.map(x => x.stats)) : calcPitcherStats(filteredMerged.map(x => x.stats));
+        const maData = calculateMovingAverageData(filteredMerged, role, maUnit, maWindow);
+        const latestMa = maData.length > 0 ? maData[maData.length - 1].calc : calcPeriod;
+
+        return {
+            player,
+            gameCount: filteredMerged.length,
+            calcPeriod,
+            latestMa
+        };
+    });
+
+    if (role === 'batter') {
+        // OPS順でデフォルトソート
+        rows.sort((a, b) => parseFloat(b.calcPeriod.ops) - parseFloat(a.calcPeriod.ops));
+
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">選手名</th>
+                <th class="p-2 border text-center">試合数</th>
+                <th class="p-2 border text-right">打数</th>
+                <th class="p-2 border text-right">安打</th>
+                <th class="p-2 border text-right">HR</th>
+                <th class="p-2 border text-right">打点</th>
+                <th class="p-2 border text-right font-bold text-red-600">打率 (${limitLabel})</th>
+                <th class="p-2 border text-right font-bold text-purple-600">OPS (${limitLabel})</th>
+                <th class="p-2 border text-right font-bold text-blue-600">移動平均 打率 (直近${maWindow}${maUnit === 'ab' ? '打数' : '試合'})</th>
+                <th class="p-2 border text-right font-bold text-indigo-600">移動平均 OPS</th>
+            </tr>
+        `;
+
+        tbody.innerHTML = rows.map(r => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 border font-bold text-gray-800">${r.player.name}</td>
+                <td class="p-2 border text-center">${r.gameCount}</td>
+                <td class="p-2 border text-right font-semibold">${r.calcPeriod.ab}</td>
+                <td class="p-2 border text-right text-green-600 font-bold">${r.calcPeriod.h}</td>
+                <td class="p-2 border text-right">${r.calcPeriod.hr}</td>
+                <td class="p-2 border text-right">${r.calcPeriod.rbi}</td>
+                <td class="p-2 border text-right font-black text-red-600">${r.calcPeriod.avgStr}</td>
+                <td class="p-2 border text-right font-black text-purple-700 bg-purple-50">${r.calcPeriod.opsStr}</td>
+                <td class="p-2 border text-right font-bold text-blue-600">${r.latestMa.avgStr}</td>
+                <td class="p-2 border text-right font-bold text-indigo-600">${r.latestMa.opsStr}</td>
+            </tr>
+        `).join('');
+    } else {
+        // 防御率順でデフォルトソート
+        rows.sort((a, b) => a.calcPeriod.era - b.calcPeriod.era);
+
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">選手名</th>
+                <th class="p-2 border text-center">登板数</th>
+                <th class="p-2 border text-right">投球回</th>
+                <th class="p-2 border text-right">奪三振</th>
+                <th class="p-2 border text-right">与四死</th>
+                <th class="p-2 border text-right font-bold text-red-600">防御率 (${limitLabel})</th>
+                <th class="p-2 border text-right font-bold text-blue-600">WHIP (${limitLabel})</th>
+                <th class="p-2 border text-right font-bold text-red-500">移動平均 防御率</th>
+                <th class="p-2 border text-right font-bold text-blue-500">移動平均 WHIP</th>
+            </tr>
+        `;
+
+        tbody.innerHTML = rows.map(r => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 border font-bold text-gray-800">${r.player.name}</td>
+                <td class="p-2 border text-center">${r.gameCount}</td>
+                <td class="p-2 border text-right font-semibold">${(r.calcPeriod.outs/3).toFixed(1)}</td>
+                <td class="p-2 border text-right text-green-600 font-bold">${r.calcPeriod.so}</td>
+                <td class="p-2 border text-right">${r.calcPeriod.bb}</td>
+                <td class="p-2 border text-right font-black text-red-600">${r.calcPeriod.eraStr}</td>
+                <td class="p-2 border text-right font-black text-blue-600 bg-blue-50">${r.calcPeriod.whipStr}</td>
+                <td class="p-2 border text-right font-bold text-red-500">${r.latestMa.eraStr}</td>
+                <td class="p-2 border text-right font-bold text-blue-500">${r.latestMa.whipStr}</td>
+            </tr>
+        `).join('');
+    }
+}
+
+// CSVエクスポート処理
+function handleExportPsCsv() {
+    const mode = document.getElementById('ps-mode')?.value || 'single';
+    const role = document.getElementById('ps-role')?.value || 'batter';
+    const pid = document.getElementById('ps-player')?.value;
+    const playerName = allPlayers.find(p => p.id == pid)?.name || '全選手';
+
+    let csvContent = '\uFEFF'; // UTF-8 BOM
+    let filename = `ants_stats_${mode}_${role}_${playerName}_${new Date().toISOString().substring(0, 10)}.csv`;
+
+    let tableEl = null;
+    if (mode === 'single') {
+        tableEl = document.querySelector('#ps-game-tbody')?.closest('table');
+    } else {
+        tableEl = document.querySelector('#ps-all-tbody')?.closest('table');
+    }
+
+    if (!tableEl) {
+        alert('出力対象のテーブルが見つかりません。');
+        return;
+    }
+
+    const rows = Array.from(tableEl.querySelectorAll('tr'));
+    rows.forEach(row => {
+        const cols = Array.from(row.querySelectorAll('th, td'));
+        const rowData = cols.map(c => {
+            let text = c.textContent.trim().replace(/"/g, '""');
+            return `"${text}"`;
+        }).join(',');
+        csvContent += rowData + '\n';
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
 }
 
 // --- タブ3: ランキング ---
