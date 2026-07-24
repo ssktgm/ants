@@ -1588,6 +1588,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             h: calcPeriod.h,
             hr: calcPeriod.hr,
             rbi: calcPeriod.rbi,
+            r: calcPeriod.r,
             bb: calcPeriod.bb + calcPeriod.hbp,
             avg: calcPeriod.avg,
             obp: calcPeriod.obp,
@@ -1628,6 +1629,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="h">安打<span>${getSortIcon('h')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="hr">HR<span>${getSortIcon('hr')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="rbi">打点<span>${getSortIcon('rbi')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-green-700 font-bold" data-ps-sort="r">得点<span>${getSortIcon('r')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-blue-700 font-bold" data-ps-sort="bb">四死球<span>${getSortIcon('bb')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-red-600" data-ps-sort="avg">打率 (${limitLabel})<span>${getSortIcon('avg')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-600" data-ps-sort="obp">出塁率 (${limitLabel})<span>${getSortIcon('obp')}</span></th>
@@ -1646,6 +1648,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <td class="p-2 border text-right text-green-600 font-bold">${r.calcPeriod.h}</td>
                 <td class="p-2 border text-right">${r.calcPeriod.hr}</td>
                 <td class="p-2 border text-right">${r.calcPeriod.rbi}</td>
+                <td class="p-2 border text-right font-bold text-green-700">${r.calcPeriod.r}</td>
                 <td class="p-2 border text-right font-bold text-blue-700">${r.calcPeriod.bb + r.calcPeriod.hbp}</td>
                 <td class="p-2 border text-right font-black text-red-600">${r.calcPeriod.avgStr}</td>
                 <td class="p-2 border text-right font-bold text-blue-600">${r.calcPeriod.obpStr}</td>
