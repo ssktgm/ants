@@ -13,6 +13,7 @@ let comparisonCharts = {};
 let testModeCharts = {};
 let currentRankingData = { batter: [], pitcher: [] };
 let rankingSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
+let psAllSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
 let parsedDetailData = null;
 let detailCharts = {};
 
@@ -1549,7 +1550,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
     const { games, bStats, pStats } = currentFiltered;
     const limitLabel = limitGamesVal === 'all' ? '全試合' : `直近 ${limitGamesVal} 試合`;
     if (titleEl) titleEl.textContent = `👥 全選手成績一覧 (${role === 'batter' ? '打撃' : '投手'})`;
-    if (subtitleEl) subtitleEl.textContent = `対象: ${limitLabel} / 移動平均: 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'}`;
+    if (subtitleEl) subtitleEl.textContent = `対象: ${limitLabel} / 移動平均: 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'} (各列クリックでソート)`;
 
     const activePlayerIds = new Set();
     bStats.forEach(s => activePlayerIds.add(s.player_id));
@@ -1578,29 +1579,62 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
 
         return {
             player,
+            name: player.name,
             gameCount: filteredMerged.length,
             calcPeriod,
-            latestMa
+            latestMa,
+            // ソート用キー
+            ab: calcPeriod.ab,
+            h: calcPeriod.h,
+            hr: calcPeriod.hr,
+            rbi: calcPeriod.rbi,
+            bb: calcPeriod.bb + calcPeriod.hbp,
+            avg: calcPeriod.avg,
+            obp: calcPeriod.obp,
+            ops: calcPeriod.ops,
+            runRate: calcPeriod.runRate,
+            maAvg: latestMa.avg,
+            maOps: latestMa.ops,
+            outs: calcPeriod.outs,
+            so: calcPeriod.so,
+            pBb: calcPeriod.bb,
+            era: calcPeriod.era,
+            whip: calcPeriod.whip,
+            maEra: latestMa.era,
+            maWhip: latestMa.whip
         };
     });
 
-    if (role === 'batter') {
-        // OPS順でデフォルトソート
-        rows.sort((a, b) => parseFloat(b.calcPeriod.ops) - parseFloat(a.calcPeriod.ops));
+    const sortState = psAllSortState[role];
+    rows.sort((a, b) => {
+        let valA = a[sortState.key];
+        let valB = b[sortState.key];
+        if (valA === undefined) valA = 0;
+        if (valB === undefined) valB = 0;
+        if (typeof valA === 'string') {
+            return sortState.order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        return sortState.order === 'asc' ? valA - valB : valB - valA;
+    });
 
+    const getSortIcon = (key) => sortState.key === key ? (sortState.order === 'asc' ? ' ▲' : ' ▼') : '';
+
+    if (role === 'batter') {
         thead.innerHTML = `
             <tr>
-                <th class="p-2 border">選手名</th>
-                <th class="p-2 border text-center">試合数</th>
-                <th class="p-2 border text-right">打数</th>
-                <th class="p-2 border text-right">安打</th>
-                <th class="p-2 border text-right">HR</th>
-                <th class="p-2 border text-right">打点</th>
-                <th class="p-2 border text-right font-bold text-red-600">打率 (${limitLabel})</th>
-                <th class="p-2 border text-right font-bold text-purple-600">OPS (${limitLabel})</th>
-                <th class="p-2 border text-right font-bold text-amber-600">生還率 (R/OB)</th>
-                <th class="p-2 border text-right font-bold text-blue-600">移動平均 打率 (直近${maWindow}${maUnit === 'ab' ? '打数' : '試合'})</th>
-                <th class="p-2 border text-right font-bold text-indigo-600">移動平均 OPS</th>
+                <th class="p-2 border cursor-pointer select-none hover:bg-gray-200" data-ps-sort="name">選手名<span>${getSortIcon('name')}</span></th>
+                <th class="p-2 border text-center cursor-pointer select-none hover:bg-gray-200" data-ps-sort="gameCount">試合数<span>${getSortIcon('gameCount')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="ab">打数<span>${getSortIcon('ab')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="h">安打<span>${getSortIcon('h')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="hr">HR<span>${getSortIcon('hr')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="rbi">打点<span>${getSortIcon('rbi')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-blue-700 font-bold" data-ps-sort="bb">四死球<span>${getSortIcon('bb')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-red-600" data-ps-sort="avg">打率 (${limitLabel})<span>${getSortIcon('avg')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-600" data-ps-sort="obp">出塁率 (${limitLabel})<span>${getSortIcon('obp')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-purple-600" data-ps-sort="ops">OPS (${limitLabel})<span>${getSortIcon('ops')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-amber-600" data-ps-sort="runRate">生還率 (R/OB)<span>${getSortIcon('runRate')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-600" data-ps-sort="maAvg">移動平均 打率<span>${getSortIcon('maAvg')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-indigo-600" data-ps-sort="maOps">移動平均 OPS<span>${getSortIcon('maOps')}</span></th>
             </tr>
         `;
 
@@ -1612,7 +1646,9 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <td class="p-2 border text-right text-green-600 font-bold">${r.calcPeriod.h}</td>
                 <td class="p-2 border text-right">${r.calcPeriod.hr}</td>
                 <td class="p-2 border text-right">${r.calcPeriod.rbi}</td>
+                <td class="p-2 border text-right font-bold text-blue-700">${r.calcPeriod.bb + r.calcPeriod.hbp}</td>
                 <td class="p-2 border text-right font-black text-red-600">${r.calcPeriod.avgStr}</td>
+                <td class="p-2 border text-right font-bold text-blue-600">${r.calcPeriod.obpStr}</td>
                 <td class="p-2 border text-right font-black text-purple-700 bg-purple-50">${r.calcPeriod.opsStr}</td>
                 <td class="p-2 border text-right font-bold text-amber-600 bg-amber-50">${r.calcPeriod.runRateStr}</td>
                 <td class="p-2 border text-right font-bold text-blue-600">${r.latestMa.avgStr}</td>
@@ -1620,20 +1656,17 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             </tr>
         `).join('');
     } else {
-        // 防御率順でデフォルトソート
-        rows.sort((a, b) => a.calcPeriod.era - b.calcPeriod.era);
-
         thead.innerHTML = `
             <tr>
-                <th class="p-2 border">選手名</th>
-                <th class="p-2 border text-center">登板数</th>
-                <th class="p-2 border text-right">投球回</th>
-                <th class="p-2 border text-right">奪三振</th>
-                <th class="p-2 border text-right">与四死</th>
-                <th class="p-2 border text-right font-bold text-red-600">防御率 (${limitLabel})</th>
-                <th class="p-2 border text-right font-bold text-blue-600">WHIP (${limitLabel})</th>
-                <th class="p-2 border text-right font-bold text-red-500">移動平均 防御率</th>
-                <th class="p-2 border text-right font-bold text-blue-500">移動平均 WHIP</th>
+                <th class="p-2 border cursor-pointer select-none hover:bg-gray-200" data-ps-sort="name">選手名<span>${getSortIcon('name')}</span></th>
+                <th class="p-2 border text-center cursor-pointer select-none hover:bg-gray-200" data-ps-sort="gameCount">登板数<span>${getSortIcon('gameCount')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="outs">投球回<span>${getSortIcon('outs')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="so">奪三振<span>${getSortIcon('so')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="pBb">与四死<span>${getSortIcon('pBb')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-red-600" data-ps-sort="era">防御率 (${limitLabel})<span>${getSortIcon('era')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-600" data-ps-sort="whip">WHIP (${limitLabel})<span>${getSortIcon('whip')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-red-500" data-ps-sort="maEra">移動平均 防御率<span>${getSortIcon('maEra')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-500" data-ps-sort="maWhip">移動平均 WHIP<span>${getSortIcon('maWhip')}</span></th>
             </tr>
         `;
 
@@ -1651,6 +1684,20 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             </tr>
         `).join('');
     }
+
+    // 列クリック時のソートイベント登録
+    thead.querySelectorAll('th[data-ps-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.psSort;
+            if (psAllSortState[role].key === key) {
+                psAllSortState[role].order = psAllSortState[role].order === 'asc' ? 'desc' : 'asc';
+            } else {
+                psAllSortState[role].key = key;
+                psAllSortState[role].order = (key === 'era' || key === 'whip' || key === 'maEra' || key === 'maWhip' || key === 'name') ? 'asc' : 'desc';
+            }
+            renderPersonalSummary();
+        });
+    });
 }
 
 // CSVエクスポート処理
