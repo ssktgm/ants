@@ -213,27 +213,31 @@ function setupDashboardUI() {
                         <!-- 動的に挿入 -->
                     </div>
 
-                    <!-- 移動平均 推移グラフ -->
-                    <div class="bg-white p-4 rounded-lg shadow-md">
-                        <div class="flex justify-between items-center mb-2 border-b pb-2">
-                            <h4 class="font-bold text-gray-800 text-sm flex items-center space-x-2">
-                                <span>📈 移動平均 推移グラフ</span>
-                                <span id="ps-ma-graph-subtitle" class="text-xs font-normal text-gray-500"></span>
-                            </h4>
+                    <!-- グラフ表示エリア（純粋グラフ ＆ 移動平均グラフ） -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- ① 純粋な成績推移グラフ -->
+                        <div class="bg-white p-4 rounded-lg shadow-md">
+                            <div class="flex justify-between items-center mb-2 border-b pb-2">
+                                <h4 class="font-bold text-gray-800 text-sm flex items-center space-x-2">
+                                    <span>📊 成績推移グラフ（累積・実数値）</span>
+                                </h4>
+                            </div>
+                            <div class="h-64 md:h-80 relative">
+                                <canvas id="chart-ps-raw-stats"></canvas>
+                            </div>
                         </div>
-                        <div class="h-64 md:h-80 relative">
-                            <canvas id="chart-ps-moving-avg"></canvas>
-                        </div>
-                    </div>
 
-                    <!-- 移動平均 成績推移テーブル -->
-                    <div class="bg-white p-4 rounded-lg shadow-md">
-                        <h4 class="font-bold text-gray-800 text-sm border-b pb-2 mb-3">🔄 移動平均 成績推移（一覧）</h4>
-                        <div class="overflow-x-auto">
-                            <table class="w-full text-xs text-left border border-gray-200">
-                                <thead class="bg-gray-100 text-gray-700" id="ps-ma-thead"></thead>
-                                <tbody id="ps-ma-tbody" class="divide-y divide-gray-200"></tbody>
-                            </table>
+                        <!-- ② 移動平均 推移グラフ -->
+                        <div class="bg-white p-4 rounded-lg shadow-md">
+                            <div class="flex justify-between items-center mb-2 border-b pb-2">
+                                <h4 class="font-bold text-gray-800 text-sm flex items-center space-x-2">
+                                    <span>📈 移動平均 推移グラフ</span>
+                                    <span id="ps-ma-graph-subtitle" class="text-xs font-normal text-gray-500"></span>
+                                </h4>
+                            </div>
+                            <div class="h-64 md:h-80 relative">
+                                <canvas id="chart-ps-moving-avg"></canvas>
+                            </div>
                         </div>
                     </div>
 
@@ -1115,11 +1119,11 @@ function renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindo
     // 2. 移動平均データ計算
     const maData = calculateMovingAverageData(merged, role, maUnit, maWindow);
 
-    // 3. 移動平均グラフ描画
-    drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow);
+    // 3. 純粋成績推移グラフ描画（累積・実数値）
+    drawRawStatsGraph(playerName, role, merged);
 
-    // 4. 移動平均テーブル描画
-    renderMovingAvgTable(role, maData);
+    // 4. 移動平均グラフ描画
+    drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow);
 
     // 5. 試合別詳細一覧テーブル描画
     renderGameDetailTable(role, merged);
@@ -1255,6 +1259,75 @@ function calculateMovingAverageData(merged, role, maUnit, maWindow) {
     return results;
 }
 
+// 純粋成績推移グラフ（累積・実数値）の描画
+function drawRawStatsGraph(playerName, role, merged) {
+    if (personalCharts.rawGraph) {
+        personalCharts.rawGraph.destroy();
+    }
+
+    const canvas = document.getElementById('chart-ps-raw-stats');
+    if (!canvas || merged.length === 0) return;
+
+    const labels = [];
+    const cumDataPoints = [];
+    let runningStats = [];
+
+    merged.forEach((m) => {
+        runningStats.push(m.stats);
+        const opp = isHomeTeam(m.game?.team_first) ? m.game?.team_second : m.game?.team_first;
+        labels.push(`${m.date.substring(5)} vs ${opp || ''}`);
+        const calc = role === 'batter' ? calcBatterStats(runningStats) : calcPitcherStats(runningStats);
+        cumDataPoints.push(calc);
+    });
+
+    if (role === 'batter') {
+        personalCharts.rawGraph = new window.Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: '累積打率', data: cumDataPoints.map(d => d.avg), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
+                    { label: '累積出塁率', data: cumDataPoints.map(d => d.obp), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 },
+                    { label: '累積OPS', data: cumDataPoints.map(d => d.ops), borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderDash: [4, 4], tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { min: 0, ticks: { font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    } else {
+        personalCharts.rawGraph = new window.Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: '累積防御率', data: cumDataPoints.map(d => d.era), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
+                    { label: '累積WHIP', data: cumDataPoints.map(d => d.whip), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { min: 0, ticks: { font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    }
+}
+
 // 移動平均グラフの描画
 function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
     const subtitleEl = document.getElementById('ps-ma-graph-subtitle');
@@ -1276,9 +1349,9 @@ function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
             data: {
                 labels,
                 datasets: [
-                    { label: '移動平均 打率', data: maData.map(d => parseFloat(d.calc.avg)), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
-                    { label: '移動平均 出塁率', data: maData.map(d => parseFloat(d.calc.obp)), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 },
-                    { label: '移動平均 OPS', data: maData.map(d => parseFloat(d.calc.ops)), borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderDash: [4, 4], tension: 0.2 }
+                    { label: '移動平均 打率', data: maData.map(d => d.calc.avg), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
+                    { label: '移動平均 出塁率', data: maData.map(d => d.calc.obp), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 },
+                    { label: '移動平均 OPS', data: maData.map(d => d.calc.ops), borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderDash: [4, 4], tension: 0.2 }
                 ]
             },
             options: {
@@ -1299,8 +1372,8 @@ function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
             data: {
                 labels,
                 datasets: [
-                    { label: '移動平均 防御率', data: maData.map(d => parseFloat(d.calc.era)), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
-                    { label: '移動平均 WHIP', data: maData.map(d => parseFloat(d.calc.whip)), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 }
+                    { label: '移動平均 防御率', data: maData.map(d => d.calc.era), borderColor: '#ef4444', backgroundColor: '#ef4444', tension: 0.2 },
+                    { label: '移動平均 WHIP', data: maData.map(d => d.calc.whip), borderColor: '#3b82f6', backgroundColor: '#3b82f6', tension: 0.2 }
                 ]
             },
             options: {
@@ -1315,75 +1388,6 @@ function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
                 }
             }
         });
-    }
-}
-
-// 移動平均成績推移テーブルのレンダリング
-function renderMovingAvgTable(role, maData) {
-    const thead = document.getElementById('ps-ma-thead');
-    const tbody = document.getElementById('ps-ma-tbody');
-    if (!thead || !tbody) return;
-
-    if (role === 'batter') {
-        thead.innerHTML = `
-            <tr>
-                <th class="p-2 border">日付 / 試合</th>
-                <th class="p-2 border">平均範囲</th>
-                <th class="p-2 border text-right">打数</th>
-                <th class="p-2 border text-right">安打</th>
-                <th class="p-2 border text-right">HR</th>
-                <th class="p-2 border text-right">打点</th>
-                <th class="p-2 border text-right">四死球</th>
-                <th class="p-2 border text-right font-bold text-red-600">打率</th>
-                <th class="p-2 border text-right font-bold text-blue-600">出塁率</th>
-                <th class="p-2 border text-right">長打率</th>
-                <th class="p-2 border text-right font-bold text-purple-600">OPS</th>
-            </tr>
-        `;
-        tbody.innerHTML = maData.map(d => `
-            <tr class="hover:bg-gray-50">
-                <td class="p-2 border font-bold">${d.label}</td>
-                <td class="p-2 border text-gray-500">${d.windowSpan}</td>
-                <td class="p-2 border text-right font-semibold">${d.calc.ab}</td>
-                <td class="p-2 border text-right text-green-600 font-bold">${d.calc.h}</td>
-                <td class="p-2 border text-right">${d.calc.hr}</td>
-                <td class="p-2 border text-right">${d.calc.rbi}</td>
-                <td class="p-2 border text-right">${d.calc.bb + d.calc.hbp}</td>
-                <td class="p-2 border text-right font-black text-red-600">${d.calc.avgStr}</td>
-                <td class="p-2 border text-right font-bold text-blue-600">${d.calc.obpStr}</td>
-                <td class="p-2 border text-right">${d.calc.slgStr}</td>
-                <td class="p-2 border text-right font-black text-purple-700 bg-purple-50">${d.calc.opsStr}</td>
-            </tr>
-        `).join('');
-    } else {
-        thead.innerHTML = `
-            <tr>
-                <th class="p-2 border">日付 / 試合</th>
-                <th class="p-2 border">平均範囲</th>
-                <th class="p-2 border text-right">投球回</th>
-                <th class="p-2 border text-right">被安打</th>
-                <th class="p-2 border text-right">与四死</th>
-                <th class="p-2 border text-right">奪三振</th>
-                <th class="p-2 border text-right font-bold text-red-600">防御率</th>
-                <th class="p-2 border text-right font-bold text-blue-600">WHIP</th>
-                <th class="p-2 border text-right">K/7</th>
-                <th class="p-2 border text-right">S率(%)</th>
-            </tr>
-        `;
-        tbody.innerHTML = maData.map(d => `
-            <tr class="hover:bg-gray-50">
-                <td class="p-2 border font-bold">${d.label}</td>
-                <td class="p-2 border text-gray-500">${d.windowSpan}</td>
-                <td class="p-2 border text-right font-semibold">${(d.calc.outs/3).toFixed(1)}</td>
-                <td class="p-2 border text-right">${d.calc.h}</td>
-                <td class="p-2 border text-right">${d.calc.bb}</td>
-                <td class="p-2 border text-right font-bold text-green-600">${d.calc.so}</td>
-                <td class="p-2 border text-right font-black text-red-600">${d.calc.eraStr}</td>
-                <td class="p-2 border text-right font-bold text-blue-600">${d.calc.whipStr}</td>
-                <td class="p-2 border text-right">${d.calc.k7Str}</td>
-                <td class="p-2 border text-right">${(d.calc.sRate * 100).toFixed(1)}%</td>
-            </tr>
-        `).join('');
     }
 }
 
