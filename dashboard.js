@@ -1018,13 +1018,17 @@ function calcBatterStats(stats) {
     const slg = ab > 0 ? tb / ab : 0;
     const ops = obp + slg;
 
+    const ob = h + bb + hbp;
+    const runRate = ob > 0 ? (r / ob) : 0;
+
     return {
-        pa, ab, h, bb, hbp, rbi, r, sb, hr, so,
-        avg, obp, slg, ops,
+        pa, ab, h, bb, hbp, rbi, r, sb, hr, so, ob,
+        avg, obp, slg, ops, runRate,
         avgStr: avg.toFixed(3).replace(/^0/, ''),
         obpStr: obp.toFixed(3).replace(/^0/, ''),
         slgStr: slg.toFixed(3).replace(/^0/, ''),
         opsStr: ops.toFixed(3),
+        runRateStr: ob > 0 ? (runRate * 100).toFixed(1) + '%' : '0.0%',
         bbRate: pa > 0 ? (bb + hbp) / pa : 0,
         soRate: pa > 0 ? so / pa : 0
     };
@@ -1168,14 +1172,14 @@ function renderHighlightCards(playerName, role, periodCalc, totalCalc, merged) {
                 <div class="text-xs text-gray-500 mt-0.5">出塁率: <span class="font-bold text-gray-800">${periodCalc.obpStr}</span></div>
             </div>
             <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
-                <div class="text-xs text-gray-500 font-bold mb-1">連続試合安打</div>
-                <div class="text-2xl font-black ${streak > 0 ? 'text-green-600' : 'text-gray-400'}">${streak} <span class="text-xs font-normal text-gray-600">試合</span></div>
-                <div class="text-xs text-gray-500 mt-0.5">直近安打数: <span class="font-bold text-gray-800">${periodCalc.h}</span> 本</div>
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 生還率 (R/OB)</div>
+                <div class="text-2xl font-black text-amber-600">${periodCalc.runRateStr}</div>
+                <div class="text-xs text-gray-500 mt-0.5">出塁: <span class="font-bold text-gray-800">${periodCalc.ob}</span>回 / 得点: <span class="font-bold text-green-600">${periodCalc.r}</span></div>
             </div>
             <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
-                <div class="text-xs text-gray-500 font-bold mb-1">直近 打数・打点・HR</div>
-                <div class="text-xl font-black text-gray-800">${periodCalc.ab} <span class="text-xs font-normal text-gray-500">打数</span> ${periodCalc.rbi} <span class="text-xs font-normal text-gray-500">打点</span></div>
-                <div class="text-xs text-gray-500 mt-0.5">本塁打: <span class="font-bold text-red-600">${periodCalc.hr}</span> 本 / 四死球: ${periodCalc.bb + periodCalc.hbp}</div>
+                <div class="text-xs text-gray-500 font-bold mb-1">連続安打 / 打撃内訳</div>
+                <div class="text-xl font-black text-gray-800">${streak} <span class="text-xs font-normal text-gray-600">試合連続</span> (${periodCalc.h}H)</div>
+                <div class="text-xs text-gray-500 mt-0.5">打点: <span class="font-bold text-gray-800">${periodCalc.rbi}</span> / HR: <span class="font-bold text-red-600">${periodCalc.hr}</span></div>
             </div>
         `;
     } else {
@@ -1594,6 +1598,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <th class="p-2 border text-right">打点</th>
                 <th class="p-2 border text-right font-bold text-red-600">打率 (${limitLabel})</th>
                 <th class="p-2 border text-right font-bold text-purple-600">OPS (${limitLabel})</th>
+                <th class="p-2 border text-right font-bold text-amber-600">生還率 (R/OB)</th>
                 <th class="p-2 border text-right font-bold text-blue-600">移動平均 打率 (直近${maWindow}${maUnit === 'ab' ? '打数' : '試合'})</th>
                 <th class="p-2 border text-right font-bold text-indigo-600">移動平均 OPS</th>
             </tr>
@@ -1609,6 +1614,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <td class="p-2 border text-right">${r.calcPeriod.rbi}</td>
                 <td class="p-2 border text-right font-black text-red-600">${r.calcPeriod.avgStr}</td>
                 <td class="p-2 border text-right font-black text-purple-700 bg-purple-50">${r.calcPeriod.opsStr}</td>
+                <td class="p-2 border text-right font-bold text-amber-600 bg-amber-50">${r.calcPeriod.runRateStr}</td>
                 <td class="p-2 border text-right font-bold text-blue-600">${r.latestMa.avgStr}</td>
                 <td class="p-2 border text-right font-bold text-indigo-600">${r.latestMa.opsStr}</td>
             </tr>
