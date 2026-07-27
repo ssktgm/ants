@@ -89,13 +89,13 @@ function setupDashboardUI() {
             <div id="tab-content-team-summary">
                 <div class="bg-white p-4 rounded-lg shadow-md mb-6 text-sm">
                     <h3 class="font-bold mb-2 text-gray-800 border-b pb-1">フィルタ設定</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 mt-2">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4 mt-2">
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">期間</label>
-                            <div class="flex items-center space-x-2">
-                                <input type="date" id="db-filter-date-from" class="border p-1.5 rounded w-full">
+                            <div class="flex items-center space-x-1">
+                                <input type="date" id="db-filter-date-from" class="border p-1.5 rounded w-full text-xs">
                                 <span class="text-gray-500">〜</span>
-                                <input type="date" id="db-filter-date-to" class="border p-1.5 rounded w-full">
+                                <input type="date" id="db-filter-date-to" class="border p-1.5 rounded w-full text-xs">
                             </div>
                         </div>
                         <div>
@@ -103,16 +103,24 @@ function setupDashboardUI() {
                             <input type="text" id="db-filter-team-regex" class="border p-1.5 rounded w-full" placeholder="例: イーグルス|シャークス">
                         </div>
                         <div>
-                            <label class="block text-gray-600 font-bold mb-1">大会・カテゴリ (複数選択/カンマ区切)</label>
+                            <label class="block text-gray-600 font-bold mb-1">大会・カテゴリ (カンマ区切)</label>
                             <input type="text" id="db-filter-category" class="border p-1.5 rounded w-full" placeholder="例: 練習試合, 東部近隣大会">
                         </div>
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">勝敗結果</label>
                             <select id="db-filter-outcome" class="border p-1.5 rounded w-full font-semibold text-gray-800 bg-white">
-                                <option value="all">全試合 (勝敗問わず)</option>
+                                <option value="all">全試合 (問わない)</option>
                                 <option value="win">⭕ 勝ち試合のみ</option>
                                 <option value="loss">❌ 負け試合のみ</option>
                                 <option value="draw">🔺 引き分けのみ</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">先制点</label>
+                            <select id="db-filter-first-score" class="border p-1.5 rounded w-full font-semibold text-gray-800 bg-white">
+                                <option value="all">全試合 (問わない)</option>
+                                <option value="scored">⚡ 先制点を取った試合</option>
+                                <option value="conceded">🛡️ 先制点を取られた試合</option>
                             </select>
                         </div>
                     </div>
@@ -608,6 +616,7 @@ function setupDashboardUI() {
         // フィルタ制御
         document.getElementById('btn-apply-dashboard-filter').addEventListener('click', applyFiltersAndRender);
         document.getElementById('db-filter-outcome')?.addEventListener('change', applyFiltersAndRender);
+        document.getElementById('db-filter-first-score')?.addEventListener('change', applyFiltersAndRender);
         document.getElementById('btn-clear-dashboard-filter').addEventListener('click', () => {
             document.getElementById('db-filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
             document.getElementById('db-filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
@@ -615,6 +624,8 @@ function setupDashboardUI() {
             document.getElementById('db-filter-category').value = dashboardSettings.defaultFilterDate.category || '';
             const outcomeEl = document.getElementById('db-filter-outcome');
             if (outcomeEl) outcomeEl.value = dashboardSettings.defaultFilterDate.outcome || 'all';
+            const firstScoreEl = document.getElementById('db-filter-first-score');
+            if (firstScoreEl) firstScoreEl.value = dashboardSettings.defaultFilterDate.firstScore || 'all';
             applyFiltersAndRender();
         });
 
@@ -832,6 +843,50 @@ function getGameScores(g) {
     return { tr, or, isAntsFirst };
 }
 
+// 試合の先制点状況を判定するヘルパー関数
+// 返り値: 'scored' (自チームが先制), 'conceded' (相手チームが先制), 'unknown' (判定不能または0-0)
+function getFirstScoreStatus(g) {
+    const isAntsFirst = isHomeTeam(g.team_first);
+
+    // 1. プロパティの直接チェック
+    if (g.first_score_team) {
+        return isHomeTeam(g.first_score_team) ? 'scored' : 'conceded';
+    }
+    if (g.first_scored !== undefined && g.first_scored !== null) {
+        if (g.first_scored === 'home' || g.first_scored === true || g.first_scored === 1) return 'scored';
+        if (g.first_scored === 'opp' || g.first_scored === false || g.first_scored === 0) return 'conceded';
+    }
+
+    // 2. イニング詳細スコア (例: "1,0,2,0|0,1,0,0") のチェック
+    const inningStr = g.inning_scores || g.score_detail || g.innings;
+    if (inningStr && typeof inningStr === 'string' && inningStr.includes('|')) {
+        const [topStr, botStr] = inningStr.split('|');
+        const topScores = topStr.split(/[,-]/).map(s => parseInt(s.trim(), 10) || 0);
+        const botScores = botStr.split(/[,-]/).map(s => parseInt(s.trim(), 10) || 0);
+        const maxLen = Math.max(topScores.length, botScores.length);
+
+        for (let i = 0; i < maxLen; i++) {
+            const topRuns = topScores[i] || 0;
+            const botRuns = botScores[i] || 0;
+
+            if (topRuns > 0 && botRuns === 0) {
+                return isAntsFirst ? 'scored' : 'conceded';
+            } else if (botRuns > 0 && topRuns === 0) {
+                return isAntsFirst ? 'conceded' : 'scored';
+            } else if (topRuns > 0 && botRuns > 0) {
+                return isAntsFirst ? 'scored' : 'conceded';
+            }
+        }
+    }
+
+    // 3. 得点・失点からの推測 (完封勝利 / 無得点敗戦)
+    const { tr: ourRuns, or: oppRuns } = getGameScores(g);
+    if (ourRuns > 0 && oppRuns === 0) return 'scored';
+    if (oppRuns > 0 && ourRuns === 0) return 'conceded';
+
+    return 'unknown';
+}
+
 let currentFiltered = { games: [], bStats: [], pStats: [] };
 function applyFiltersAndRender() {
     const from = document.getElementById('db-filter-date-from').value;
@@ -839,6 +894,7 @@ function applyFiltersAndRender() {
     const teamRegexStr = document.getElementById('db-filter-team-regex').value;
     const categoryStr = document.getElementById('db-filter-category').value;
     const outcomeFilter = document.getElementById('db-filter-outcome')?.value || 'all';
+    const firstScoreFilter = document.getElementById('db-filter-first-score')?.value || 'all';
 
     let regex = null;
     if (teamRegexStr) {
@@ -887,6 +943,13 @@ function applyFiltersAndRender() {
             if (outcomeFilter === 'win' && ourRuns <= oppRuns) return false;
             if (outcomeFilter === 'loss' && ourRuns >= oppRuns) return false;
             if (outcomeFilter === 'draw' && ourRuns !== oppRuns) return false;
+        }
+
+        // 先制点フィルタ (scored: 先制点を取った試合, conceded: 先制点を取られた試合)
+        if (firstScoreFilter !== 'all') {
+            const firstStatus = getFirstScoreStatus(g);
+            if (firstScoreFilter === 'scored' && firstStatus !== 'scored') return false;
+            if (firstScoreFilter === 'conceded' && firstStatus !== 'conceded') return false;
         }
 
         return true;
