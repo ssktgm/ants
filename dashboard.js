@@ -1040,12 +1040,26 @@ async function drawCharts(games, bStats, pStats) {
         }
     });
 
-    const gameLabels = [], teamRuns = [], oppRuns = [], cumWinRates = [];
+    const gameLabels = [], teamRuns = [], oppRuns = [], cumWinRates = [], gameMetaList = [];
     let wins = 0, validGames = 0;
 
     games.forEach((g, idx) => {
         const dateStr = g.date ? g.date.split('T')[0] : '';
         const { tr, or, isAntsFirst } = getGameScores(g);
+
+        const myTeam = isAntsFirst ? g.team_first : g.team_second;
+        const oppTeam = isAntsFirst ? g.team_second : g.team_first;
+        const titleStr = g.title || g.category || '試合';
+
+        gameMetaList.push({
+            date: dateStr,
+            title: titleStr,
+            myTeam: myTeam || '自チーム',
+            oppTeam: oppTeam || '相手チーム',
+            tr,
+            or,
+            isAntsFirst
+        });
 
         teamRuns.push(tr); oppRuns.push(-or);
         if (tr > or) wins++;
@@ -1053,14 +1067,46 @@ async function drawCharts(games, bStats, pStats) {
         cumWinRates.push(validGames > 0 ? (wins / validGames * 100).toFixed(1) : 0);
 
         // X軸ラベルを配列にして改行し、相手チーム名を追加
-        const oppTeam = isAntsFirst ? g.team_second : g.team_first;
         gameLabels.push([dateStr ? dateStr.substring(5) : `G${idx+1}`, oppTeam || '']);
     });
 
     charts.games = new window.Chart(document.getElementById('chart-games-wl').getContext('2d'), {
         type: 'bar',
         data: { labels: gameLabels, datasets: [ { label: '得点', data: teamRuns, backgroundColor: 'rgba(75, 192, 192, 0.8)' }, { label: '失点', data: oppRuns, backgroundColor: 'rgba(255, 99, 132, 0.8)' }, { label: '累積勝率(%)', type: 'line', data: cumWinRates, borderColor: 'rgba(255, 205, 86, 1)', yAxisID: 'y1' } ] },
-        options: { responsive: true, scales: { x: { stacked: true, ticks: { font: { size: 10 } } }, y: { stacked: true, position: 'left' }, y1: { position: 'right', beginAtZero: true, min: 0, max: 100 } } }
+        options: {
+            responsive: true,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        title: function(tooltipItems) {
+                            if (!tooltipItems.length) return '';
+                            const idx = tooltipItems[0].dataIndex;
+                            const meta = gameMetaList[idx];
+                            if (!meta) return '';
+                            return `${meta.date} 【${meta.title}】\n${meta.myTeam} vs ${meta.oppTeam}`;
+                        },
+                        label: function(context) {
+                            const idx = context.dataIndex;
+                            const meta = gameMetaList[idx];
+                            const datasetLabel = context.dataset.label || '';
+                            if (datasetLabel === '得点') {
+                                return `得点 (${meta?.myTeam || '自チーム'}): ${context.raw} 点`;
+                            } else if (datasetLabel === '失点') {
+                                return `失点 (${meta?.oppTeam || '相手チーム'}): ${Math.abs(context.raw)} 点`;
+                            } else if (datasetLabel === '累積勝率(%)') {
+                                return `累積勝率: ${context.raw} %`;
+                            }
+                            return `${datasetLabel}: ${context.raw}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { stacked: true, ticks: { font: { size: 10 } } },
+                y: { stacked: true, position: 'left' },
+                y1: { position: 'right', beginAtZero: true, min: 0, max: 100 }
+            }
+        }
     });
 }
 
