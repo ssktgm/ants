@@ -5,7 +5,7 @@ let allGames = [];
 let allBatterStats = [];
 let allPitcherStats = [];
 let allPlayers = [];
-let dashboardSettings = { homeTeamNames: ['ありんこアントス@A軍'], defaultFilterDate: { from: '', to: '', teamRegex: '', category: '' } };
+let dashboardSettings = { homeTeamNames: ['ありんこアントス@A軍'], defaultFilterDate: { from: '', to: '', teamRegex: '', category: '', outcome: 'all' } };
 let isFilterInitialized = false;
 let charts = {};
 let personalCharts = {};
@@ -89,7 +89,7 @@ function setupDashboardUI() {
             <div id="tab-content-team-summary">
                 <div class="bg-white p-4 rounded-lg shadow-md mb-6 text-sm">
                     <h3 class="font-bold mb-2 text-gray-800 border-b pb-1">フィルタ設定</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4 mt-2">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 mt-2">
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">期間</label>
                             <div class="flex items-center space-x-2">
@@ -105,6 +105,15 @@ function setupDashboardUI() {
                         <div>
                             <label class="block text-gray-600 font-bold mb-1">大会・カテゴリ (複数選択/カンマ区切)</label>
                             <input type="text" id="db-filter-category" class="border p-1.5 rounded w-full" placeholder="例: 練習試合, 東部近隣大会">
+                        </div>
+                        <div>
+                            <label class="block text-gray-600 font-bold mb-1">勝敗結果</label>
+                            <select id="db-filter-outcome" class="border p-1.5 rounded w-full font-semibold text-gray-800 bg-white">
+                                <option value="all">全試合 (勝敗問わず)</option>
+                                <option value="win">⭕ 勝ち試合のみ</option>
+                                <option value="loss">❌ 負け試合のみ</option>
+                                <option value="draw">🔺 引き分けのみ</option>
+                            </select>
                         </div>
                     </div>
                     <div class="flex space-x-3">
@@ -603,6 +612,8 @@ function setupDashboardUI() {
             document.getElementById('db-filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
             document.getElementById('db-filter-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
             document.getElementById('db-filter-category').value = dashboardSettings.defaultFilterDate.category || '';
+            const outcomeEl = document.getElementById('db-filter-outcome');
+            if (outcomeEl) outcomeEl.value = dashboardSettings.defaultFilterDate.outcome || 'all';
             applyFiltersAndRender();
         });
 
@@ -706,7 +717,7 @@ async function loadDashboardData() {
         
         // デフォルト初期値の定義
         let homeTeamNames = ['ありんこアントス@A軍'];
-        let defaultFilterDate = { from: '', to: '', teamRegex: '', category: '' };
+        let defaultFilterDate = { from: '', to: '', teamRegex: '', category: '', outcome: 'all' };
 
         // 1. DB (Supabase) からの共通デフォルト設定を読み込み
         if (settingsData) {
@@ -721,6 +732,7 @@ async function loadDashboardData() {
                     to: defaultFilterObj.value.to || '',
                     teamRegex: defaultFilterObj.value.teamRegex || '',
                     category: defaultFilterObj.value.category || '',
+                    outcome: defaultFilterObj.value.outcome || 'all',
                 };
             }
         }
@@ -783,6 +795,7 @@ function applyFiltersAndRender() {
     const to = document.getElementById('db-filter-date-to').value;
     const teamRegexStr = document.getElementById('db-filter-team-regex').value;
     const categoryStr = document.getElementById('db-filter-category').value;
+    const outcomeFilter = document.getElementById('db-filter-outcome')?.value || 'all';
 
     let regex = null;
     if (teamRegexStr) {
@@ -805,6 +818,17 @@ function applyFiltersAndRender() {
             const isMatchSecond = regex.test(g.team_second);
             if (!isMatchFirst && !isMatchSecond) return false;
         }
+
+        // 勝敗結果フィルタ (win: 勝ち試合のみ, loss: 負け試合のみ, draw: 引き分けのみ)
+        if (outcomeFilter !== 'all') {
+            const ourRuns = isHomeFirst ? (g.runs_first || 0) : (g.runs_second || 0);
+            const oppRuns = isHomeFirst ? (g.runs_second || 0) : (g.runs_first || 0);
+
+            if (outcomeFilter === 'win' && ourRuns <= oppRuns) return false;
+            if (outcomeFilter === 'loss' && ourRuns >= oppRuns) return false;
+            if (outcomeFilter === 'draw' && ourRuns !== oppRuns) return false;
+        }
+
         return true;
     });
 
