@@ -789,6 +789,38 @@ function isHomeTeam(teamName) {
     });
 }
 
+// 試合結果の得点をパースして自チーム得点 (tr) と相手チーム得点 (or) を取得するヘルパー関数
+function getGameScores(g) {
+    const isAntsFirst = isHomeTeam(g.team_first);
+    let tr = 0, or = 0;
+
+    if (g.score && typeof g.score === 'string' && g.score.includes('-')) {
+        const parts = g.score.split('-').map(s => parseInt(s.trim(), 10) || 0);
+        if (parts.length >= 2) {
+            if (isAntsFirst) {
+                tr = parts[0];
+                or = parts[1];
+            } else {
+                tr = parts[1];
+                or = parts[0];
+            }
+            return { tr, or, isAntsFirst };
+        }
+    }
+
+    const r1 = parseInt(g.runs_first ?? g.score_first ?? 0, 10) || 0;
+    const r2 = parseInt(g.runs_second ?? g.score_second ?? 0, 10) || 0;
+    if (isAntsFirst) {
+        tr = r1;
+        or = r2;
+    } else {
+        tr = r2;
+        or = r1;
+    }
+
+    return { tr, or, isAntsFirst };
+}
+
 let currentFiltered = { games: [], bStats: [], pStats: [] };
 function applyFiltersAndRender() {
     const from = document.getElementById('db-filter-date-from').value;
@@ -821,8 +853,7 @@ function applyFiltersAndRender() {
 
         // 勝敗結果フィルタ (win: 勝ち試合のみ, loss: 負け試合のみ, draw: 引き分けのみ)
         if (outcomeFilter !== 'all') {
-            const ourRuns = isHomeFirst ? (g.runs_first || 0) : (g.runs_second || 0);
-            const oppRuns = isHomeFirst ? (g.runs_second || 0) : (g.runs_first || 0);
+            const { tr: ourRuns, or: oppRuns } = getGameScores(g);
 
             if (outcomeFilter === 'win' && ourRuns <= oppRuns) return false;
             if (outcomeFilter === 'loss' && ourRuns >= oppRuns) return false;
@@ -1007,13 +1038,8 @@ async function drawCharts(games, bStats, pStats) {
 
     games.forEach((g, idx) => {
         const dateStr = g.date ? g.date.split('T')[0] : '';
-        let tr = 0, or = 0;
-        const isAntsFirst = isHomeTeam(g.team_first);
-        
-        if (g.score && g.score.includes('-')) {
-            const [s1, s2] = g.score.split('-').map(s => parseInt(s, 10) || 0);
-            if (isAntsFirst) { tr = s1; or = s2; } else { tr = s2; or = s1; }
-        }
+        const { tr, or, isAntsFirst } = getGameScores(g);
+
         teamRuns.push(tr); oppRuns.push(-or);
         if (tr > or) wins++;
         validGames++;
