@@ -879,12 +879,21 @@ function getFirstScoreStatus(g) {
         }
     }
 
-    // 3. 得点・失点からの推測 (完封勝利 / 無得点敗戦)
+    // 3. 得点・失点および先攻/後攻からの推定ロジック
     const { tr: ourRuns, or: oppRuns } = getGameScores(g);
+
+    if (ourRuns === 0 && oppRuns === 0) return 'unknown';
+
+    // 完封勝ち/完封負け
     if (ourRuns > 0 && oppRuns === 0) return 'scored';
     if (oppRuns > 0 && ourRuns === 0) return 'conceded';
 
-    return 'unknown';
+    // 先攻チーム (表攻撃) が得点している場合、先攻が先制と判定
+    if (isAntsFirst) {
+        return ourRuns > 0 ? 'scored' : 'conceded';
+    } else {
+        return oppRuns > 0 ? 'conceded' : 'scored';
+    }
 }
 
 let currentFiltered = { games: [], bStats: [], pStats: [] };
