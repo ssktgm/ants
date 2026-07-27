@@ -781,6 +781,10 @@ async function loadDashboardData() {
 // 自チーム名にマッチするか判定する共通関数 (部分一致・チーム名表記ブレ対応)
 function isHomeTeam(teamName) {
     if (!teamName) return false;
+    const trimmed = teamName.trim();
+    // 単に「ありんこ」のみ、「アントス」のみとなっているものは除外
+    if (trimmed === 'ありんこ' || trimmed === 'アントス') return false;
+
     return dashboardSettings.homeTeamNames.some(name => {
         if (!name) return false;
         const cleanName = name.replace(/@.*$/, '').trim();
@@ -843,9 +847,27 @@ function applyFiltersAndRender() {
     const categories = categoryStr ? categoryStr.split(',').map(s=>s.trim()).filter(s=>s) : [];
 
     const filteredGames = allGames.filter(g => {
+        const teamFirstStr = (g.team_first || '').trim();
+        const teamSecondStr = (g.team_second || '').trim();
+        const titleCategoryStr = (g.title || '') + (g.category || '');
+
+        // チーム名が「ありんこ」のみ、または「アントス」のみの試合は除外
+        if (teamFirstStr === 'ありんこ' || teamFirstStr === 'アントス' ||
+            teamSecondStr === 'ありんこ' || teamSecondStr === 'アントス') {
+            return false;
+        }
+
+        // タイトル・カテゴリ・チーム名に「紅白」が含まれる試合は除外
+        if (titleCategoryStr.includes('紅白') || teamFirstStr.includes('紅白') || teamSecondStr.includes('紅白')) {
+            return false;
+        }
+
         // 自チームが先攻・後攻のいずれかに含まれる試合のみを抽出
         const isHomeFirst = isHomeTeam(g.team_first);
         const isHomeSecond = isHomeTeam(g.team_second);
+
+        // 両方が自チーム（＝身内戦・紅白戦）の場合は除外
+        if (isHomeFirst && isHomeSecond) return false;
         if (!isHomeFirst && !isHomeSecond) return false;
 
         const dateStr = g.date ? g.date.split('T')[0] : '';
