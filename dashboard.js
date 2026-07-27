@@ -323,6 +323,8 @@ function setupDashboardUI() {
                         <thead class="bg-gray-100">
                             <tr>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="name" data-role="pitcher">選手<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none font-bold text-green-700" data-sort="wins" data-role="pitcher">勝<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none font-bold text-red-600" data-sort="losses" data-role="pitcher">負<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="outs" data-role="pitcher">アウト<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="era" data-role="pitcher">防御率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="whip" data-role="pitcher">WHIP<span></span></th>
@@ -1233,11 +1235,12 @@ function calcBatterStats(stats) {
 }
 
 function calcPitcherStats(stats) {
-    let outs=0, er=0, h=0, bb=0, so=0, bf=0, pc=0, st=0;
+    let outs=0, er=0, h=0, bb=0, so=0, bf=0, pc=0, st=0, wins=0, losses=0;
     stats.forEach(s => {
         outs+=s.outs||0; er+=s.earned_runs||0; h+=s.hits_allowed||0;
         bb+=(s.walks_allowed||0)+(s.hit_batters||0); so+=s.strike_outs||0;
         bf+=s.batters_faced||0; pc+=s.pitch_count||0; st+=s.strikes||0;
+        wins+=s.wins||0; losses+=s.losses||0;
     });
     const ip = outs / 3;
     const era = ip > 0 ? (er * 7) / ip : 0;
@@ -1246,7 +1249,7 @@ function calcPitcherStats(stats) {
     const bb7 = ip > 0 ? (bb * 7) / ip : 0;
 
     return {
-        outs, er, h, bb, so, bf, pc, st,
+        outs, er, h, bb, so, bf, pc, st, wins, losses,
         era, whip, k7, bb7,
         eraStr: era.toFixed(2),
         whipStr: whip.toFixed(2),
@@ -1796,6 +1799,8 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             outs: calcPeriod.outs,
             so: calcPeriod.so,
             pBb: calcPeriod.bb,
+            wins: calcPeriod.wins,
+            losses: calcPeriod.losses,
             era: calcPeriod.era,
             whip: calcPeriod.whip,
             maEra: latestMa.era,
@@ -1860,6 +1865,8 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             <tr>
                 <th class="p-2 border cursor-pointer select-none hover:bg-gray-200" data-ps-sort="name">選手名<span>${getSortIcon('name')}</span></th>
                 <th class="p-2 border text-center cursor-pointer select-none hover:bg-gray-200" data-ps-sort="gameCount">登板数<span>${getSortIcon('gameCount')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-green-700 font-bold" data-ps-sort="wins">勝利<span>${getSortIcon('wins')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-red-600 font-bold" data-ps-sort="losses">敗戦<span>${getSortIcon('losses')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="outs">投球回<span>${getSortIcon('outs')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="so">奪三振<span>${getSortIcon('so')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="pBb">与四死<span>${getSortIcon('pBb')}</span></th>
@@ -1874,6 +1881,8 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             <tr class="hover:bg-gray-50">
                 <td class="p-2 border font-bold text-gray-800">${r.player.name}</td>
                 <td class="p-2 border text-center">${r.gameCount}</td>
+                <td class="p-2 border text-right font-bold text-green-700">${r.calcPeriod.wins}</td>
+                <td class="p-2 border text-right font-bold text-red-600">${r.calcPeriod.losses}</td>
                 <td class="p-2 border text-right font-semibold">${(r.calcPeriod.outs/3).toFixed(1)}</td>
                 <td class="p-2 border text-right text-green-600 font-bold">${r.calcPeriod.so}</td>
                 <td class="p-2 border text-right">${r.calcPeriod.bb}</td>
@@ -1983,7 +1992,7 @@ function drawRankingTable(role) {
     if (role === 'batter') {
         document.getElementById('ranking-batter-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.pa}</td><td class="p-2">${r.avg.toFixed(3).replace(/^0/,'')}</td><td class="p-2 text-purple-700 font-bold">${r.ops.toFixed(3)}</td><td class="p-2">${r.obp.toFixed(3)}</td><td class="p-2">${r.h}</td><td class="p-2">${r.bb}</td><td class="p-2">${r.hbp}</td><td class="p-2">${r.rbi}</td><td class="p-2">${r.r}</td><td class="p-2">${r.sb}</td><td class="p-2">${r.hr}</td></tr>`).join('');
     } else {
-        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
+        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
     }
 
     // アイコンの更新
