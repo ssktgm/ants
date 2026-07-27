@@ -607,6 +607,7 @@ function setupDashboardUI() {
 
         // フィルタ制御
         document.getElementById('btn-apply-dashboard-filter').addEventListener('click', applyFiltersAndRender);
+        document.getElementById('db-filter-outcome')?.addEventListener('change', applyFiltersAndRender);
         document.getElementById('btn-clear-dashboard-filter').addEventListener('click', () => {
             document.getElementById('db-filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
             document.getElementById('db-filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
@@ -777,15 +778,18 @@ async function loadDashboardData() {
     }
 }
 
-// 自チーム名にマッチするか判定する共通関数
+// 自チーム名にマッチするか判定する共通関数 (部分一致・チーム名表記ブレ対応)
 function isHomeTeam(teamName) {
     if (!teamName) return false;
     return dashboardSettings.homeTeamNames.some(name => {
+        if (!name) return false;
+        const cleanName = name.replace(/@.*$/, '').trim();
+        const cleanTeam = teamName.replace(/@.*$/, '').trim();
         try {
-            return new RegExp(name, 'i').test(teamName);
-        } catch (e) {
-            return teamName.includes(name); // 正規表現として不正な場合は部分一致
-        }
+            if (new RegExp(name, 'i').test(teamName) || new RegExp(cleanName, 'i').test(cleanTeam)) return true;
+        } catch (e) {}
+        return teamName.includes(name) || name.includes(teamName) ||
+               (cleanName && cleanTeam && (cleanTeam.includes(cleanName) || cleanName.includes(cleanTeam)));
     });
 }
 
@@ -794,15 +798,18 @@ function getGameScores(g) {
     const isAntsFirst = isHomeTeam(g.team_first);
     let tr = 0, or = 0;
 
-    if (g.score && typeof g.score === 'string' && g.score.includes('-')) {
-        const parts = g.score.split('-').map(s => parseInt(s.trim(), 10) || 0);
-        if (parts.length >= 2) {
+    // スコア文字列から数字を抽出 (例: "5 - 3", "5-3", "5 - 3 (5回コールド)")
+    if (g.score && typeof g.score === 'string') {
+        const matches = g.score.match(/\d+/g);
+        if (matches && matches.length >= 2) {
+            const s1 = parseInt(matches[0], 10);
+            const s2 = parseInt(matches[1], 10);
             if (isAntsFirst) {
-                tr = parts[0];
-                or = parts[1];
+                tr = s1;
+                or = s2;
             } else {
-                tr = parts[1];
-                or = parts[0];
+                tr = s2;
+                or = s1;
             }
             return { tr, or, isAntsFirst };
         }
