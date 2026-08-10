@@ -87,46 +87,62 @@ function setupDashboardUI() {
             </div>
             
             <div id="tab-content-team-summary">
-                <div class="bg-white p-4 rounded-lg shadow-md mb-6 text-sm">
-                    <h3 class="font-bold mb-2 text-gray-800 border-b pb-1">フィルタ設定</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-4 mt-2">
-                        <div>
-                            <label class="block text-gray-600 font-bold mb-1">期間</label>
-                            <div class="flex items-center space-x-1">
-                                <input type="date" id="db-filter-date-from" class="border p-1.5 rounded w-full text-xs">
-                                <span class="text-gray-500">〜</span>
-                                <input type="date" id="db-filter-date-to" class="border p-1.5 rounded w-full text-xs">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-6 text-sm">
+                    <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                        <div class="flex items-center space-x-2">
+                            <span class="p-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-black">🔍</span>
+                            <h3 class="font-bold text-gray-800 text-sm">チーム成績 絞り込みフィルタ</h3>
+                        </div>
+                        <span class="text-[11px] text-gray-400 font-medium hidden sm:inline">選択項目を変更すると自動で即時再集計されます</span>
+                    </div>
+
+                    <!-- 1行目: 期間 / 相手チーム / 大会カテゴリ -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">📅 期間指定</label>
+                            <div class="flex items-center space-x-1.5">
+                                <input type="date" id="db-filter-date-from" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none">
+                                <span class="text-gray-400 font-bold text-xs">〜</span>
+                                <input type="date" id="db-filter-date-to" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none">
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-gray-600 font-bold mb-1">相手チーム名 (正規表現可)</label>
-                            <input type="text" id="db-filter-team-regex" class="border p-1.5 rounded w-full" placeholder="例: イーグルス|シャークス">
+                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">⚔️ 相手チーム名 (正規表現可)</label>
+                            <input type="text" id="db-filter-team-regex" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="例: イーグルス|シャークス">
                         </div>
-                        <div>
-                            <label class="block text-gray-600 font-bold mb-1">大会・カテゴリ (カンマ区切)</label>
-                            <input type="text" id="db-filter-category" class="border p-1.5 rounded w-full" placeholder="例: 練習試合, 東部近隣大会">
+                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">🏆 大会・カテゴリ (カンマ区切り)</label>
+                            <input type="text" id="db-filter-category" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="例: 練習試合, 東部近隣大会">
                         </div>
-                        <div>
-                            <label class="block text-gray-600 font-bold mb-1">勝敗結果</label>
-                            <select id="db-filter-outcome" class="border p-1.5 rounded w-full font-semibold text-gray-800 bg-white">
+                    </div>
+
+                    <!-- 2行目: 勝敗結果 / 先制点 / 操作ボタン -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">📊 勝敗結果</label>
+                            <select id="db-filter-outcome" class="border border-gray-300 p-1.5 rounded-md w-full text-xs font-bold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none cursor-pointer">
                                 <option value="all">全試合 (問わない)</option>
                                 <option value="win">⭕ 勝ち試合のみ</option>
                                 <option value="loss">❌ 負け試合のみ</option>
                                 <option value="draw">🔺 引き分けのみ</option>
                             </select>
                         </div>
-                        <div>
-                            <label class="block text-gray-600 font-bold mb-1">先制点</label>
-                            <select id="db-filter-first-score" class="border p-1.5 rounded w-full font-semibold text-gray-800 bg-white">
+                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                            <label class="block text-xs font-bold text-gray-600 mb-1">⚡ 先制点</label>
+                            <select id="db-filter-first-score" class="border border-gray-300 p-1.5 rounded-md w-full text-xs font-bold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none cursor-pointer">
                                 <option value="all">全試合 (問わない)</option>
                                 <option value="scored">⚡ 先制点を取った試合</option>
                                 <option value="conceded">🛡️ 先制点を取られた試合</option>
                             </select>
                         </div>
-                    </div>
-                    <div class="flex space-x-3">
-                        <button id="btn-apply-dashboard-filter" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded font-bold shadow-sm">適用</button>
-                        <button id="btn-clear-dashboard-filter" class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-1.5 rounded font-bold shadow-sm">クリア/リセット</button>
+                        <div class="flex items-center space-x-2">
+                            <button id="btn-apply-dashboard-filter" class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-lg shadow-sm hover:shadow transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1">
+                                <span>適用</span>
+                            </button>
+                            <button id="btn-clear-dashboard-filter" class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-semibold py-2 px-3 rounded-lg border border-gray-200 transition-all duration-200 cursor-pointer whitespace-nowrap">
+                                リセット
+                            </button>
+                        </div>
                     </div>
                 </div>
 
