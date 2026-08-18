@@ -21,15 +21,29 @@ if (SUPABASE_URL && SUPABASE_ANON_KEY) {
 }
 
 // 状態管理
-let players = []; // { id, name, number }
-let patterns = []; // { id, name, mode (9:DHなし, 10:DHあり), basePositions: { p: playerId, ... }, customSubstitutions: [], battingOrder: { 1: playerId, ... }, headerInfo: { date, tournament, ... } }
+let teams = []; // [{ id, name }]
+let currentTeamId = 'team_default';
+let templates = []; // [{ id, name, mode, basePositions, battingOrder }]
+let players = []; // { id, name, number, teamId }
+let patterns = []; // { id, name, teamId, mode (9:DHなし, 10:DHあり), basePositions: { p: playerId, ... }, customSubstitutions: [], battingOrder: { 1: playerId, ... }, headerInfo: { date, tournament, ... } }
 let currentPatternId = '';
 let tempPattern = null;
+
+function getCurrentTeam() {
+    return teams.find(t => t.id === currentTeamId) || teams[0] || { id: 'team_default', name: 'ありんこアントス (A軍)' };
+}
+
+function getPlayersForCurrentTeam() {
+    return players.filter(p => (p.teamId || 'team_default') === currentTeamId);
+}
+
 function getTempPattern() {
     if (!tempPattern) {
+        const currentTeam = getCurrentTeam();
         tempPattern = {
             id: '',
             name: '新規配置データ',
+            teamId: currentTeamId,
             mode: simulatorMode,
             basePositions: {},
             customSubstitutions: [],
@@ -37,7 +51,7 @@ function getTempPattern() {
             headerInfo: {
                 date: '',
                 tournament: '',
-                teamHome: 'ありんこアントス',
+                teamHome: currentTeam.name || 'ありんこアントス',
                 teamVisitor: '',
                 manager: '',
                 captain: '',
@@ -49,9 +63,11 @@ function getTempPattern() {
     }
     return tempPattern;
 }
+
 function getCurrentPattern() {
     return patterns.find(p => p.id === currentPatternId) || getTempPattern();
 }
+
 let activeTab = 'setup';
 let selectedPlayerId = null;
 let selectedSourcePos = null;
@@ -112,6 +128,8 @@ export async function initPositionSimulator() {
         setupEventListeners();
         await loadData();
         
+        renderTeamSelect();
+        renderTemplateSelects();
         updatePatternSelectOptions();
         
         if (patterns.length > 0) {
@@ -121,9 +139,11 @@ export async function initPositionSimulator() {
             const pattern = getCurrentPattern();
             if (pattern) {
                 simulatorMode = pattern.mode || 9;
+                if (pattern.teamId && teams.some(t => t.id === pattern.teamId)) {
+                    currentTeamId = pattern.teamId;
+                    renderTeamSelect();
+                }
             }
-        } else {
-            await createNewPattern('デフォルト配置');
         }
         
         updateModeUI();
@@ -145,6 +165,7 @@ function sanitizePattern(pat) {
     if (!pat.customSubstitutions) pat.customSubstitutions = [];
     if (!pat.battingOrder) pat.battingOrder = {};
     if (!pat.headerInfo) pat.headerInfo = {};
+    if (!pat.teamId) pat.teamId = pat.headerInfo.teamId || 'team_default';
     if (pat.mode === undefined) pat.mode = 9;
     return pat;
 }
@@ -160,11 +181,44 @@ async function loadData() {
             const { data: dbPlayers, error: pError } = await supabaseClient.from('sim_players').select('*').order('created_at', { ascending: true });
             const { data: dbPatterns, error: patError } = await supabaseClient.from('sim_patterns').select('*').order('created_at', { ascending: true });
             
+            // master_data からチーム情報とテンプレート情報を取得
+            const { data: mdTeams } = await supabaseClient.from('master_data').select('data').eq('key', 'SIM_TEAMS').single();
+            const { data: mdTemplates } = await supabaseClient.from('master_data').select('data').eq('key', 'SIM_TEMPLATES').single();
+            const { data: mdPlayersMap } = await supabaseClient.from('master_data').select('data').eq('key', 'SIM_PLAYERS_MAP').single();
+
+            // チームの初期化
+            if (mdTeams && Array.isArray(mdTeams.data) && mdTeams.data.length > 0) {
+                teams = mdTeams.data;
+            } else {
+                teams = [
+                    { id: 'team_default', name: 'ありんこアントス (A軍)' },
+                    { id: 'team_b', name: 'ありんこアントス (B軍・ジュニア)' }
+                ];
+            }
+            currentTeamId = teams[0].id;
+
+            // テンプレート（初期パターン）の初期化
+            if (mdTemplates && Array.isArray(mdTemplates.data)) {
+                templates = mdTemplates.data;
+            } else {
+                templates = [];
+            }
+            
             if (!pError && !patError && dbPlayers && dbPatterns) {
-                players = dbPlayers;
+                // 選手データのチームIDマッピング
+                const playerTeamMap = (mdPlayersMap && typeof mdPlayersMap.data === 'object') ? mdPlayersMap.data : {};
+                
+                players = dbPlayers.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    number: p.number || '',
+                    teamId: p.team_id || playerTeamMap[p.id] || 'team_default'
+                }));
+
                 patterns = dbPatterns.map(p => sanitizePattern({
                     id: p.id,
                     name: p.name,
+                    teamId: p.header_info?.teamId || 'team_default',
                     mode: p.has_dh ? 10 : 9,
                     basePositions: p.base_positions || {},
                     customSubstitutions: p.custom_substitutions || [],
@@ -184,19 +238,78 @@ async function loadData() {
     
     if (!success) {
         // サーバーからの取得失敗時のデフォルト初期選手
+        teams = [
+            { id: 'team_default', name: 'ありんこアントス (A軍)' },
+            { id: 'team_b', name: 'ありんこアントス (B軍・ジュニア)' }
+        ];
+        currentTeamId = teams[0].id;
+        templates = [];
         players = [
-            { id: 'p1', name: 'とあ', number: '2' },
-            { id: 'p2', name: 'そうま', number: '10' },
-            { id: 'p3', name: 'あきと', number: '3' },
-            { id: 'p4', name: 'ゆうき', number: '4' },
-            { id: 'p5', name: 'あいのすけ', number: '1' },
-            { id: 'p6', name: 'けんせい', number: '6' },
-            { id: 'p7', name: 'りゅうと', number: '7' },
-            { id: 'p8', name: 'ながまさ', number: '8' },
-            { id: 'p9', name: 'そうすけ', number: '9' },
-            { id: 'p10', name: 'たいち', number: '5' }
+            { id: 'p1', name: 'とあ', number: '2', teamId: 'team_default' },
+            { id: 'p2', name: 'そうま', number: '10', teamId: 'team_default' },
+            { id: 'p3', name: 'あきと', number: '3', teamId: 'team_default' },
+            { id: 'p4', name: 'ゆうき', number: '4', teamId: 'team_default' },
+            { id: 'p5', name: 'あいのすけ', number: '1', teamId: 'team_default' },
+            { id: 'p6', name: 'けんせい', number: '6', teamId: 'team_default' },
+            { id: 'p7', name: 'りゅうと', number: '7', teamId: 'team_default' },
+            { id: 'p8', name: 'ながまさ', number: '8', teamId: 'team_default' },
+            { id: 'p9', name: 'そうすけ', number: '9', teamId: 'team_default' },
+            { id: 'p10', name: 'たいち', number: '5', teamId: 'team_default' }
         ];
         patterns = [];
+    }
+}
+
+/**
+ * チーム情報の Supabase 同期
+ */
+async function syncTeamsToDB() {
+    if (!supabaseClient) return null;
+    try {
+        const res = await supabaseClient.from('master_data').upsert({
+            key: 'SIM_TEAMS',
+            data: teams
+        });
+        return res ? res.error : null;
+    } catch (e) {
+        console.error('Supabase teams sync error:', e);
+        return e;
+    }
+}
+
+/**
+ * テンプレート（初期パターン）の Supabase 同期
+ */
+async function syncTemplatesToDB() {
+    if (!supabaseClient) return null;
+    try {
+        const res = await supabaseClient.from('master_data').upsert({
+            key: 'SIM_TEMPLATES',
+            data: templates
+        });
+        return res ? res.error : null;
+    } catch (e) {
+        console.error('Supabase templates sync error:', e);
+        return e;
+    }
+}
+
+/**
+ * 選手チーム所属マッピングの Supabase 同期
+ */
+async function syncPlayersTeamMapToDB() {
+    if (!supabaseClient) return null;
+    try {
+        const map = {};
+        players.forEach(p => {
+            map[p.id] = p.teamId || 'team_default';
+        });
+        await supabaseClient.from('master_data').upsert({
+            key: 'SIM_PLAYERS_MAP',
+            data: map
+        });
+    } catch (e) {
+        console.error('Supabase players map sync error:', e);
     }
 }
 
@@ -216,6 +329,7 @@ async function syncPlayerToDB(player, isDelete = false) {
                 number: player.number
             });
         }
+        await syncPlayersTeamMapToDB();
         return res ? res.error : null;
     } catch (e) {
         console.error('Supabase player sync error:', e);
@@ -230,6 +344,7 @@ async function syncPatternToDB(pattern, isDelete = false) {
         if (isDelete) {
             res = await supabaseClient.from('sim_patterns').delete().eq('id', pattern.id);
         } else {
+            const headerInfo = { ...(pattern.headerInfo || {}), teamId: pattern.teamId || currentTeamId };
             res = await supabaseClient.from('sim_patterns').upsert({
                 id: pattern.id,
                 name: pattern.name,
@@ -237,7 +352,7 @@ async function syncPatternToDB(pattern, isDelete = false) {
                 base_positions: pattern.basePositions,
                 custom_substitutions: pattern.customSubstitutions,
                 batting_order: pattern.battingOrder || {},
-                header_info: pattern.headerInfo || {},
+                header_info: headerInfo,
                 updated_at: new Date().toISOString()
             });
         }
@@ -258,21 +373,105 @@ async function autoSavePattern(pattern) {
 }
 
 /**
+ * チーム選択UIの描画
+ */
+function renderTeamSelect() {
+    const select = document.getElementById('sim-team-select');
+    const newSelect = document.getElementById('new-sim-team');
+    const label = document.getElementById('sim-current-team-label');
+    
+    const currentTeam = getCurrentTeam();
+    if (label) {
+        label.textContent = `[${currentTeam.name}]`;
+    }
+    
+    if (select) {
+        select.innerHTML = '';
+        teams.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name;
+            select.appendChild(opt);
+        });
+        select.value = currentTeamId;
+    }
+    
+    if (newSelect) {
+        newSelect.innerHTML = '';
+        teams.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name;
+            newSelect.appendChild(opt);
+        });
+        newSelect.value = currentTeamId;
+    }
+}
+
+/**
+ * テンプレート（初期パターン）選択UIの描画
+ */
+function renderTemplateSelects() {
+    const inlineSelect = document.getElementById('sim-template-select-inline');
+    const newSimSelect = document.getElementById('new-sim-template');
+    
+    if (inlineSelect) {
+        inlineSelect.innerHTML = '<option value="">(選択して適用)</option>';
+        templates.forEach(tmpl => {
+            const opt = document.createElement('option');
+            opt.value = tmpl.id;
+            opt.textContent = tmpl.name;
+            inlineSelect.appendChild(opt);
+        });
+    }
+    
+    if (newSimSelect) {
+        newSimSelect.innerHTML = '<option value="">(未配置から開始)</option>';
+        templates.forEach(tmpl => {
+            const opt = document.createElement('option');
+            opt.value = tmpl.id;
+            opt.textContent = tmpl.name;
+            newSimSelect.appendChild(opt);
+        });
+    }
+}
+
+/**
  * 新規パターンの作成
  */
-async function createNewPattern(name = '') {
+async function createNewPattern(name = '', teamId = null, templateId = null, mode = null) {
     const id = 'pat_' + Date.now();
+    const targetTeamId = teamId || currentTeamId;
+    const teamObj = teams.find(t => t.id === targetTeamId) || getCurrentTeam();
+    
+    let basePos = {};
+    let battOrd = {};
+    let targetMode = mode !== null ? mode : simulatorMode;
+    
+    if (templateId) {
+        const tmpl = templates.find(t => t.id === templateId);
+        if (tmpl) {
+            basePos = JSON.parse(JSON.stringify(tmpl.basePositions || {}));
+            battOrd = JSON.parse(JSON.stringify(tmpl.battingOrder || {}));
+            targetMode = tmpl.mode || targetMode;
+        }
+    }
+    
+    simulatorMode = targetMode;
+    currentTeamId = targetTeamId;
+    
     const newPat = {
         id: id,
         name: name || '新規データ',
+        teamId: targetTeamId,
         mode: simulatorMode,
-        basePositions: {},
+        basePositions: basePos,
         customSubstitutions: [],
-        battingOrder: {},
+        battingOrder: battOrd,
         headerInfo: {
             date: '',
             tournament: '',
-            teamHome: 'ありんこアントス',
+            teamHome: teamObj.name || 'ありんこアントス',
             teamVisitor: '',
             manager: '',
             captain: '',
@@ -281,10 +480,15 @@ async function createNewPattern(name = '') {
             time: ''
         }
     };
+    
     patterns.push(newPat);
     currentPatternId = id;
     
     await autoSavePattern(newPat);
+    
+    renderTeamSelect();
+    updateModeUI();
+    updatePatternSelectOptions();
     
     const select = document.getElementById('sim-pattern-select');
     if (select) select.value = id;
@@ -294,12 +498,14 @@ function updatePatternSelectOptions() {
     const select = document.getElementById('sim-pattern-select');
     if (!select) return;
     
-    select.innerHTML = '<option value="">新規作成...</option>';
+    select.innerHTML = '<option value="">選択してください...</option>';
     patterns.forEach(p => {
         const option = document.createElement('option');
         option.value = p.id;
         const suffix = p.isSynced === false ? ' (未同期)' : '';
-        option.textContent = p.name + suffix;
+        const teamObj = teams.find(t => t.id === p.teamId);
+        const teamBadge = teamObj ? `[${teamObj.name}] ` : '';
+        option.textContent = teamBadge + p.name + suffix;
         select.appendChild(option);
     });
     
@@ -476,14 +682,15 @@ function renderPlayersList(assignedPlayerIds, retiredPlayerIds) {
     if (!listEl) return;
     
     listEl.innerHTML = '';
-    if (countEl) countEl.textContent = `${players.length} 人`;
+    const teamPlayers = getPlayersForCurrentTeam();
+    if (countEl) countEl.textContent = `${teamPlayers.length} 人`;
     
-    if (players.length === 0) {
-        listEl.innerHTML = '<span class="text-xs text-gray-400 p-2">登録されている選手がいません。</span>';
+    if (teamPlayers.length === 0) {
+        listEl.innerHTML = '<span class="text-xs text-gray-400 p-2">このチームに登録されている選手がいません。</span>';
         return;
     }
     
-    players.forEach(player => {
+    teamPlayers.forEach(player => {
         const isAssigned = assignedPlayerIds.has(player.id);
         const isRetired = retiredPlayerIds.has(player.id);
         const isSelected = selectedPlayerId === player.id && selectedSourcePos === 'players-list';
@@ -525,7 +732,8 @@ function renderBenchList(assignedPlayerIds, retiredPlayerIds) {
     
     benchEl.innerHTML = '';
     
-    const benchPlayers = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
+    const teamPlayers = getPlayersForCurrentTeam();
+    const benchPlayers = teamPlayers.filter(p => !assignedPlayerIds.has(p.id) && !retiredPlayerIds.has(p.id));
     
     if (benchPlayers.length === 0) {
         benchEl.innerHTML = '<span class="text-xs text-gray-400 p-1">控え選手はいません。</span>';
@@ -973,7 +1181,8 @@ function initRuleFormSelects() {
     
     if (subPlayerIn) {
         subPlayerIn.innerHTML = '';
-        const availableIn = players.filter(p => !assignedPlayerIds.has(p.id) && !retiredIds.has(p.id));
+        const teamPlayers = getPlayersForCurrentTeam();
+        const availableIn = teamPlayers.filter(p => !assignedPlayerIds.has(p.id) && !retiredIds.has(p.id));
         
         if (availableIn.length === 0) {
             subPlayerIn.innerHTML = '<option value="">控え選手なし</option>';
@@ -1319,6 +1528,230 @@ async function removePlayerFromMasterPosition(pos) {
 }
 
 // ==========================================
+// チーム管理 (追加・編集・削除・切り替え)
+// ==========================================
+
+async function handleAddTeam() {
+    const name = prompt('新しいチーム名を入力してください:\n(例: ありんこアントス (B軍), ジュニア選抜など)');
+    if (!name || !name.trim()) return;
+    
+    const trimmedName = name.trim();
+    if (teams.some(t => t.name === trimmedName)) {
+        alert('同じ名前のチームが既に存在します。');
+        return;
+    }
+    
+    const newTeam = {
+        id: 'team_' + Date.now(),
+        name: trimmedName
+    };
+    
+    teams.push(newTeam);
+    currentTeamId = newTeam.id;
+    
+    await syncTeamsToDB();
+    renderTeamSelect();
+    renderSimulator();
+}
+
+async function handleEditTeam() {
+    const currentTeam = getCurrentTeam();
+    const newName = prompt('チーム名を変更してください:', currentTeam.name);
+    if (!newName || !newName.trim()) return;
+    
+    const trimmedName = newName.trim();
+    if (trimmedName === currentTeam.name) return;
+    
+    if (teams.some(t => t.id !== currentTeam.id && t.name === trimmedName)) {
+        alert('同じ名前のチームが既に存在します。');
+        return;
+    }
+    
+    currentTeam.name = trimmedName;
+    await syncTeamsToDB();
+    renderTeamSelect();
+    updatePatternSelectOptions();
+    renderSimulator();
+}
+
+async function handleDeleteTeam() {
+    if (teams.length <= 1) {
+        alert('登録チームが1つのみのため、削除できません。');
+        return;
+    }
+    
+    const currentTeam = getCurrentTeam();
+    const teamPlayers = getPlayersForCurrentTeam();
+    
+    let confirmMsg = `チーム「${currentTeam.name}」を削除しますか？`;
+    if (teamPlayers.length > 0) {
+        confirmMsg += `\n※このチームに登録されている ${teamPlayers.length} 名の選手データも削除されます。`;
+    }
+    
+    if (!confirm(confirmMsg)) return;
+    
+    // チームの選手も削除
+    const deletePlayerIds = new Set(teamPlayers.map(p => p.id));
+    players = players.filter(p => !deletePlayerIds.has(p.id));
+    
+    for (const p of teamPlayers) {
+        await syncPlayerToDB(p, true);
+    }
+    
+    teams = teams.filter(t => t.id !== currentTeam.id);
+    currentTeamId = teams[0].id;
+    
+    await syncTeamsToDB();
+    renderTeamSelect();
+    renderSimulator();
+}
+
+function handleTeamSelectChange(e) {
+    currentTeamId = e.target.value;
+    const label = document.getElementById('sim-current-team-label');
+    const currentTeam = getCurrentTeam();
+    if (label) label.textContent = `[${currentTeam.name}]`;
+    
+    selectedPlayerId = null;
+    selectedSourcePos = null;
+    initRuleFormSelects();
+    renderSimulator();
+}
+
+// ==========================================
+// テンプレート（初期パターン）管理
+// ==========================================
+
+async function handleSaveAsTemplate() {
+    const currentPattern = getCurrentPattern();
+    if (!currentPattern) return;
+    
+    const defaultName = (currentPattern.name ? `${currentPattern.name}の基本形` : '基本配置パターン');
+    const name = prompt('初期パターン（テンプレート）の登録名を入力してください:\n(例: A軍 守備基本形、10人制DH基本配置など)', defaultName);
+    if (!name || !name.trim()) return;
+    
+    const trimmedName = name.trim();
+    const newTmpl = {
+        id: 'tmpl_' + Date.now(),
+        name: trimmedName,
+        mode: simulatorMode,
+        basePositions: JSON.parse(JSON.stringify(currentPattern.basePositions || {})),
+        battingOrder: JSON.parse(JSON.stringify(currentPattern.battingOrder || {}))
+    };
+    
+    templates.push(newTmpl);
+    await syncTemplatesToDB();
+    renderTemplateSelects();
+    alert(`初期パターン「${trimmedName}」を登録しました。\n新規作成時や初期パターンセレクタからいつでも適用できます。`);
+}
+
+async function handleApplyTemplate(templateId) {
+    if (!templateId) return;
+    const tmpl = templates.find(t => t.id === templateId);
+    if (!tmpl) return;
+    
+    if (!confirm(`初期パターン「${tmpl.name}」を現在のグラウンドに適用しますか？\n（現在のスタメン配置・打順が上書きされます）`)) {
+        const select = document.getElementById('sim-template-select-inline');
+        if (select) select.value = '';
+        return;
+    }
+    
+    const currentPattern = getCurrentPattern();
+    if (currentPattern) {
+        currentPattern.basePositions = JSON.parse(JSON.stringify(tmpl.basePositions || {}));
+        currentPattern.battingOrder = JSON.parse(JSON.stringify(tmpl.battingOrder || {}));
+        if (tmpl.mode) {
+            currentPattern.mode = tmpl.mode;
+            simulatorMode = tmpl.mode;
+            updateModeUI();
+        }
+        await autoSavePattern(currentPattern);
+    }
+    
+    const select = document.getElementById('sim-template-select-inline');
+    if (select) select.value = '';
+    
+    initRuleFormSelects();
+    renderSimulator();
+}
+
+async function handleDeleteTemplate() {
+    const select = document.getElementById('sim-template-select-inline');
+    const templateId = select ? select.value : '';
+    if (!templateId) {
+        alert('削除したい初期パターンを選択してください。');
+        return;
+    }
+    
+    const tmpl = templates.find(t => t.id === templateId);
+    if (!tmpl) return;
+    
+    if (!confirm(`初期パターン「${tmpl.name}」を削除しますか？`)) return;
+    
+    templates = templates.filter(t => t.id !== templateId);
+    await syncTemplatesToDB();
+    renderTemplateSelects();
+    alert(`初期パターン「${tmpl.name}」を削除しました。`);
+}
+
+// ==========================================
+// 新規シミュレーション作成モーダル
+// ==========================================
+
+function handleOpenNewSimModal() {
+    const modal = document.getElementById('sim-new-modal');
+    if (!modal) return;
+    
+    renderTeamSelect();
+    renderTemplateSelects();
+    
+    const nameInput = document.getElementById('new-sim-name');
+    if (nameInput) {
+        const today = new Date();
+        const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+        nameInput.value = `${dateStr} 練習試合`;
+    }
+    
+    const teamSelect = document.getElementById('new-sim-team');
+    if (teamSelect) teamSelect.value = currentTeamId;
+    
+    const templateSelect = document.getElementById('new-sim-template');
+    if (templateSelect) templateSelect.value = '';
+    
+    const modeRadio = document.querySelector(`input[name="new-sim-dh-mode"][value="${simulatorMode}"]`);
+    if (modeRadio) modeRadio.checked = true;
+    
+    modal.classList.remove('hidden');
+}
+
+function handleCloseNewSimModal() {
+    const modal = document.getElementById('sim-new-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function handleCreateNewSim() {
+    const nameInput = document.getElementById('new-sim-name');
+    const teamSelect = document.getElementById('new-sim-team');
+    const templateSelect = document.getElementById('new-sim-template');
+    const modeRadio = document.querySelector('input[name="new-sim-dh-mode"]:checked');
+    
+    const name = nameInput ? nameInput.value.trim() : '';
+    const teamId = teamSelect ? teamSelect.value : currentTeamId;
+    const templateId = templateSelect ? templateSelect.value : null;
+    const mode = modeRadio ? parseInt(modeRadio.value, 10) : 9;
+    
+    if (!name) {
+        alert('シミュレーションデータ名を入力してください。');
+        return;
+    }
+    
+    await createNewPattern(name, teamId, templateId, mode);
+    handleCloseNewSimModal();
+    initRuleFormSelects();
+    renderSimulator();
+}
+
+// ==========================================
 // 選手管理 (登録・削除)
 // ==========================================
 
@@ -1331,15 +1764,17 @@ async function handleAddPlayer() {
     const number = numberInput ? numberInput.value.trim() : '';
     if (!name) return;
     
-    if (players.some(p => p.name === name)) {
-        alert('同じフルネームの選手が既に登録されています。');
+    const teamPlayers = getPlayersForCurrentTeam();
+    if (teamPlayers.some(p => p.name === name)) {
+        alert('このチームには同じフルネームの選手が既に登録されています。');
         return;
     }
     
     const newPlayer = {
         id: 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         name: name,
-        number: number
+        number: number,
+        teamId: currentTeamId
     };
     
     players.push(newPlayer);
@@ -1451,6 +1886,7 @@ async function handleSavePattern() {
         if (isOverwrite && targetIdToOverwrite) {
             if (currentPattern) {
                 currentPattern.name = nameToSave;
+                currentPattern.teamId = currentTeamId;
                 currentPattern.mode = simulatorMode;
                 const err = await syncPatternToDB(currentPattern);
                 if (err) throw err;
@@ -1458,9 +1894,11 @@ async function handleSavePattern() {
             }
         } else {
             const id = 'pat_' + Date.now();
+            const currentTeam = getCurrentTeam();
             const newPat = {
                 id: id,
                 name: nameToSave,
+                teamId: currentTeamId,
                 mode: simulatorMode,
                 basePositions: currentPattern ? { ...(currentPattern.basePositions || {}) } : {},
                 customSubstitutions: currentPattern ? JSON.parse(JSON.stringify(currentPattern.customSubstitutions || [])) : [],
@@ -1468,7 +1906,7 @@ async function handleSavePattern() {
                 headerInfo: currentPattern ? JSON.parse(JSON.stringify(currentPattern.headerInfo || {})) : {
                     date: '',
                     tournament: '',
-                    teamHome: 'ありんこアントス',
+                    teamHome: currentTeam.name || 'ありんこアントス',
                     teamVisitor: '',
                     manager: '',
                     captain: '',
@@ -1549,6 +1987,10 @@ async function handlePatternSelectChange(e) {
         const pattern = getCurrentPattern();
         if (pattern) {
             simulatorMode = pattern.mode || 9;
+            if (pattern.teamId && teams.some(t => t.id === pattern.teamId)) {
+                currentTeamId = pattern.teamId;
+                renderTeamSelect();
+            }
         }
         selectedPlayerId = null;
         selectedSourcePos = null;
@@ -2335,6 +2777,23 @@ function setupEventListeners() {
         if (e.key === 'Enter') handleAddPlayer();
     });
     
+    // チーム操作
+    document.getElementById('sim-team-select')?.addEventListener('change', handleTeamSelectChange);
+    document.getElementById('btn-add-sim-team')?.addEventListener('click', handleAddTeam);
+    document.getElementById('btn-edit-sim-team')?.addEventListener('click', handleEditTeam);
+    document.getElementById('btn-delete-sim-team')?.addEventListener('click', handleDeleteTeam);
+
+    // テンプレート（初期パターン）操作
+    document.getElementById('sim-template-select-inline')?.addEventListener('change', (e) => handleApplyTemplate(e.target.value));
+    document.getElementById('btn-save-as-template')?.addEventListener('click', handleSaveAsTemplate);
+    document.getElementById('btn-delete-template')?.addEventListener('click', handleDeleteTemplate);
+
+    // 新規シミュレーション作成モーダル
+    document.getElementById('btn-open-new-sim-modal')?.addEventListener('click', handleOpenNewSimModal);
+    document.getElementById('btn-close-new-sim-modal')?.addEventListener('click', handleCloseNewSimModal);
+    document.getElementById('btn-close-new-sim-modal-footer')?.addEventListener('click', handleCloseNewSimModal);
+    document.getElementById('btn-create-new-sim')?.addEventListener('click', handleCreateNewSim);
+
     // パターン操作
     document.getElementById('sim-pattern-select')?.addEventListener('change', handlePatternSelectChange);
     document.getElementById('btn-save-sim-pattern')?.addEventListener('click', handleSavePattern);

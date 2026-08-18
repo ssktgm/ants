@@ -511,22 +511,34 @@
             <div class="bg-white p-4 rounded-xl shadow border border-gray-200 flex flex-wrap gap-4 items-center justify-between">
                 <!-- パターン保存・読込 -->
                 <div class="flex items-center gap-2 flex-wrap">
+                    <button id="btn-open-new-sim-modal" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition shadow-sm flex items-center gap-1">➕ 新規作成</button>
+                    <div class="h-6 w-px bg-gray-300 mx-1"></div>
                     <label for="sim-pattern-select" class="text-sm font-bold text-gray-700">保存データ:</label>
-                    <select id="sim-pattern-select" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 min-w-[200px]">
-                        <option value="">新規作成...</option>
+                    <select id="sim-pattern-select" class="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 min-w-[180px]">
+                        <option value="">選択してください...</option>
                     </select>
                     <button id="btn-save-sim-pattern" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition shadow-sm">保存</button>
                     <button id="btn-delete-sim-pattern" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold px-3 py-1.5 rounded-lg text-sm transition">削除</button>
                 </div>
-                <!-- JSONインポート/エクスポート & メンバー表 & DH -->
-                <div class="flex items-center gap-2">
+                <!-- 初期パターン / メンバー表 / JSON / DH -->
+                <div class="flex items-center gap-2 flex-wrap">
+                    <!-- 初期パターン (テンプレート) 呼出・保存 -->
+                    <div class="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200">
+                        <span class="text-xs font-bold text-amber-800">初期パターン:</span>
+                        <select id="sim-template-select-inline" class="border border-amber-300 rounded px-2 py-1 text-xs bg-white focus:ring-2 focus:ring-amber-500 min-w-[130px]">
+                            <option value="">(選択して適用)</option>
+                        </select>
+                        <button id="btn-save-as-template" title="現在の配置を初期パターンとして保存" class="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold px-2 py-1 rounded transition">登録</button>
+                        <button id="btn-delete-template" title="選択中の初期パターンを削除" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-bold px-1.5 py-1 rounded transition">🗑️</button>
+                    </div>
+
                     <button id="btn-export-member-table" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition flex items-center gap-1">📋 メンバー表出力</button>
                     <button id="btn-export-sim" class="bg-gray-600 hover:bg-gray-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition">JSON保存</button>
                     <label for="import-sim-input" class="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 font-bold px-3 py-1.5 rounded-lg text-sm transition cursor-pointer text-center">JSON読込</label>
                     <input type="file" id="import-sim-input" class="hidden" accept=".json">
                     
                     <!-- DHあり/なし切替 -->
-                    <div class="flex border rounded-lg overflow-hidden ml-2 shadow-sm">
+                    <div class="flex border rounded-lg overflow-hidden ml-1 shadow-sm">
                         <button id="btn-sim-mode-9" class="px-3 py-1.5 text-xs font-bold bg-amber-600 text-white transition">DHなし</button>
                         <button id="btn-sim-mode-10" class="px-3 py-1.5 text-xs font-bold bg-white text-gray-700 border-l hover:bg-gray-50 transition">DHあり</button>
                     </div>
@@ -640,10 +652,28 @@
                             </div>
                             <!-- アコーディオンコンテンツ -->
                             <div id="players-panel-content" class="p-4 flex flex-col gap-4">
+                                <!-- チーム選択・管理バー -->
+                                <div class="bg-amber-50/70 p-2.5 rounded-lg border border-amber-200 flex flex-col gap-2">
+                                    <div class="flex items-center justify-between">
+                                        <label for="sim-team-select" class="text-xs font-bold text-amber-900 flex items-center gap-1">
+                                            <span>⚾</span><span>対象チーム:</span>
+                                        </label>
+                                        <div class="flex items-center gap-1">
+                                            <button id="btn-add-sim-team" title="新しいチームを追加" class="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold px-2 py-0.5 rounded transition">➕ 追加</button>
+                                            <button id="btn-edit-sim-team" title="チーム名を変更" class="text-xs bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 font-bold px-1.5 py-0.5 rounded transition">✏️</button>
+                                            <button id="btn-delete-sim-team" title="チームを削除" class="text-xs bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold px-1.5 py-0.5 rounded transition">🗑️</button>
+                                        </div>
+                                    </div>
+                                    <select id="sim-team-select" class="w-full border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs bg-white focus:ring-2 focus:ring-amber-500 font-bold text-gray-800">
+                                        <!-- チーム一覧 -->
+                                    </select>
+                                </div>
+
                                 <!-- 選手登録フォーム -->
                                 <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                                    <h4 class="text-xs font-bold text-gray-600 mb-2 flex items-center gap-1">
-                                        <span>👥</span><span>選手を追加</span>
+                                    <h4 class="text-xs font-bold text-gray-600 mb-2 flex items-center justify-between">
+                                        <span class="flex items-center gap-1"><span>👥</span><span>選手を追加</span></span>
+                                        <span id="sim-current-team-label" class="text-[10px] text-amber-700 font-normal"></span>
                                     </h4>
                                     <div class="flex flex-col gap-2">
                                         <div class="flex gap-2">
@@ -1009,6 +1039,67 @@
                     <button id="btn-copy-member-text" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 py-2 rounded-lg text-sm transition">コピー</button>
                     <button id="btn-close-member-modal-footer" class="bg-gray-100 hover:bg-gray-200 border text-gray-700 font-bold px-4 py-2 rounded-lg text-sm transition font-normal">閉じる</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 新規シミュレーション作成モーダル           -->
+    <!-- ========================================== -->
+    <div id="sim-new-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 flex flex-col gap-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+                    <span>⚾</span><span>新規シミュレーション作成</span>
+                </h3>
+                <button id="btn-close-new-sim-modal" class="text-gray-400 hover:text-gray-600 text-xl font-bold font-normal">×</button>
+            </div>
+            
+            <div class="flex flex-col gap-3 text-sm">
+                <!-- データ名 -->
+                <div>
+                    <label for="new-sim-name" class="block font-bold text-gray-700 mb-1 text-xs">シミュレーションデータ名</label>
+                    <input type="text" id="new-sim-name" placeholder="例: 2026/08/19 練習試合" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                </div>
+
+                <!-- 使用チーム -->
+                <div>
+                    <label for="new-sim-team" class="block font-bold text-gray-700 mb-1 text-xs">使用するチーム (選手リスト)</label>
+                    <select id="new-sim-team" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-amber-500 font-bold">
+                        <!-- チーム一覧 -->
+                    </select>
+                </div>
+
+                <!-- 初期パターン (テンプレート) -->
+                <div>
+                    <label for="new-sim-template" class="block font-bold text-gray-700 mb-1 text-xs">初期パターン (基本フォーメーション)</label>
+                    <select id="new-sim-template" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                        <option value="">(未配置から開始)</option>
+                    </select>
+                    <p class="text-[11px] text-gray-400 mt-1">※登録済みの初期パターン（基本形）を選択すると、配置と打順が自動でセットされます。</p>
+                </div>
+
+                <!-- 試合形式 (DH制) -->
+                <div>
+                    <label class="block font-bold text-gray-700 mb-1 text-xs">試合形式</label>
+                    <div class="flex gap-4 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+                        <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
+                            <input type="radio" name="new-sim-dh-mode" value="9" checked class="text-amber-600 focus:ring-amber-500">
+                            <span>DHなし (9人制)</span>
+                        </label>
+                        <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-700">
+                            <input type="radio" name="new-sim-dh-mode" value="10" class="text-amber-600 focus:ring-amber-500">
+                            <span>DHあり (10人制)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-2 border-t pt-3">
+                <button id="btn-close-new-sim-modal-footer" class="bg-gray-100 hover:bg-gray-200 border text-gray-700 font-bold px-4 py-2 rounded-lg text-sm transition">キャンセル</button>
+                <button id="btn-create-new-sim" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-lg text-sm transition shadow flex items-center gap-1">
+                    <span>作成して開始</span>
+                </button>
             </div>
         </div>
     </div>
