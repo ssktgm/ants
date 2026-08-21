@@ -2281,9 +2281,9 @@ function handlePrintMemberTable() {
                     <!-- 2行目: 自チーム・相手チーム -->
                     <table class="table-header table-header-bottom">
                         <tr>
-                            <td class="cell-team-label-l cell-label-vertical">チーム</td>
+                            <td class="cell-team-label-l cell-label-vertical"><span class="label-v-wrap">チーム</span></td>
                             <td class="cell-team-val font-variable">${escapeHTML(info.teamHome || '')}</td>
-                            <td class="cell-team-label-r cell-label-vertical">相手チーム</td>
+                            <td class="cell-team-label-r cell-label-vertical"><span class="label-v-wrap">相手チーム</span></td>
                             <td class="cell-team-val font-variable">${escapeHTML(info.teamVisitor || '')}</td>
                         </tr>
                     </table>
@@ -2477,17 +2477,28 @@ function handlePrintMemberTable() {
                 }
                 .cell-label-vertical {
                     width: 6%;
-                    font-size: 5.5px;
-                    line-height: 0.95;
                     padding: 0 !important;
                     margin: 0;
                     background-color: #f2f2f2;
-                    writing-mode: vertical-rl;
-                    text-orientation: upright;
-                    letter-spacing: -0.5px;
                     text-align: center;
                     vertical-align: middle;
+                }
+                .label-v-wrap {
+                    display: inline-block;
+                    writing-mode: vertical-rl;
+                    -webkit-writing-mode: vertical-rl;
+                    text-align: center;
+                    line-height: 1.0;
                     white-space: nowrap;
+                    margin: 0 auto;
+                }
+                .cell-team-label-l .label-v-wrap {
+                    font-size: 5.5px;
+                    letter-spacing: 0px;
+                }
+                .cell-team-label-r .label-v-wrap {
+                    font-size: 4.8px;
+                    letter-spacing: -0.5px;
                 }
                 .table-header-top .cell-tournament {
                     width: 55%;
