@@ -5,25 +5,27 @@ import { initInfoApp } from './info.js';
 import { openSurveyResponsePage } from './survey.js';
 
 // ==========================================
-// ★Vercel環境変数からSupabase情報を読み込む
+// ★Vercel環境変数からSupabase情報を読み込む (フォールバック付き)
 // ==========================================
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const DEFAULT_SUPABASE_URL = 'https://arcdgbzqfengqyvfbodt.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_Ei6ti5lKjAECmi36haftpw_DQsKMp4p';
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    alert("Supabaseの接続情報（環境変数）が正しく読み込めていません。\nVercel等の設定を確認してください。");
-    console.error("Missing SUPABASE_URL or SUPABASE_ANON_KEY");
-}
+const SUPABASE_URL = (import.meta.env && import.meta.env.VITE_SUPABASE_URL) ? import.meta.env.VITE_SUPABASE_URL : DEFAULT_SUPABASE_URL;
+const SUPABASE_ANON_KEY = (import.meta.env && import.meta.env.VITE_SUPABASE_ANON_KEY) ? import.meta.env.VITE_SUPABASE_ANON_KEY : DEFAULT_SUPABASE_ANON_KEY;
 
 if (SUPABASE_URL && !SUPABASE_URL.startsWith('https://')) {
-    alert("設定エラー: VITE_SUPABASE_URL に https:// が含まれていません。\n現在の値: " + SUPABASE_URL + "\n\nVercelの設定を確認して再デプロイしてください。");
+    console.warn("設定警告: VITE_SUPABASE_URL に https:// が含まれていません。値: " + SUPABASE_URL);
 }
 console.log("Checking Supabase URL:", SUPABASE_URL ? "Exists" : "Empty");
 
-if (!window.supabaseClient && window.supabase && window.supabase.createClient) {
-    window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (!window.supabaseClient && window.supabase && window.supabase.createClient && SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+        window.supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    } catch (e) {
+        console.error("Supabase初期化エラー:", e);
+    }
 }
-const supabaseClient = window.supabaseClient;
+const supabaseClient = window.supabaseClient || null;
 let currentUser = null;
 let isAppInitialized = false;
 let currentUserRole = 'user'; // 'admin' or 'user'
