@@ -121,8 +121,33 @@ export async function initSurveyModule({ supabaseClient: sb, currentUser: user, 
     canManage = (role === 'admin' || role === 'leader');
 
     await loadSurveyData();
+    // 管理者の場合、ローカルに保存されているアンケートを Supabase に自動バックアップ・同期
+    if (canManage) {
+        syncLocalSurveysToDb();
+    }
     setupSurveyAdminEvents();
     renderSurveyList();
+}
+
+// 管理者のローカルデータを Supabase master_data に自動同期
+export async function syncLocalSurveysToDb() {
+    const sb = getSupabase();
+    if (!sb) return;
+    try {
+        const localSurveysStr = localStorage.getItem(STORAGE_KEY_SURVEYS);
+        if (localSurveysStr) {
+            const list = JSON.parse(localSurveysStr);
+            if (Array.isArray(list) && list.length > 0) {
+                await sb.from('master_data').upsert({
+                    key: 'ANTS_SURVEYS',
+                    data: list
+                });
+                console.log('Auto-synced surveys to master_data:', list.length);
+            }
+        }
+    } catch (e) {
+        console.warn('Auto-sync surveys to DB failed:', e);
+    }
 }
 
 function getSupabase() {
@@ -151,16 +176,15 @@ export async function loadSurveyData() {
             console.warn('Supabase surveys load failed, trying master_data fallback:', e);
         }
 
-        // 専用テーブルで読めない場合、master_data からフォールバック取得
+        // 専用テーブルで読めない場合、master_data からフォールバック取得 (.single() を使わず安全に配列取得)
         if (!surveysLoaded) {
             try {
                 const { data: mdSurveys, error: mdErr } = await sb
                     .from('master_data')
                     .select('data')
-                    .eq('key', 'ANTS_SURVEYS')
-                    .single();
-                if (!mdErr && mdSurveys && Array.isArray(mdSurveys.data) && mdSurveys.data.length > 0) {
-                    surveysList = mdSurveys.data;
+                    .eq('key', 'ANTS_SURVEYS');
+                if (!mdErr && mdSurveys && mdSurveys.length > 0 && Array.isArray(mdSurveys[0].data) && mdSurveys[0].data.length > 0) {
+                    surveysList = mdSurveys[0].data;
                     surveysLoaded = true;
                 }
             } catch (e) {
@@ -189,10 +213,9 @@ export async function loadSurveyData() {
                 const { data: mdResp, error: mdRespErr } = await sb
                     .from('master_data')
                     .select('data')
-                    .eq('key', 'ANTS_SURVEY_RESPONSES')
-                    .single();
-                if (!mdRespErr && mdResp && Array.isArray(mdResp.data)) {
-                    responsesList = mdResp.data;
+                    .eq('key', 'ANTS_SURVEY_RESPONSES');
+                if (!mdRespErr && mdResp && mdResp.length > 0 && Array.isArray(mdResp[0].data)) {
+                    responsesList = mdResp[0].data;
                     responsesLoaded = true;
                 }
             } catch (e) {
@@ -529,11 +552,53 @@ export function renderSurveyList() {
     }
 }
 
-// 回答用URLのコピー
+// アンケートデータのUTF-8安全なBase64エンコード（完全共有URL用）
+export function encodeSurveyData(survey) {
+    try {
+        const minimal = {
+            id: survey.id,
+            title: survey.title,
+            description: survey.description,
+            deadline: survey.deadline,
+            public_results: survey.public_results,
+            enable_schedule: survey.enable_schedule,
+            schedule_options: survey.schedule_options,
+            enable_family: survey.enable_family,
+            enable_orders: survey.enable_orders,
+            order_items: survey.order_items,
+            questions: survey.questions
+        };
+        const jsonStr = JSON.stringify(minimal);
+        return btoa(encodeURIComponent(jsonStr).replace(/%([0-9A-F]{2})/g, (match, p1) => String.fromCharCode('0x' + p1)));
+    } catch (e) {
+        console.warn('Survey encode error:', e);
+        return '';
+    }
+}
+
+// アンケートデータのBase64デコード
+export function decodeSurveyData(base64Str) {
+    try {
+        const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(base64Str), (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        return JSON.parse(jsonStr);
+    } catch (e) {
+        console.warn('Survey decode error:', e);
+        return null;
+    }
+}
+
+// 回答用URLのコピー（どのブラウザ・Safariでも確実に開く完全共有URL対応）
 function copySurveyUrl(surveyId) {
-    const url = `${window.location.origin}${window.location.pathname}#survey-${surveyId}`;
+    const survey = surveysList.find(s => s.id === surveyId);
+    let url = `${window.location.origin}${window.location.pathname}#survey-${surveyId}`;
+    if (survey) {
+        const encoded = encodeSurveyData(survey);
+        if (encoded) {
+            url += `&d=${encoded}`;
+        }
+    }
     navigator.clipboard.writeText(url).then(() => {
-        alert(`アンケート回答用URLをコピーしました！\nLINEやメール等に貼り付けてご案内いただけます。\n\n${url}`);
+        alert(`アンケート回答用URLをコピーしました！\nどの端末・Safari・LINEでも確実に開くURLです。\n\n${url}`);
     }).catch(() => {
         prompt('アンケート回答用URL:', url);
     });
@@ -1294,7 +1359,7 @@ let activeRespondingSurvey = null;
 let currentRespondingFamily = [];
 let activeEditingResponseId = null;
 
-export async function openSurveyResponsePage(surveyId, responseId = null) {
+export async function openSurveyResponsePage(surveyId, responseId = null, surveyDataEncoded = null) {
     // ローディングオーバーレイを即座に確実に強制解除
     document.getElementById('loading-overlay')?.classList.add('hidden');
     const loadingDetail = document.getElementById('loading-detail-text');
@@ -1304,9 +1369,36 @@ export async function openSurveyResponsePage(surveyId, responseId = null) {
     if (!surveysList || surveysList.length === 0) {
         await loadSurveyData();
     }
+
+    // 1. URL または引数から埋め込みアンケートデータを検出して即時復元
+    if (!surveyDataEncoded) {
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+        const match = (hash + '&' + search).match(/[?&#]d=([^&]+)/);
+        if (match && match[1]) {
+            surveyDataEncoded = match[1];
+        }
+    }
+
     let survey = surveysList.find(s => s.id === surveyId);
+
+    if (!survey && surveyDataEncoded) {
+        try {
+            const decoded = decodeSurveyData(surveyDataEncoded);
+            if (decoded && (decoded.id === surveyId || !surveyId)) {
+                survey = decoded;
+                surveysList.unshift(survey);
+                try {
+                    localStorage.setItem(STORAGE_KEY_SURVEYS, JSON.stringify(surveysList));
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.warn('Embedded survey restore failed:', e);
+        }
+    }
+
+    // 2. キャッシュにない場合、DB/master_dataから最新データを再取得
     if (!survey) {
-        // キャッシュにない場合、DB/master_dataから最新データを再取得
         await loadSurveyData();
         survey = surveysList.find(s => s.id === surveyId);
     }

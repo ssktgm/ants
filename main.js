@@ -453,16 +453,16 @@ function parseSurveyUrlParams() {
     }
     if (surveyId) surveyId = decodeURIComponent(surveyId).trim().replace(/^\/+|\/+$/g, '');
     if (responseId) responseId = decodeURIComponent(responseId).trim();
-    return { surveyId, responseId };
+    return { surveyId, responseId, surveyData };
 }
 
 // ブラウザの戻る/進む（popstate）対応
 window.addEventListener('popstate', async (e) => {
     isPopStateNavigating = true;
     try {
-        const { surveyId: hashSurveyId, responseId: hashRespId } = parseSurveyUrlParams();
+        const { surveyId: hashSurveyId, responseId: hashRespId, surveyData: hashSurveyData } = parseSurveyUrlParams();
         if (hashSurveyId) {
-            await openSurveyResponsePage(hashSurveyId, hashRespId);
+            await openSurveyResponsePage(hashSurveyId, hashRespId, hashSurveyData);
             return;
         }
         if (e.state && e.state.screenId) {
@@ -505,7 +505,7 @@ if (supabaseClient) {
         // DOM操作を安全に行うための内部非同期関数
         const handleAuthUI = async () => {
             // URLパラメータまたはハッシュでアンケート指定がある場合、最優先で直接アンケート画面を開く
-            const { surveyId: directSurveyId, responseId: directRespId } = parseSurveyUrlParams();
+            const { surveyId: directSurveyId, responseId: directRespId, surveyData: directSurveyData } = parseSurveyUrlParams();
             if (directSurveyId) {
                 forceHideLoading();
                 if (session) {
@@ -518,7 +518,7 @@ if (supabaseClient) {
                         }
                     } catch (e) {}
                 }
-                await openSurveyResponsePage(directSurveyId, directRespId);
+                await openSurveyResponsePage(directSurveyId, directRespId, directSurveyData);
                 return;
             }
 
@@ -774,9 +774,9 @@ if (supabaseClient) {
                 forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
 
                 // URLパラメータまたはハッシュでアンケート指定がある場合はアンケート回答画面を開く（ゲスト回答）
-                const { surveyId: targetSurveyId, responseId: targetResponseId } = parseSurveyUrlParams();
+                const { surveyId: targetSurveyId, responseId: targetResponseId, surveyData: targetSurveyData } = parseSurveyUrlParams();
                 if (targetSurveyId) {
-                    await openSurveyResponsePage(targetSurveyId, targetResponseId);
+                    await openSurveyResponsePage(targetSurveyId, targetResponseId, targetSurveyData);
                     return;
                 }
 
