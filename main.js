@@ -574,10 +574,17 @@ if (supabaseClient) {
                     let canUseAttendance = true;
                     let canUseSimulator = true;
                     let canUseInfo = true;
+                    let canEditInfo = false;
 
                     try {
-                        const { data: userData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance, can_use_simulator, can_use_info').eq('email', currentUser.email).single();
+                        let { data: userData, error: uErr } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance, can_use_simulator, can_use_info, can_edit_info').eq('email', currentUser.email).single();
                         
+                        // can_edit_info カラムが未作成の場合のフォールバック取得
+                        if (uErr) {
+                            const { data: fallbackData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance, can_use_simulator, can_use_info').eq('email', currentUser.email).single();
+                            userData = fallbackData;
+                        }
+
                         if (userData) {
                             currentUserRole = userData.role;
                             currentUser.name = userData.name; // 取得したメンバー名を保持
@@ -586,6 +593,7 @@ if (supabaseClient) {
                             if (userData.can_use_attendance === false) canUseAttendance = false;
                             if (userData.can_use_simulator === false) canUseSimulator = false;
                             if (userData.can_use_info === false) canUseInfo = false;
+                            canEditInfo = userData.can_edit_info === true;
                         } else {
                             currentUserRole = 'user';
                         }
@@ -605,7 +613,14 @@ if (supabaseClient) {
                         canUseAttendance = true;
                         canUseSimulator = true;
                         canUseInfo = true;
+                        canEditInfo = true;
+                    } else if (currentUserRole === 'leader' && canEditInfo === false) {
+                        // リーダーのデフォルトは編集可
+                        canEditInfo = true;
                     }
+
+                    currentUser.can_use_info = canUseInfo;
+                    currentUser.can_edit_info = canEditInfo;
 
                     // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
                     let dashMenuBtn = document.getElementById('btn-app-dashboard');
@@ -1466,7 +1481,8 @@ async function loadAdminUsersData() {
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-attendance-${i}" class="rounded text-blue-600" ${u.can_use_attendance !== false ? 'checked' : ''}><span>出欠可</span></label>
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-simulator-${i}" class="rounded text-blue-600" ${u.can_use_simulator !== false ? 'checked' : ''}><span>シミュレータ可</span></label>
-                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-info-${i}" class="rounded text-teal-600" ${u.can_use_info !== false ? 'checked' : ''}><span>Info可</span></label>
+                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-info-${i}" class="rounded text-teal-600" ${u.can_use_info !== false ? 'checked' : ''}><span>Info閲覧可</span></label>
+                            <label class="flex items-center space-x-1 text-xs font-bold text-teal-800"><input type="checkbox" id="edit-manage-info-${i}" class="rounded text-teal-600 edit-manage-info-chk" data-index="${i}" ${(u.can_edit_info === true || u.role === 'admin' || (u.role === 'leader' && u.can_edit_info !== false)) ? 'checked' : ''}><span>Info編集可</span></label>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2 shrink-0">
@@ -1494,6 +1510,17 @@ async function loadAdminUsersData() {
     
         allowedListEl.innerHTML = usersHtml;
         makeUserCardsDraggable();
+
+        // Info編集可にチェックを入れた際、自動的にInfo閲覧可もONにする連動
+        allowedListEl.querySelectorAll('.edit-manage-info-chk').forEach(chk => {
+            chk.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    const idx = e.target.getAttribute('data-index');
+                    const useInfoEl = document.getElementById(`edit-use-info-${idx}`);
+                    if (useInfoEl) useInfoEl.checked = true;
+                }
+            });
+        });
     
         const masterListEl = document.getElementById('admin-master-list');
         if (masterListEl) {
@@ -1556,6 +1583,7 @@ async function saveAllAdminUsers() {
             const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
             const useSimulatorEl = document.getElementById(`edit-use-simulator-${index}`);
             const useInfoEl = document.getElementById(`edit-use-info-${index}`);
+            const manageInfoEl = document.getElementById(`edit-manage-info-${index}`);
             
             const newEmail = emailEl.disabled ? oldEmail : formatLoginId(emailEl.value.trim());
             const newName = nameEl.value.trim();
@@ -1566,6 +1594,7 @@ async function saveAllAdminUsers() {
             const canUseAttendance = useAttendanceEl ? useAttendanceEl.checked : true;
             const canUseSimulator = useSimulatorEl ? useSimulatorEl.checked : true;
             const canUseInfo = useInfoEl ? useInfoEl.checked : true;
+            const canEditInfo = manageInfoEl ? manageInfoEl.checked : (newRole === 'admin' || (newRole === 'leader' && true));
 
             if (!newEmail) {
                 throw new Error('メールアドレスが空のレコードがあります。');
@@ -1582,7 +1611,8 @@ async function saveAllAdminUsers() {
                 can_use_dashboard: canUseDashboard,
                 can_use_attendance: canUseAttendance,
                 can_use_simulator: canUseSimulator,
-                can_use_info: canUseInfo
+                can_use_info: canUseInfo,
+                can_edit_info: canEditInfo
             };
             userUpdates.push({ oldEmail, updatePayload });
 
@@ -1601,8 +1631,15 @@ async function saveAllAdminUsers() {
         });
 
         // 1. ユーザー情報の更新
-        const userPromises = userUpdates.map(u => {
-            return supabaseClient.from('app_users').update(u.updatePayload).eq('email', u.oldEmail);
+        const userPromises = userUpdates.map(async u => {
+            let res = await supabaseClient.from('app_users').update(u.updatePayload).eq('email', u.oldEmail);
+            // can_edit_info カラムが未作成の場合のエラー回避フォールバック
+            if (res.error && res.error.message && res.error.message.includes('can_edit_info')) {
+                const fallbackPayload = { ...u.updatePayload };
+                delete fallbackPayload.can_edit_info;
+                res = await supabaseClient.from('app_users').update(fallbackPayload).eq('email', u.oldEmail);
+            }
+            return res;
         });
         const userResults = await Promise.all(userPromises);
         for (const res of userResults) {
@@ -3706,7 +3743,7 @@ async function exportUsersCSV() {
             window.adminDelegations = delegations;
         }
 
-        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', 'シミュレータ利用可(1/0)', 'Info利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '代行専用(1/0)', '初期パスワード', '削除(1/0)'];
+        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', 'シミュレータ利用可(1/0)', 'Info利用可(1/0)', 'Info編集可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '代行専用(1/0)', '初期パスワード', '削除(1/0)'];
         const rows = [headers];
 
         users.forEach(u => {
@@ -3728,6 +3765,7 @@ async function exportUsersCSV() {
                 u.can_use_attendance !== false ? '1' : '0',
                 u.can_use_simulator !== false ? '1' : '0',
                 u.can_use_info !== false ? '1' : '0',
+                (u.can_edit_info === true || u.role === 'admin' || (u.role === 'leader' && u.can_edit_info !== false)) ? '1' : '0',
                 uDelegations,
                 isDummy ? '1' : '0',
                 '',
@@ -3775,7 +3813,8 @@ async function handleImportUsersCSVFile(e) {
             const dashboardIdx = headers.findIndex(h => h.includes('成績'));
             const attendanceIdx = headers.findIndex(h => h.includes('出欠'));
             const simulatorIdx = headers.findIndex(h => h.includes('シミュレータ'));
-            const infoIdx = headers.findIndex(h => h.includes('Info') || h.includes('インフォ'));
+            const infoIdx = headers.findIndex(h => (h.includes('Info') || h.includes('インフォ')) && !h.includes('編集'));
+            const editInfoIdx = headers.findIndex(h => (h.includes('Info') || h.includes('インフォ')) && h.includes('編集'));
             const delegationIdx = headers.findIndex(h => h.includes('代行入力先'));
             const dummyIdx = headers.findIndex(h => h.includes('代行専用'));
             const passwordIdx = headers.findIndex(h => h.includes('初期パスワード'));
@@ -3854,6 +3893,7 @@ async function handleImportUsersCSVFile(e) {
                 const canUseAttendance = attendanceIdx !== -1 ? (row[attendanceIdx] === '0' || row[attendanceIdx] === 'false' ? false : true) : true;
                 const canUseSimulator = simulatorIdx !== -1 ? (row[simulatorIdx] === '0' || row[simulatorIdx] === 'false' ? false : true) : true;
                 const canUseInfo = infoIdx !== -1 ? (row[infoIdx] === '0' || row[infoIdx] === 'false' ? false : true) : true;
+                const canEditInfo = editInfoIdx !== -1 ? (row[editInfoIdx] === '1' || row[editInfoIdx] === 'true' || row[editInfoIdx] === '可') : (role === 'admin' || (role === 'leader' && true));
                 const isDelete = deleteIdx !== -1 ? (row[deleteIdx] === '1' || row[deleteIdx] === '削除' ? true : false) : false;
 
                 let userDelegations = null;
@@ -3889,7 +3929,7 @@ async function handleImportUsersCSVFile(e) {
                 const item = {
                     email, name, role, group_id, group_name: groupName, attribute_id, attribute_name: attrName,
                     can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance,
-                    can_use_simulator: canUseSimulator, can_use_info: canUseInfo,
+                    can_use_simulator: canUseSimulator, can_use_info: canUseInfo, can_edit_info: canEditInfo,
                     delegations: userDelegations,
                     is_dummy: isDummy,
                     initial_password: passwordToUpdate !== null ? passwordToUpdate : initialPassword
@@ -3909,6 +3949,7 @@ async function handleImportUsersCSVFile(e) {
                         const attendanceChanged = (existing.can_use_attendance !== false) !== canUseAttendance;
                         const simulatorChanged = (existing.can_use_simulator !== false) !== canUseSimulator;
                         const infoChanged = (existing.can_use_info !== false) !== canUseInfo;
+                        const editInfoChanged = (existing.can_edit_info === true) !== canEditInfo;
 
                         let delegationChanged = false;
                         if (userDelegations !== null) {
@@ -3925,7 +3966,7 @@ async function handleImportUsersCSVFile(e) {
                             passwordChanged = true;
                         }
 
-                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || simulatorChanged || infoChanged || delegationChanged || passwordChanged) {
+                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || simulatorChanged || infoChanged || editInfoChanged || delegationChanged || passwordChanged) {
                             updateList.push(item);
                         }
                     }
@@ -4032,9 +4073,19 @@ async function executeUsersImport() {
                 can_use_dashboard: u.can_use_dashboard,
                 can_use_attendance: u.can_use_attendance,
                 can_use_simulator: u.can_use_simulator,
-                can_use_info: u.can_use_info
+                can_use_info: u.can_use_info,
+                can_edit_info: u.can_edit_info
             }));
-            const { error: addErr } = await supabaseClient.from('app_users').insert(insertPayload);
+            let { error: addErr } = await supabaseClient.from('app_users').insert(insertPayload);
+            if (addErr && addErr.message && addErr.message.includes('can_edit_info')) {
+                const fallbackPayload = insertPayload.map(item => {
+                    const c = { ...item };
+                    delete c.can_edit_info;
+                    return c;
+                });
+                const res = await supabaseClient.from('app_users').insert(fallbackPayload);
+                addErr = res.error;
+            }
             if (addErr) throw addErr;
 
             const groupPayloads = add.filter(u => u.group_id).map(u => ({
@@ -4074,7 +4125,7 @@ async function executeUsersImport() {
                     }
                 }
 
-                const { error: updErr } = await supabaseClient.from('app_users').update({
+                const updObj = {
                     name: u.name,
                     role: u.role,
                     attribute_id: u.attribute_id,
@@ -4082,8 +4133,16 @@ async function executeUsersImport() {
                     can_use_dashboard: u.can_use_dashboard,
                     can_use_attendance: u.can_use_attendance,
                     can_use_simulator: u.can_use_simulator,
-                    can_use_info: u.can_use_info
-                }).eq('email', u.email);
+                    can_use_info: u.can_use_info,
+                    can_edit_info: u.can_edit_info
+                };
+                let { error: updErr } = await supabaseClient.from('app_users').update(updObj).eq('email', u.email);
+                if (updErr && updErr.message && updErr.message.includes('can_edit_info')) {
+                    const fallbackUpd = { ...updObj };
+                    delete fallbackUpd.can_edit_info;
+                    const res = await supabaseClient.from('app_users').update(fallbackUpd).eq('email', u.email);
+                    updErr = res.error;
+                }
                 if (updErr) throw updErr;
 
                 const { data: existingGroups } = await supabaseClient.from('user_groups').select('*').eq('user_email', u.email);

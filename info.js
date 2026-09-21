@@ -279,7 +279,7 @@ export async function initInfoApp({ supabaseClient: sb, currentUser: user, curre
     supabase = sb;
     currentAppUser = user;
     currentUserRole = role;
-    canManageInfo = (role === 'admin' || role === 'leader');
+    canManageInfo = (role === 'admin' || user?.can_edit_info === true || (role === 'leader' && user?.can_edit_info !== false));
 
     // UI表示の更新
     updateAdminControlsVisibility();
@@ -288,7 +288,7 @@ export async function initInfoApp({ supabaseClient: sb, currentUser: user, curre
     await loadInfoData();
 
     // アンケートモジュールの初期化
-    await initSurveyModule({ supabaseClient: supabase, currentUser: currentAppUser, currentUserRole: currentUserRole });
+    await initSurveyModule({ supabaseClient: supabase, currentUser: currentAppUser, currentUserRole: currentUserRole, canManageInfo });
 
     // イベントリスナー登録（一度だけ）
     setupInfoEventListeners();
@@ -313,9 +313,9 @@ function updateAdminControlsVisibility() {
         if (currentUserRole === 'admin') {
             userBadgeEl.className = 'px-2.5 py-0.5 text-xs font-bold rounded-full bg-purple-100 text-purple-700 border border-purple-200';
             userBadgeEl.textContent = '管理者 (編集可)';
-        } else if (currentUserRole === 'leader') {
-            userBadgeEl.className = 'px-2.5 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 border border-blue-200';
-            userBadgeEl.textContent = 'リーダー (編集可)';
+        } else if (canManageInfo) {
+            userBadgeEl.className = 'px-2.5 py-0.5 text-xs font-bold rounded-full bg-teal-100 text-teal-700 border border-teal-200';
+            userBadgeEl.textContent = '編集可';
         } else {
             userBadgeEl.className = 'px-2.5 py-0.5 text-xs font-bold rounded-full bg-gray-100 text-gray-700 border border-gray-200';
             userBadgeEl.textContent = '閲覧専用';
@@ -650,7 +650,10 @@ function renderDocuments() {
                         <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                     </button>
                     ${canManageInfo ? `
-                    <div class="flex items-center space-x-2">
+                    <div class="flex items-center space-x-1">
+                        <button class="btn-duplicate-doc text-xs text-gray-500 hover:text-green-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${doc.id}" title="複製">
+                            📄
+                        </button>
                         <button class="btn-edit-doc text-xs text-gray-500 hover:text-blue-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${doc.id}" title="編集">
                             ✏️
                         </button>
@@ -673,6 +676,13 @@ function renderDocuments() {
     });
 
     if (canManageInfo) {
+        listContainer.querySelectorAll('.btn-duplicate-doc').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.getAttribute('data-id');
+                await duplicateDocument(id);
+            });
+        });
+
         listContainer.querySelectorAll('.btn-edit-doc').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
@@ -693,6 +703,23 @@ function renderDocuments() {
             });
         });
     }
+}
+
+// ドキュメントの複製
+async function duplicateDocument(docId) {
+    const doc = documentsList.find(d => d.id === docId);
+    if (!doc) return;
+
+    const newDoc = JSON.parse(JSON.stringify(doc));
+    newDoc.id = `doc_${Date.now()}`;
+    newDoc.title = `(複製) ${doc.title}`;
+    newDoc.created_at = new Date().toISOString();
+    newDoc.updated_at = new Date().toISOString();
+    newDoc.author_name = currentAppUser?.name || '管理者';
+
+    await saveDocumentItem(newDoc, true);
+    renderDocuments();
+    alert(`ドキュメント「${newDoc.title}」を作成（複製）しました！`);
 }
 
 // リンク集の描画
@@ -756,7 +783,10 @@ function renderLinks() {
                         <svg class="w-3.5 h-3.5 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
                     </a>
                     ${canManageInfo ? `
-                    <div class="flex items-center space-x-2">
+                    <div class="flex items-center space-x-1">
+                        <button class="btn-duplicate-link text-xs text-gray-500 hover:text-green-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${link.id}" title="複製">
+                            📄
+                        </button>
                         <button class="btn-edit-link text-xs text-gray-500 hover:text-blue-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${link.id}" title="編集">
                             ✏️
                         </button>
@@ -771,6 +801,13 @@ function renderLinks() {
     }).join('');
 
     if (canManageInfo) {
+        listContainer.querySelectorAll('.btn-duplicate-link').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.getAttribute('data-id');
+                await duplicateLink(id);
+            });
+        });
+
         listContainer.querySelectorAll('.btn-edit-link').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
@@ -791,6 +828,22 @@ function renderLinks() {
             });
         });
     }
+}
+
+// リンクの複製
+async function duplicateLink(linkId) {
+    const link = linksList.find(l => l.id === linkId);
+    if (!link) return;
+
+    const newLink = JSON.parse(JSON.stringify(link));
+    newLink.id = `link_${Date.now()}`;
+    newLink.title = `(複製) ${link.title}`;
+    newLink.created_at = new Date().toISOString();
+    newLink.display_order = (link.display_order || 0) + 1;
+
+    await saveLinkItem(newLink, true);
+    renderLinks();
+    alert(`リンク「${newLink.title}」を作成（複製）しました！`);
 }
 
 function getCategoryBadgeColor(cat) {
@@ -1164,9 +1217,11 @@ const SUPABASE_DDL_SQL = `-- ==========================================
 -- Supabase の SQL Editor に貼り付けて実行してください
 -- ==========================================
 
--- 1. app_users に can_use_info カラムを追加
+-- 1. app_users に can_use_info, can_edit_info カラムを追加
 ALTER TABLE app_users 
 ADD COLUMN IF NOT EXISTS can_use_info boolean DEFAULT true;
+ALTER TABLE app_users 
+ADD COLUMN IF NOT EXISTS can_edit_info boolean DEFAULT false;
 
 -- 2. info_pages (トップ構成Markdown)
 CREATE TABLE IF NOT EXISTS info_pages (

@@ -114,11 +114,15 @@ const DEFAULT_RESPONSES = [
 // ==========================================
 // 初期化
 // ==========================================
-export async function initSurveyModule({ supabaseClient: sb, currentUser: user, currentUserRole: role }) {
+export async function initSurveyModule({ supabaseClient: sb, currentUser: user, currentUserRole: role, canManageInfo = null }) {
     supabase = sb;
     currentAppUser = user;
     currentUserRole = role;
-    canManage = (role === 'admin' || role === 'leader');
+    if (canManageInfo !== null) {
+        canManage = canManageInfo;
+    } else {
+        canManage = (role === 'admin' || user?.can_edit_info === true || (role === 'leader' && user?.can_edit_info !== false));
+    }
 
     await loadSurveyData();
     // 管理者の場合、ローカルに保存されているアンケートを Supabase に自動バックアップ・同期
@@ -488,6 +492,9 @@ export function renderSurveyList() {
                         <button class="btn-survey-results px-3 py-1.5 text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition border border-purple-200 cursor-pointer" data-id="${survey.id}">
                             📊 集計・CSV
                         </button>
+                        <button class="btn-survey-duplicate text-xs text-gray-400 hover:text-green-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${survey.id}" title="アンケートを複製">
+                            📄
+                        </button>
                         <button class="btn-survey-edit text-xs text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${survey.id}" title="編集">
                             ✏️
                         </button>
@@ -530,6 +537,13 @@ export function renderSurveyList() {
     });
 
     if (canManage) {
+        container.querySelectorAll('.btn-survey-duplicate').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.getAttribute('data-id');
+                await duplicateSurvey(id);
+            });
+        });
+
         container.querySelectorAll('.btn-survey-edit').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-id');
@@ -550,6 +564,49 @@ export function renderSurveyList() {
             });
         });
     }
+}
+
+// アンケートの複製
+export async function duplicateSurvey(surveyId) {
+    const original = surveysList.find(s => s.id === surveyId);
+    if (!original) return;
+
+    const newId = `survey_${Date.now()}`;
+    const duplicated = JSON.parse(JSON.stringify(original));
+    duplicated.id = newId;
+    duplicated.title = `(複製) ${original.title}`;
+    duplicated.created_at = new Date().toISOString();
+    duplicated.status = original.status || 'active';
+
+    // 設問・選択肢内のIDを新規採番してskip_toの整合性を保持
+    if (duplicated.questions && Array.isArray(duplicated.questions)) {
+        const idMap = {};
+        duplicated.questions.forEach((q, idx) => {
+            const oldQId = q.id;
+            const newQId = `q_${Date.now()}_${idx + 1}`;
+            idMap[oldQId] = newQId;
+            q.id = newQId;
+        });
+        duplicated.questions.forEach(q => {
+            if (q.options && Array.isArray(q.options)) {
+                q.options.forEach(opt => {
+                    if (opt.skip_to && idMap[opt.skip_to]) {
+                        opt.skip_to = idMap[opt.skip_to];
+                    }
+                });
+            }
+        });
+    }
+
+    if (duplicated.order_items && Array.isArray(duplicated.order_items)) {
+        duplicated.order_items.forEach((item, idx) => {
+            item.id = `item_${Date.now()}_${idx + 1}`;
+        });
+    }
+
+    await saveSurveyToStorage(duplicated, true);
+    renderSurveyList();
+    alert(`アンケート「${duplicated.title}」を作成（複製）しました！`);
 }
 
 // アンケートデータのUTF-8安全なBase64エンコード（完全共有URL用）
