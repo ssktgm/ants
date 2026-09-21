@@ -1849,7 +1849,7 @@ export async function handleSubmitSurveyResponse() {
 
     const respondentName = document.getElementById('input-respondent-name')?.value.trim();
     if (!respondentName) {
-        alert('回答者（代表者名）を入力してください');
+        alert('保護者氏名（選手氏名）を入力してください');
         document.getElementById('input-respondent-name')?.focus();
         return;
     }

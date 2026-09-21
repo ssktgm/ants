@@ -179,7 +179,7 @@ async function loadData() {
     if (supabaseClient) {
         try {
             const { data: dbPlayers, error: pError } = await supabaseClient.from('sim_players').select('*').order('created_at', { ascending: true });
-            const { data: dbPatterns, error: patError } = await supabaseClient.from('sim_patterns').select('*').order('created_at', { ascending: true });
+            const { data: dbPatterns, error: patError } = await supabaseClient.from('sim_patterns').select('*').order('created_at', { ascending: false });
             
             // master_data からチーム情報とテンプレート情報を取得
             const { data: mdTeams } = await supabaseClient.from('master_data').select('data').eq('key', 'SIM_TEAMS').single();
@@ -224,8 +224,18 @@ async function loadData() {
                     customSubstitutions: p.custom_substitutions || [],
                     battingOrder: p.batting_order || {},
                     headerInfo: p.header_info || {},
+                    created_at: p.created_at,
+                    updated_at: p.updated_at,
                     isSynced: true
                 }));
+
+                // 保存データは新しいものを上（先頭）にソート
+                patterns.sort((a, b) => {
+                    const timeA = new Date(a.updated_at || a.created_at || (a.id.startsWith('pat_') ? parseInt(a.id.replace('pat_', '')) : 0)).getTime() || 0;
+                    const timeB = new Date(b.updated_at || b.created_at || (b.id.startsWith('pat_') ? parseInt(b.id.replace('pat_', '')) : 0)).getTime() || 0;
+                    return timeB - timeA;
+                });
+
                 success = true;
             } else {
                 if (pError) console.error('Supabase load players error:', pError);
@@ -481,7 +491,7 @@ async function createNewPattern(name = '', teamId = null, templateId = null, mod
         }
     };
     
-    patterns.push(newPat);
+    patterns.unshift(newPat);
     currentPatternId = id;
     
     await autoSavePattern(newPat);
@@ -1888,18 +1898,30 @@ async function handleSavePattern() {
                 currentPattern.name = nameToSave;
                 currentPattern.teamId = currentTeamId;
                 currentPattern.mode = simulatorMode;
+                currentPattern.updated_at = new Date().toISOString();
                 const err = await syncPatternToDB(currentPattern);
                 if (err) throw err;
+
+                // 上書きしたパターンを最新データとして先頭に移動
+                const idx = patterns.findIndex(p => p.id === currentPattern.id);
+                if (idx > 0) {
+                    patterns.splice(idx, 1);
+                    patterns.unshift(currentPattern);
+                }
+
                 alert(`データ「${nameToSave}」を上書き保存しました。`);
             }
         } else {
             const id = 'pat_' + Date.now();
             const currentTeam = getCurrentTeam();
+            const nowIso = new Date().toISOString();
             const newPat = {
                 id: id,
                 name: nameToSave,
                 teamId: currentTeamId,
                 mode: simulatorMode,
+                created_at: nowIso,
+                updated_at: nowIso,
                 basePositions: currentPattern ? { ...(currentPattern.basePositions || {}) } : {},
                 customSubstitutions: currentPattern ? JSON.parse(JSON.stringify(currentPattern.customSubstitutions || [])) : [],
                 battingOrder: currentPattern ? { ...(currentPattern.battingOrder || {}) } : {},
@@ -1916,7 +1938,7 @@ async function handleSavePattern() {
                 }
             };
             
-            patterns.push(newPat);
+            patterns.unshift(newPat);
             currentPatternId = id;
             
             const err = await syncPatternToDB(newPat);
