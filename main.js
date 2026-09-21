@@ -433,13 +433,36 @@ export function switchAuthScreen(screenId, subView = null) {
     }
 }
 
+// アンケートURLパラメータ・ハッシュ解析ヘルパー
+function parseSurveyUrlParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    let surveyId = urlParams.get('survey');
+    let responseId = urlParams.get('response');
+
+    let hash = window.location.hash || '';
+    if (hash.startsWith('#/')) hash = '#' + hash.substring(2);
+
+    if (hash.startsWith('#survey-') || hash.startsWith('#survey=')) {
+        const hashContent = hash.startsWith('#survey-') ? hash.replace('#survey-', '') : hash.replace('#survey=', '');
+        const parts = hashContent.split('&');
+        surveyId = parts[0];
+        for (let i = 1; i < parts.length; i++) {
+            const [k, v] = parts[i].split('=');
+            if (k === 'response' && v) responseId = v;
+        }
+    }
+    if (surveyId) surveyId = decodeURIComponent(surveyId).trim().replace(/^\/+|\/+$/g, '');
+    if (responseId) responseId = decodeURIComponent(responseId).trim();
+    return { surveyId, responseId };
+}
+
 // ブラウザの戻る/進む（popstate）対応
 window.addEventListener('popstate', async (e) => {
     isPopStateNavigating = true;
     try {
-        const hash = window.location.hash;
-        if (hash.startsWith('#survey-')) {
-            await openSurveyResponsePage(hash.replace('#survey-', ''));
+        const { surveyId: hashSurveyId, responseId: hashRespId } = parseSurveyUrlParams();
+        if (hashSurveyId) {
+            await openSurveyResponsePage(hashSurveyId, hashRespId);
             return;
         }
         if (e.state && e.state.screenId) {
@@ -481,6 +504,24 @@ if (supabaseClient) {
 
         // DOM操作を安全に行うための内部非同期関数
         const handleAuthUI = async () => {
+            // URLパラメータまたはハッシュでアンケート指定がある場合、最優先で直接アンケート画面を開く
+            const { surveyId: directSurveyId, responseId: directRespId } = parseSurveyUrlParams();
+            if (directSurveyId) {
+                forceHideLoading();
+                if (session) {
+                    currentUser = { ...session.user };
+                    try {
+                        const { data: userData } = await supabaseClient.from('app_users').select('name, role').eq('email', currentUser.email).single();
+                        if (userData) {
+                            currentUser.name = userData.name;
+                            currentUserRole = userData.role;
+                        }
+                    } catch (e) {}
+                }
+                await openSurveyResponsePage(directSurveyId, directRespId);
+                return;
+            }
+
             if (session) {
                 showLoading('ユーザー権限確認中...');
                 try {
@@ -662,12 +703,9 @@ if (supabaseClient) {
                     if (simEmailDisplay) simEmailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email);
 
                     // URLパラメータまたはハッシュでアンケート指定がある場合はアンケート回答画面を開く
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const querySurveyId = urlParams.get('survey');
-                    const hashSurveyId = window.location.hash.startsWith('#survey-') ? window.location.hash.replace('#survey-', '') : null;
-                    const targetSurveyId = querySurveyId || hashSurveyId;
+                    const { surveyId: targetSurveyId, responseId: targetResponseId } = parseSurveyUrlParams();
                     if (targetSurveyId) {
-                        await openSurveyResponsePage(targetSurveyId);
+                        await openSurveyResponsePage(targetSurveyId, targetResponseId);
                         return;
                     }
 
@@ -736,12 +774,9 @@ if (supabaseClient) {
                 forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
 
                 // URLパラメータまたはハッシュでアンケート指定がある場合はアンケート回答画面を開く（ゲスト回答）
-                const urlParams = new URLSearchParams(window.location.search);
-                const querySurveyId = urlParams.get('survey');
-                const hashSurveyId = window.location.hash.startsWith('#survey-') ? window.location.hash.replace('#survey-', '') : null;
-                const targetSurveyId = querySurveyId || hashSurveyId;
+                const { surveyId: targetSurveyId, responseId: targetResponseId } = parseSurveyUrlParams();
                 if (targetSurveyId) {
-                    await openSurveyResponsePage(targetSurveyId);
+                    await openSurveyResponsePage(targetSurveyId, targetResponseId);
                     return;
                 }
 

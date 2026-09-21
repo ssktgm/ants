@@ -24,6 +24,7 @@ const DEFAULT_SURVEYS = [
 ご不明な点がありましたら役員までお問い合わせください。`,
         status: 'active',
         deadline: '2026-07-20 23:59',
+        public_results: true,
         enable_schedule: true,
         schedule_options: [
             '8/8(土) 午前 (練習・遠征)',
@@ -124,14 +125,20 @@ export async function initSurveyModule({ supabaseClient: sb, currentUser: user, 
     renderSurveyList();
 }
 
+function getSupabase() {
+    return supabase || window.supabaseClient || null;
+}
+
 // データの読み込み
 export async function loadSurveyData() {
     let surveysLoaded = false;
     let responsesLoaded = false;
+    const sb = getSupabase();
 
-    if (supabase) {
+    if (sb) {
+        // 1. 専用テーブル surveys からの読み込みを試行
         try {
-            const { data: dbSurveys, error: sErr } = await supabase
+            const { data: dbSurveys, error: sErr } = await sb
                 .from('surveys')
                 .select('*')
                 .order('created_at', { ascending: false });
@@ -141,21 +148,56 @@ export async function loadSurveyData() {
                 surveysLoaded = true;
             }
         } catch (e) {
-            console.warn('Supabase surveys load failed, using local:', e);
+            console.warn('Supabase surveys load failed, trying master_data fallback:', e);
         }
 
+        // 専用テーブルで読めない場合、master_data からフォールバック取得
+        if (!surveysLoaded) {
+            try {
+                const { data: mdSurveys, error: mdErr } = await sb
+                    .from('master_data')
+                    .select('data')
+                    .eq('key', 'ANTS_SURVEYS')
+                    .single();
+                if (!mdErr && mdSurveys && Array.isArray(mdSurveys.data) && mdSurveys.data.length > 0) {
+                    surveysList = mdSurveys.data;
+                    surveysLoaded = true;
+                }
+            } catch (e) {
+                console.warn('Supabase master_data ANTS_SURVEYS load skipped:', e);
+            }
+        }
+
+        // 2. 専用テーブル survey_responses からの読み込みを試行
         try {
-            const { data: dbResponses, error: rErr } = await supabase
+            const { data: dbResponses, error: rErr } = await sb
                 .from('survey_responses')
                 .select('*')
                 .order('created_at', { ascending: false });
 
-            if (!rErr && dbResponses) {
+            if (!rErr && dbResponses && dbResponses.length > 0) {
                 responsesList = dbResponses;
                 responsesLoaded = true;
             }
         } catch (e) {
-            console.warn('Supabase survey_responses load failed, using local:', e);
+            console.warn('Supabase survey_responses load failed, trying master_data fallback:', e);
+        }
+
+        // 専用テーブルで読めない場合、master_data からフォールバック取得
+        if (!responsesLoaded) {
+            try {
+                const { data: mdResp, error: mdRespErr } = await sb
+                    .from('master_data')
+                    .select('data')
+                    .eq('key', 'ANTS_SURVEY_RESPONSES')
+                    .single();
+                if (!mdRespErr && mdResp && Array.isArray(mdResp.data)) {
+                    responsesList = mdResp.data;
+                    responsesLoaded = true;
+                }
+            } catch (e) {
+                console.warn('Supabase master_data ANTS_SURVEY_RESPONSES load skipped:', e);
+            }
         }
     }
 
@@ -171,6 +213,10 @@ export async function loadSurveyData() {
         } catch (e) {
             surveysList = [...DEFAULT_SURVEYS];
         }
+    } else {
+        try {
+            localStorage.setItem(STORAGE_KEY_SURVEYS, JSON.stringify(surveysList));
+        } catch (e) {}
     }
 
     if (!responsesLoaded) {
@@ -185,6 +231,10 @@ export async function loadSurveyData() {
         } catch (e) {
             responsesList = [...DEFAULT_RESPONSES];
         }
+    } else {
+        try {
+            localStorage.setItem(STORAGE_KEY_RESPONSES, JSON.stringify(responsesList));
+        } catch (e) {}
     }
 }
 
@@ -202,15 +252,27 @@ async function saveSurveyToStorage(survey, isNew = false) {
         console.error(e);
     }
 
-    if (supabase) {
+    const sb = getSupabase();
+    if (sb) {
+        // 1. 専用テーブルへの保存（存在する場合）
         try {
             if (isNew) {
-                await supabase.from('surveys').insert([survey]);
+                await sb.from('surveys').insert([survey]);
             } else {
-                await supabase.from('surveys').update(survey).eq('id', survey.id);
+                await sb.from('surveys').update(survey).eq('id', survey.id);
             }
         } catch (e) {
-            console.warn('Supabase survey save failed:', e);
+            console.warn('Supabase survey table save skipped:', e);
+        }
+
+        // 2. 確実に存在する master_data テーブルへの二重保存（全端末・ゲストへの同期保証）
+        try {
+            await sb.from('master_data').upsert({
+                key: 'ANTS_SURVEYS',
+                data: surveysList
+            });
+        } catch (e) {
+            console.warn('Supabase master_data ANTS_SURVEYS upsert failed:', e);
         }
     }
 }
@@ -226,32 +288,91 @@ async function deleteSurveyFromStorage(surveyId) {
         console.error(e);
     }
 
-    if (supabase) {
+    const sb = getSupabase();
+    if (sb) {
         try {
-            await supabase.from('survey_responses').delete().eq('survey_id', surveyId);
-            await supabase.from('surveys').delete().eq('id', surveyId);
-        } catch (e) {
-            console.warn('Supabase survey delete failed:', e);
-        }
+            await sb.from('survey_responses').delete().eq('survey_id', surveyId);
+            await sb.from('surveys').delete().eq('id', surveyId);
+        } catch (e) {}
+
+        try {
+            await sb.from('master_data').upsert({ key: 'ANTS_SURVEYS', data: surveysList });
+            await sb.from('master_data').upsert({ key: 'ANTS_SURVEY_RESPONSES', data: responsesList });
+        } catch (e) {}
     }
 }
 
-// 回答の保存（ゲスト送信含む）
+// 回答の保存（新規作成・更新対応、ゲスト送信含む）
 export async function saveSurveyResponse(response) {
-    responsesList.unshift(response);
+    const existingIndex = responsesList.findIndex(r => r.id === response.id);
+    const isUpdate = existingIndex >= 0;
+
+    if (isUpdate) {
+        responsesList[existingIndex] = response;
+    } else {
+        responsesList.unshift(response);
+    }
+
     try {
         localStorage.setItem(STORAGE_KEY_RESPONSES, JSON.stringify(responsesList));
     } catch (e) {
         console.error(e);
     }
 
-    if (supabase) {
+    const sb = getSupabase();
+    if (sb) {
+        // 1. 専用テーブルへの保存（あれば）
         try {
-            await supabase.from('survey_responses').insert([response]);
+            if (isUpdate) {
+                await sb.from('survey_responses').update(response).eq('id', response.id);
+            } else {
+                await sb.from('survey_responses').insert([response]);
+            }
         } catch (e) {
-            console.warn('Supabase response insert failed:', e);
+            console.warn('Supabase survey_responses table save skipped:', e);
+        }
+
+        // 2. master_data への二重保存（全端末・ゲストへの同期保証）
+        try {
+            await sb.from('master_data').upsert({
+                key: 'ANTS_SURVEY_RESPONSES',
+                data: responsesList
+            });
+        } catch (e) {
+            console.warn('Supabase master_data ANTS_SURVEY_RESPONSES upsert failed:', e);
         }
     }
+}
+
+// 回答の削除（管理者用）
+export async function deleteSurveyResponse(responseId) {
+    responsesList = responsesList.filter(r => r.id !== responseId);
+    try {
+        localStorage.setItem(STORAGE_KEY_RESPONSES, JSON.stringify(responsesList));
+    } catch (e) {
+        console.error(e);
+    }
+
+    const sb = getSupabase();
+    if (sb) {
+        try {
+            await sb.from('survey_responses').delete().eq('id', responseId);
+        } catch (e) {}
+
+        try {
+            await sb.from('master_data').upsert({
+                key: 'ANTS_SURVEY_RESPONSES',
+                data: responsesList
+            });
+        } catch (e) {}
+    }
+
+    // 開いている集計画面があれば再描画
+    if (activeResultsSurvey) {
+        openSurveyResultsModal(activeResultsSurvey.id);
+    }
+    // 一覧の回答数なども再描画
+    renderSurveyList();
 }
 
 // ==========================================
@@ -340,17 +461,23 @@ export function renderSurveyList() {
                         </button>
                     </div>
                     <div class="flex items-center gap-1.5">
+                        ${canManage ? `
                         <button class="btn-survey-results px-3 py-1.5 text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition border border-purple-200 cursor-pointer" data-id="${survey.id}">
                             📊 集計・CSV
                         </button>
-                        ${canManage ? `
                         <button class="btn-survey-edit text-xs text-gray-400 hover:text-blue-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${survey.id}" title="編集">
                             ✏️
                         </button>
                         <button class="btn-survey-delete text-xs text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-gray-100 transition cursor-pointer" data-id="${survey.id}" title="削除">
                             🗑️
                         </button>
+                        ` : `
+                        ${survey.public_results !== false ? `
+                        <button class="btn-survey-results px-3 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition border border-blue-200 cursor-pointer" data-id="${survey.id}">
+                            📊 回答状況
+                        </button>
                         ` : ''}
+                        `}
                     </div>
                 </div>
             </div>
@@ -434,10 +561,14 @@ export function openSurveyEditor(survey = null) {
     const chkSchedule = document.getElementById('chk-survey-enable-schedule');
     const chkFamily = document.getElementById('chk-survey-enable-family');
     const chkOrders = document.getElementById('chk-survey-enable-orders');
+    const chkPublicResults = document.getElementById('chk-survey-public-results');
 
     chkSchedule.checked = survey ? Boolean(survey.enable_schedule) : true;
     chkFamily.checked = survey ? Boolean(survey.enable_family) : true;
     chkOrders.checked = survey ? Boolean(survey.enable_orders) : false;
+    if (chkPublicResults) {
+        chkPublicResults.checked = survey ? (survey.public_results !== false) : true;
+    }
 
     currentEditorScheduleOptions = survey && survey.schedule_options ? [...survey.schedule_options] : [
         '7/18(土) 午前', '7/18(土) 午後', '7/19(日) 終日'
@@ -728,6 +859,7 @@ async function handleSaveSurvey() {
     const enable_schedule = document.getElementById('chk-survey-enable-schedule')?.checked || false;
     const enable_family = document.getElementById('chk-survey-enable-family')?.checked || false;
     const enable_orders = document.getElementById('chk-survey-enable-orders')?.checked || false;
+    const public_results = document.getElementById('chk-survey-public-results')?.checked ?? true;
 
     const isNew = !editingSurveyId;
     const today = new Date().toISOString().split('T')[0];
@@ -738,6 +870,7 @@ async function handleSaveSurvey() {
         description,
         status,
         deadline,
+        public_results,
         enable_schedule,
         schedule_options: enable_schedule ? currentEditorScheduleOptions.filter(o => o.trim()) : [],
         enable_family,
@@ -759,7 +892,7 @@ async function handleSaveSurvey() {
 // ==========================================
 let activeResultsSurvey = null;
 
-export function openSurveyResultsModal(surveyId) {
+export function openSurveyResultsModal(surveyId, isPublicView = false) {
     const modal = document.getElementById('modal-survey-results');
     if (!modal) return;
 
@@ -768,15 +901,22 @@ export function openSurveyResultsModal(surveyId) {
 
     activeResultsSurvey = survey;
     const surveyResponses = responsesList.filter(r => r.survey_id === surveyId);
+    const isReadOnly = isPublicView || !canManage;
 
     document.getElementById('results-survey-title').textContent = survey.title;
-    document.getElementById('results-survey-subtitle').textContent = `回答数: ${surveyResponses.length}件 | 締切: ${survey.deadline || 'なし'}`;
+    document.getElementById('results-survey-subtitle').textContent = `回答数: ${surveyResponses.length}件 | 締切: ${survey.deadline || 'なし'}${isReadOnly ? ' (閲覧モード)' : ''}`;
+
+    const btnCsv = document.getElementById('btn-export-survey-csv');
+    if (btnCsv) {
+        if (isReadOnly) btnCsv.classList.add('hidden');
+        else btnCsv.classList.remove('hidden');
+    }
 
     renderResultsSummary(survey, surveyResponses);
     renderResultsScheduleMatrix(survey, surveyResponses);
     renderResultsOrders(survey, surveyResponses);
     renderResultsQuestions(survey, surveyResponses);
-    renderResultsTable(survey, surveyResponses);
+    renderResultsTable(survey, surveyResponses, isReadOnly);
 
     modal.classList.remove('hidden');
 }
@@ -988,12 +1128,19 @@ function renderResultsQuestions(survey, responses) {
 }
 
 // 全回答テーブルの描画
-function renderResultsTable(survey, responses) {
+function renderResultsTable(survey, responses, isReadOnly = false) {
+    const thActions = document.getElementById('th-results-actions');
+    if (thActions) {
+        if (isReadOnly) thActions.classList.add('hidden');
+        else thActions.classList.remove('hidden');
+    }
+
     const tbody = document.getElementById('results-responses-tbody');
     if (!tbody) return;
 
+    const colSpan = isReadOnly ? 5 : 6;
     if (responses.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-xs text-gray-400">まだ回答がありません</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center py-6 text-xs text-gray-400">まだ回答がありません</td></tr>`;
         return;
     }
 
@@ -1013,9 +1160,46 @@ function renderResultsTable(survey, responses) {
                 <td class="px-3 py-2 text-gray-600 max-w-xs truncate" title="${escapeHtml(familyStr)}">${escapeHtml(familyStr)}</td>
                 <td class="px-3 py-2 text-gray-600 max-w-xs truncate" title="${escapeHtml(ordersSummary)}">${escapeHtml(ordersSummary)}</td>
                 <td class="px-3 py-2 text-right font-mono font-bold text-purple-700">¥${(Number(r.total_amount) || 0).toLocaleString()}</td>
+                ${!isReadOnly ? `
+                <td class="px-3 py-2 text-center whitespace-nowrap">
+                    <div class="flex items-center justify-center gap-1.5">
+                        <button class="btn-copy-response-edit-url px-2 py-1 text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded transition cursor-pointer" data-id="${r.id}" title="本人用の修正URLを発行してコピー">
+                            🔗 修正URL
+                        </button>
+                        <button class="btn-delete-response px-2 py-1 text-[11px] font-bold text-red-600 hover:bg-red-50 rounded transition cursor-pointer" data-id="${r.id}" data-name="${escapeHtml(r.respondent_name)}" title="この回答を削除">
+                            🗑️
+                        </button>
+                    </div>
+                </td>
+                ` : ''}
             </tr>
         `;
     }).join('');
+
+    // 操作イベントのバインド
+    if (!isReadOnly) {
+        tbody.querySelectorAll('.btn-copy-response-edit-url').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const rId = btn.getAttribute('data-id');
+                const editUrl = `${window.location.origin}${window.location.pathname}#survey-${survey.id}&response=${rId}`;
+                navigator.clipboard.writeText(editUrl).then(() => {
+                    alert(`回答修正用URLをコピーしました！\nご本人に案内してください。\n\n${editUrl}`);
+                }).catch(() => {
+                    prompt('以下のURLをコピーしてください:', editUrl);
+                });
+            });
+        });
+
+        tbody.querySelectorAll('.btn-delete-response').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const rId = btn.getAttribute('data-id');
+                const name = btn.getAttribute('data-name') || 'この回答者';
+                if (confirm(`「${name}」さんの回答データを削除しますか？\n（集計や出欠、注文数から除外されます）`)) {
+                    await deleteSurveyResponse(rId);
+                }
+            });
+        });
+    }
 }
 
 // ==========================================
@@ -1104,24 +1288,61 @@ export function exportSurveyResultsCSV() {
 }
 
 // ==========================================
-// 公開回答画面 (ゲスト回答対応)
+// 公開回答画面 (ゲスト回答対応 & 回答修正対応)
 // ==========================================
 let activeRespondingSurvey = null;
 let currentRespondingFamily = [];
+let activeEditingResponseId = null;
 
-export async function openSurveyResponsePage(surveyId) {
+export async function openSurveyResponsePage(surveyId, responseId = null) {
+    // ローディングオーバーレイを即座に確実に強制解除
+    document.getElementById('loading-overlay')?.classList.add('hidden');
+    const loadingDetail = document.getElementById('loading-detail-text');
+    if (loadingDetail) loadingDetail.style.opacity = '0';
+
     setupSurveyAdminEvents();
     if (!surveysList || surveysList.length === 0) {
         await loadSurveyData();
     }
-    const survey = surveysList.find(s => s.id === surveyId);
+    let survey = surveysList.find(s => s.id === surveyId);
     if (!survey) {
-        alert('指定されたアンケートが見つかりませんでした。');
+        // キャッシュにない場合、DB/master_dataから最新データを再取得
+        await loadSurveyData();
+        survey = surveysList.find(s => s.id === surveyId);
+    }
+    if (!survey && surveyId) {
+        try {
+            const decodedId = decodeURIComponent(surveyId).trim();
+            survey = surveysList.find(s => s.id === decodedId);
+        } catch (e) {}
+    }
+
+    if (!survey) {
+        alert(`指定されたアンケートが見つかりませんでした。\n（アンケートID: ${surveyId}）\n\n最新のアンケート一覧からURLを再取得してご確認ください。`);
         return;
     }
 
     activeRespondingSurvey = survey;
     currentRespondingFamily = [];
+
+    // 既存回答の読み込み（修正モード）
+    let existingResp = null;
+    if (responseId) {
+        existingResp = responsesList.find(r => r.id === responseId);
+    }
+
+    const editBanner = document.getElementById('respond-edit-mode-banner');
+    const submitBtn = document.getElementById('btn-submit-survey-response');
+
+    if (existingResp) {
+        activeEditingResponseId = existingResp.id;
+        if (editBanner) editBanner.classList.remove('hidden');
+        if (submitBtn) submitBtn.textContent = '回答を更新する';
+    } else {
+        activeEditingResponseId = null;
+        if (editBanner) editBanner.classList.add('hidden');
+        if (submitBtn) submitBtn.textContent = '回答を送信する';
+    }
 
     // 画面切り替え
     ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings', 'position-simulator-view', 'info-view'].forEach(id => {
@@ -1136,16 +1357,43 @@ export async function openSurveyResponsePage(surveyId) {
     document.getElementById('respond-survey-desc').innerHTML = survey.description ? survey.description.replace(/\n/g, '<br>') : '';
     document.getElementById('respond-survey-deadline').textContent = survey.deadline ? `回答期限: ${survey.deadline}` : '';
 
-    // 回答者名（ログイン中なら初期設定）
-    const nameInput = document.getElementById('input-respondent-name');
-    if (nameInput) {
-        nameInput.value = (currentAppUser && currentAppUser.name) ? currentAppUser.name : '';
+    // 回答状況ボタン（全員公開の場合）
+    const btnPublicResults = document.getElementById('btn-view-public-results');
+    if (btnPublicResults) {
+        if (survey.public_results !== false) {
+            btnPublicResults.classList.remove('hidden');
+            btnPublicResults.onclick = () => openSurveyResultsModal(survey.id, true);
+        } else {
+            btnPublicResults.classList.add('hidden');
+        }
     }
 
+    // 回答者名
+    const nameInput = document.getElementById('input-respondent-name');
+    if (nameInput) {
+        if (existingResp) {
+            nameInput.value = existingResp.respondent_name || '';
+        } else {
+            nameInput.value = (currentAppUser && currentAppUser.name) ? currentAppUser.name : '';
+        }
+    }
+
+    // 家族メンバー
+    if (existingResp && existingResp.family_members) {
+        currentRespondingFamily = JSON.parse(JSON.stringify(existingResp.family_members));
+    } else {
+        currentRespondingFamily = [];
+    }
     renderRespondingFamilySection(survey);
-    renderRespondingScheduleSection(survey);
-    renderRespondingQuestionsSection(survey);
-    renderRespondingOrdersSection(survey);
+
+    // 日程調整
+    renderRespondingScheduleSection(survey, existingResp ? existingResp.schedules : null);
+
+    // 設問
+    renderRespondingQuestionsSection(survey, existingResp ? existingResp.answers : null);
+
+    // 注文
+    renderRespondingOrdersSection(survey, existingResp ? existingResp.orders : null);
 
     // 完了表示のリセット
     document.getElementById('survey-respond-form-container')?.classList.remove('hidden');
@@ -1201,7 +1449,7 @@ function renderRespondingFamilySection(survey) {
     });
 }
 
-function renderRespondingScheduleSection(survey) {
+function renderRespondingScheduleSection(survey, savedSchedules = null) {
     const sec = document.getElementById('respond-schedule-section');
     if (!sec) return;
 
@@ -1214,28 +1462,31 @@ function renderRespondingScheduleSection(survey) {
     const container = document.getElementById('respond-schedule-list');
     if (!container) return;
 
-    container.innerHTML = survey.schedule_options.map((opt, idx) => `
+    container.innerHTML = survey.schedule_options.map((opt, idx) => {
+        const currentVal = (savedSchedules && savedSchedules[opt]) ? savedSchedules[opt] : '○';
+        return `
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl border border-gray-200 bg-white mb-2.5">
             <span class="text-xs font-bold text-gray-800">${escapeHtml(opt)}</span>
             <div class="flex items-center gap-4">
                 <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-100 transition">
-                    <input type="radio" name="respond_sched_${idx}" value="○" checked class="text-emerald-600 focus:ring-emerald-500">
+                    <input type="radio" name="respond_sched_${idx}" value="○" ${currentVal === '○' ? 'checked' : ''} class="text-emerald-600 focus:ring-emerald-500">
                     <span>○ (参加)</span>
                 </label>
                 <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 hover:bg-amber-100 transition">
-                    <input type="radio" name="respond_sched_${idx}" value="△" class="text-amber-600 focus:ring-amber-500">
+                    <input type="radio" name="respond_sched_${idx}" value="△" ${currentVal === '△' ? 'checked' : ''} class="text-amber-600 focus:ring-amber-500">
                     <span>△ (未定)</span>
                 </label>
                 <label class="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-gray-600 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-100 transition">
-                    <input type="radio" name="respond_sched_${idx}" value="×" class="text-gray-600 focus:ring-gray-500">
+                    <input type="radio" name="respond_sched_${idx}" value="×" ${currentVal === '×' ? 'checked' : ''} class="text-gray-600 focus:ring-gray-500">
                     <span>× (不参加)</span>
                 </label>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
-function renderRespondingQuestionsSection(survey) {
+function renderRespondingQuestionsSection(survey, savedAnswers = null) {
     const sec = document.getElementById('respond-questions-section');
     if (!sec) return;
 
@@ -1248,7 +1499,9 @@ function renderRespondingQuestionsSection(survey) {
     const container = document.getElementById('respond-questions-list');
     if (!container) return;
 
-    container.innerHTML = survey.questions.map((q, idx) => `
+    container.innerHTML = survey.questions.map((q, idx) => {
+        const savedVal = savedAnswers ? savedAnswers[q.id] : undefined;
+        return `
         <div id="respond-q-block-${q.id}" class="respond-q-block p-4 rounded-xl border border-gray-200 bg-white mb-4 transition-all" data-q-id="${q.id}">
             <div class="flex items-start gap-2 mb-2">
                 <span class="px-2 py-0.5 rounded bg-teal-100 text-teal-800 text-xs font-bold shrink-0">Q${idx + 1}</span>
@@ -1262,10 +1515,11 @@ function renderRespondingQuestionsSection(survey) {
             </div>
 
             <div class="mt-3 pl-2">
-                ${renderQuestionInputHtml(q)}
+                ${renderQuestionInputHtml(q, savedVal)}
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 
     // 設問スキップロジックのイベント登録
     container.querySelectorAll('input[type="radio"].q-opt-radio').forEach(radio => {
@@ -1277,24 +1531,31 @@ function renderRespondingQuestionsSection(survey) {
     evaluateSkipLogic(survey);
 }
 
-function renderQuestionInputHtml(q) {
+function renderQuestionInputHtml(q, savedVal = undefined) {
     if (q.type === 'single') {
-        return (q.options || []).map((opt, optIdx) => `
+        return (q.options || []).map((opt, optIdx) => {
+            const isChecked = savedVal !== undefined ? (savedVal === opt.label) : (optIdx === 0);
+            return `
             <label class="flex items-center gap-2 cursor-pointer text-xs text-gray-700 mb-2 hover:text-teal-700">
-                <input type="radio" name="respond_ans_${q.id}" value="${escapeHtml(opt.label)}" class="q-opt-radio text-teal-600 focus:ring-teal-500" data-q-id="${q.id}" data-skip-to="${opt.skip_to || ''}" ${optIdx === 0 ? 'checked' : ''}>
+                <input type="radio" name="respond_ans_${q.id}" value="${escapeHtml(opt.label)}" class="q-opt-radio text-teal-600 focus:ring-teal-500" data-q-id="${q.id}" data-skip-to="${opt.skip_to || ''}" ${isChecked ? 'checked' : ''}>
                 <span>${escapeHtml(opt.label)}</span>
             </label>
-        `).join('');
+            `;
+        }).join('');
     } else if (q.type === 'multiple') {
-        return (q.options || []).map(opt => `
+        return (q.options || []).map(opt => {
+            const isChecked = Array.isArray(savedVal) ? savedVal.includes(opt.label) : false;
+            return `
             <label class="flex items-center gap-2 cursor-pointer text-xs text-gray-700 mb-2 hover:text-teal-700">
-                <input type="checkbox" name="respond_ans_${q.id}" value="${escapeHtml(opt.label)}" class="rounded text-teal-600 focus:ring-teal-500">
+                <input type="checkbox" name="respond_ans_${q.id}" value="${escapeHtml(opt.label)}" ${isChecked ? 'checked' : ''} class="rounded text-teal-600 focus:ring-teal-500">
                 <span>${escapeHtml(opt.label)}</span>
             </label>
-        `).join('');
+            `;
+        }).join('');
     } else {
+        const textVal = savedVal !== undefined ? String(savedVal) : '';
         return `
-            <textarea name="respond_ans_${q.id}" rows="3" class="w-full border border-gray-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-teal-500 outline-none" placeholder="回答を入力してください..."></textarea>
+            <textarea name="respond_ans_${q.id}" rows="3" class="w-full border border-gray-300 rounded-lg p-2 text-xs focus:ring-2 focus:ring-teal-500 outline-none" placeholder="回答を入力してください...">${escapeHtml(textVal)}</textarea>
         `;
     }
 }
@@ -1343,7 +1604,7 @@ function evaluateSkipLogic(survey) {
     });
 }
 
-function renderRespondingOrdersSection(survey) {
+function renderRespondingOrdersSection(survey, savedOrders = null) {
     const sec = document.getElementById('respond-orders-section');
     if (!sec) return;
 
@@ -1356,7 +1617,9 @@ function renderRespondingOrdersSection(survey) {
     const listEl = document.getElementById('respond-orders-list');
     if (!listEl) return;
 
-    listEl.innerHTML = survey.order_items.map(item => `
+    listEl.innerHTML = survey.order_items.map(item => {
+        const savedQty = (savedOrders && savedOrders[item.id] !== undefined) ? Number(savedOrders[item.id]) : 0;
+        return `
         <div class="flex items-center justify-between p-3 rounded-xl border border-gray-200 bg-white mb-2.5">
             <div>
                 <span class="block text-xs font-bold text-gray-900">${escapeHtml(item.name)}</span>
@@ -1365,11 +1628,12 @@ function renderRespondingOrdersSection(survey) {
             <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-500">数量:</span>
                 <select class="select-order-qty border border-gray-300 rounded-lg p-1.5 text-xs bg-white font-bold" data-item-id="${item.id}" data-price="${item.price}">
-                    ${Array.from({ length: (item.max || 10) + 1 }, (_, i) => `<option value="${i}">${i}</option>`).join('')}
+                    ${Array.from({ length: (item.max || 10) + 1 }, (_, i) => `<option value="${i}" ${i === savedQty ? 'selected' : ''}>${i}</option>`).join('')}
                 </select>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 
     listEl.querySelectorAll('.select-order-qty').forEach(sel => {
         sel.addEventListener('change', updateRespondingOrderTotal);
@@ -1392,7 +1656,7 @@ function updateRespondingOrderTotal() {
     }
 }
 
-// 回答の送信処理
+// 回答の送信・更新処理
 export async function handleSubmitSurveyResponse() {
     if (!activeRespondingSurvey) return;
     const survey = activeRespondingSurvey;
@@ -1465,11 +1729,13 @@ export async function handleSubmitSurveyResponse() {
         });
     }
 
+    const isUpdate = !!activeEditingResponseId;
+    const responseId = activeEditingResponseId || `resp_${Date.now()}`;
     const now = new Date();
     const created_at = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
     const responseObj = {
-        id: `resp_${Date.now()}`,
+        id: responseId,
         survey_id: survey.id,
         respondent_name: respondentName,
         family_members: currentRespondingFamily.filter(f => f.name.trim()),
@@ -1481,6 +1747,49 @@ export async function handleSubmitSurveyResponse() {
     };
 
     await saveSurveyResponse(responseObj);
+
+    // 修正用URLの設定
+    const editUrl = `${window.location.origin}${window.location.pathname}#survey-${survey.id}&response=${responseObj.id}`;
+    const urlInput = document.getElementById('input-edit-response-url');
+    if (urlInput) urlInput.value = editUrl;
+
+    const copyBtn = document.getElementById('btn-copy-edit-url');
+    if (copyBtn) {
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(editUrl).then(() => {
+                alert('回答修正用URLをコピーしました！\n後から回答を変更する場合は、このURLから修正できます。');
+            }).catch(() => {
+                prompt('以下のURLをコピーしてください:', editUrl);
+            });
+        };
+    }
+
+    const reEditBtn = document.getElementById('btn-re-edit-response');
+    if (reEditBtn) {
+        reEditBtn.onclick = () => {
+            openSurveyResponsePage(survey.id, responseObj.id);
+        };
+    }
+
+    const viewResultsBtn = document.getElementById('btn-view-results-from-success');
+    if (viewResultsBtn) {
+        if (survey.public_results !== false) {
+            viewResultsBtn.classList.remove('hidden');
+            viewResultsBtn.onclick = () => openSurveyResultsModal(survey.id, true);
+        } else {
+            viewResultsBtn.classList.add('hidden');
+        }
+    }
+
+    // 完了タイトルと説明の切り替え
+    const titleEl = document.getElementById('survey-respond-success-title');
+    const descEl = document.getElementById('survey-respond-success-desc');
+    if (titleEl) {
+        titleEl.textContent = isUpdate ? '回答を更新しました！' : '回答を受け付けました！';
+    }
+    if (descEl) {
+        descEl.innerHTML = isUpdate ? '回答内容の変更が正常に保存されました。<br>内容は役員・担当者へ最新状態で共有されます。' : 'ご回答いただきありがとうございました。<br>内容は役員・担当者へ共有されます。';
+    }
 
     // 完了表示
     document.getElementById('survey-respond-form-container')?.classList.add('hidden');
