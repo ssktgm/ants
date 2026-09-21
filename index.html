@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>bb-sys for arinko ants.</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Supabase JS Client -->
@@ -1649,6 +1652,20 @@
 
         <!-- メイン回答エリア -->
         <main class="container mx-auto max-w-2xl p-4 py-6 flex-grow">
+            <!-- エラー表示コンテナ（アンケート未検出・読込失敗時） -->
+            <div id="survey-respond-error-container" class="hidden bg-white rounded-2xl p-8 border border-red-200 shadow-sm text-center space-y-4 my-6">
+                <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-3xl">⚠️</div>
+                <h2 class="text-xl font-bold text-gray-900" id="survey-respond-error-title">アンケートが見つかりませんでした</h2>
+                <p class="text-xs text-gray-600 leading-relaxed max-w-md mx-auto" id="survey-respond-error-desc">
+                    指定されたアンケートが存在しないか、URLの有効期限が切れている可能性があります。<br>
+                    URLをご確認いただくか、管理者へお問い合わせください。
+                </p>
+                <div class="pt-2 flex flex-col sm:flex-row gap-3 justify-center">
+                    <button id="btn-survey-error-reload" type="button" class="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer">再読み込みする</button>
+                    <button id="btn-survey-error-home" type="button" class="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs font-bold rounded-xl transition cursor-pointer">トップ画面へ戻る</button>
+                </div>
+            </div>
+
             <!-- 修正モード通知バナー -->
             <div id="respond-edit-mode-banner" class="hidden bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-center justify-between text-amber-900 mb-4 shadow-xs">
                 <div class="flex items-center gap-2.5 text-xs font-bold">

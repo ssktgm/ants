@@ -435,26 +435,60 @@ export function switchAuthScreen(screenId, subView = null) {
 
 // アンケートURLパラメータ・ハッシュ解析ヘルパー
 function parseSurveyUrlParams() {
-    const urlParams = new URLSearchParams(window.location.search);
-    let surveyId = urlParams.get('survey');
-    let responseId = urlParams.get('response');
-    let surveyData = urlParams.get('d');
+    let surveyId = null;
+    let responseId = null;
+    let surveyData = null;
 
-    let hash = window.location.hash || '';
-    if (hash.startsWith('#/')) hash = '#' + hash.substring(2);
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        surveyId = urlParams.get('survey');
+        responseId = urlParams.get('response');
+        surveyData = urlParams.get('d');
 
-    if (hash.startsWith('#survey-') || hash.startsWith('#survey=')) {
-        const hashContent = hash.startsWith('#survey-') ? hash.replace('#survey-', '') : hash.replace('#survey=', '');
-        const parts = hashContent.split('&');
-        surveyId = parts[0];
-        for (let i = 1; i < parts.length; i++) {
-            const [k, v] = parts[i].split('=');
-            if (k === 'response' && v) responseId = v;
-            if (k === 'd' && v) surveyData = v;
+        let hash = window.location.hash || '';
+        if (hash.startsWith('#/')) hash = '#' + hash.substring(2);
+
+        // ハッシュ内に ? が含まれる場合の対応 (例: #survey-xxx?d=yyy)
+        if (hash.includes('?')) {
+            const [hashPath, hashQuery] = hash.split('?');
+            hash = hashPath;
+            try {
+                const hParams = new URLSearchParams(hashQuery);
+                if (!surveyId) surveyId = hParams.get('survey');
+                if (!responseId) responseId = hParams.get('response');
+                if (!surveyData) surveyData = hParams.get('d');
+            } catch (e) {}
         }
+
+        if (hash.startsWith('#survey-') || hash.startsWith('#survey=')) {
+            const hashContent = hash.startsWith('#survey-') ? hash.replace('#survey-', '') : hash.replace('#survey=', '');
+            const parts = hashContent.split('&');
+            if (!surveyId) surveyId = parts[0];
+            for (let i = 1; i < parts.length; i++) {
+                const part = parts[i];
+                const eqIdx = part.indexOf('=');
+                if (eqIdx !== -1) {
+                    const k = part.substring(0, eqIdx);
+                    const v = part.substring(eqIdx + 1);
+                    if (k === 'response' && v && !responseId) responseId = v;
+                    if (k === 'd' && v && !surveyData) surveyData = v;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('parseSurveyUrlParams error:', e);
     }
-    if (surveyId) surveyId = decodeURIComponent(surveyId).trim().replace(/^\/+|\/+$/g, '');
-    if (responseId) responseId = decodeURIComponent(responseId).trim();
+
+    if (surveyId) {
+        try {
+            surveyId = decodeURIComponent(surveyId).trim().replace(/^\/+|\/+$/g, '');
+        } catch (e) {}
+    }
+    if (responseId) {
+        try {
+            responseId = decodeURIComponent(responseId).trim();
+        } catch (e) {}
+    }
     return { surveyId, responseId, surveyData: surveyData || null };
 }
 
@@ -705,9 +739,9 @@ if (supabaseClient) {
                     if (simEmailDisplay) simEmailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email);
 
                     // URLパラメータまたはハッシュでアンケート指定がある場合はアンケート回答画面を開く
-                    const { surveyId: targetSurveyId, responseId: targetResponseId } = parseSurveyUrlParams();
+                    const { surveyId: targetSurveyId, responseId: targetResponseId, surveyData: targetSurveyData } = parseSurveyUrlParams();
                     if (targetSurveyId) {
-                        await openSurveyResponsePage(targetSurveyId, targetResponseId);
+                        await openSurveyResponsePage(targetSurveyId, targetResponseId, targetSurveyData);
                         return;
                     }
 

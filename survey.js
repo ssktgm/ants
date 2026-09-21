@@ -578,8 +578,21 @@ export function encodeSurveyData(survey) {
 
 // アンケートデータのBase64デコード
 export function decodeSurveyData(base64Str) {
+    if (!base64Str) return null;
     try {
-        const jsonStr = decodeURIComponent(Array.prototype.map.call(atob(base64Str), (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        let cleanB64 = decodeURIComponent(base64Str).trim();
+        // 空白に化けた + を復元
+        cleanB64 = cleanB64.replace(/ /g, '+');
+        // URL-safe Base64 を標準 Base64 に変換
+        cleanB64 = cleanB64.replace(/-/g, '+').replace(/_/g, '/');
+        // パディングの補完
+        const pad = cleanB64.length % 4;
+        if (pad === 2) cleanB64 += '==';
+        else if (pad === 3) cleanB64 += '=';
+        else if (pad === 1) cleanB64 += '===';
+
+        const raw = atob(cleanB64);
+        const jsonStr = decodeURIComponent(Array.prototype.map.call(raw, (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
         return JSON.parse(jsonStr);
     } catch (e) {
         console.warn('Survey decode error:', e);
@@ -1360,83 +1373,11 @@ let currentRespondingFamily = [];
 let activeEditingResponseId = null;
 
 export async function openSurveyResponsePage(surveyId, responseId = null, surveyDataEncoded = null) {
-    // ローディングオーバーレイを即座に確実に強制解除
+    // 画面が真っ白になるのを防ぐため、最優先で画面を回答ビューに切り替え、全画面ローディングを解除する
     document.getElementById('loading-overlay')?.classList.add('hidden');
     const loadingDetail = document.getElementById('loading-detail-text');
     if (loadingDetail) loadingDetail.style.opacity = '0';
 
-    setupSurveyAdminEvents();
-    if (!surveysList || surveysList.length === 0) {
-        await loadSurveyData();
-    }
-
-    // 1. URL または引数から埋め込みアンケートデータを検出して即時復元
-    if (!surveyDataEncoded) {
-        const hash = window.location.hash || '';
-        const search = window.location.search || '';
-        const match = (hash + '&' + search).match(/[?&#]d=([^&]+)/);
-        if (match && match[1]) {
-            surveyDataEncoded = match[1];
-        }
-    }
-
-    let survey = surveysList.find(s => s.id === surveyId);
-
-    if (!survey && surveyDataEncoded) {
-        try {
-            const decoded = decodeSurveyData(surveyDataEncoded);
-            if (decoded && (decoded.id === surveyId || !surveyId)) {
-                survey = decoded;
-                surveysList.unshift(survey);
-                try {
-                    localStorage.setItem(STORAGE_KEY_SURVEYS, JSON.stringify(surveysList));
-                } catch (e) {}
-            }
-        } catch (e) {
-            console.warn('Embedded survey restore failed:', e);
-        }
-    }
-
-    // 2. キャッシュにない場合、DB/master_dataから最新データを再取得
-    if (!survey) {
-        await loadSurveyData();
-        survey = surveysList.find(s => s.id === surveyId);
-    }
-    if (!survey && surveyId) {
-        try {
-            const decodedId = decodeURIComponent(surveyId).trim();
-            survey = surveysList.find(s => s.id === decodedId);
-        } catch (e) {}
-    }
-
-    if (!survey) {
-        alert(`指定されたアンケートが見つかりませんでした。\n（アンケートID: ${surveyId}）\n\n最新のアンケート一覧からURLを再取得してご確認ください。`);
-        return;
-    }
-
-    activeRespondingSurvey = survey;
-    currentRespondingFamily = [];
-
-    // 既存回答の読み込み（修正モード）
-    let existingResp = null;
-    if (responseId) {
-        existingResp = responsesList.find(r => r.id === responseId);
-    }
-
-    const editBanner = document.getElementById('respond-edit-mode-banner');
-    const submitBtn = document.getElementById('btn-submit-survey-response');
-
-    if (existingResp) {
-        activeEditingResponseId = existingResp.id;
-        if (editBanner) editBanner.classList.remove('hidden');
-        if (submitBtn) submitBtn.textContent = '回答を更新する';
-    } else {
-        activeEditingResponseId = null;
-        if (editBanner) editBanner.classList.add('hidden');
-        if (submitBtn) submitBtn.textContent = '回答を送信する';
-    }
-
-    // 画面切り替え
     ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings', 'position-simulator-view', 'info-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
@@ -1445,53 +1386,149 @@ export async function openSurveyResponsePage(surveyId, responseId = null, survey
     const respondView = document.getElementById('survey-respond-view');
     if (respondView) respondView.classList.remove('hidden');
 
-    document.getElementById('respond-survey-title').textContent = survey.title;
-    document.getElementById('respond-survey-desc').innerHTML = survey.description ? survey.description.replace(/\n/g, '<br>') : '';
-    document.getElementById('respond-survey-deadline').textContent = survey.deadline ? `回答期限: ${survey.deadline}` : '';
+    const formContainer = document.getElementById('survey-respond-form-container');
+    const errContainer = document.getElementById('survey-respond-error-container');
+    const successContainer = document.getElementById('survey-respond-success-container');
+    if (successContainer) successContainer.classList.add('hidden');
 
-    // 回答状況ボタン（全員公開の場合）
-    const btnPublicResults = document.getElementById('btn-view-public-results');
-    if (btnPublicResults) {
-        if (survey.public_results !== false) {
-            btnPublicResults.classList.remove('hidden');
-            btnPublicResults.onclick = () => openSurveyResultsModal(survey.id, true);
-        } else {
-            btnPublicResults.classList.add('hidden');
+    try {
+        setupSurveyAdminEvents();
+        if (!surveysList || surveysList.length === 0) {
+            await loadSurveyData();
         }
-    }
 
-    // 回答者名
-    const nameInput = document.getElementById('input-respondent-name');
-    if (nameInput) {
-        if (existingResp) {
-            nameInput.value = existingResp.respondent_name || '';
-        } else {
-            nameInput.value = (currentAppUser && currentAppUser.name) ? currentAppUser.name : '';
+        // 1. URL または引数から埋め込みアンケートデータを検出して即時復元
+        if (!surveyDataEncoded) {
+            const hash = window.location.hash || '';
+            const search = window.location.search || '';
+            const match = (hash + '&' + search).match(/[?&#]d=([^&]+)/);
+            if (match && match[1]) {
+                surveyDataEncoded = match[1];
+            }
         }
-    }
 
-    // 家族メンバー
-    if (existingResp && existingResp.family_members) {
-        currentRespondingFamily = JSON.parse(JSON.stringify(existingResp.family_members));
-    } else {
+        let survey = surveysList.find(s => s.id === surveyId);
+
+        if (!survey && surveyDataEncoded) {
+            try {
+                const decoded = decodeSurveyData(surveyDataEncoded);
+                if (decoded && (decoded.id === surveyId || !surveyId)) {
+                    survey = decoded;
+                    surveysList.unshift(survey);
+                    try {
+                        localStorage.setItem(STORAGE_KEY_SURVEYS, JSON.stringify(surveysList));
+                    } catch (e) {}
+                }
+            } catch (e) {
+                console.warn('Embedded survey restore failed:', e);
+            }
+        }
+
+        // 2. キャッシュにない場合、DB/master_dataから最新データを再取得
+        if (!survey) {
+            await loadSurveyData();
+            survey = surveysList.find(s => s.id === surveyId);
+        }
+        if (!survey && surveyId) {
+            try {
+                const decodedId = decodeURIComponent(surveyId).trim();
+                survey = surveysList.find(s => s.id === decodedId);
+            } catch (e) {}
+        }
+
+        if (!survey) {
+            // アンケートが見つからない場合、白画面にせず案内画面を表示
+            if (formContainer) formContainer.classList.add('hidden');
+            if (errContainer) {
+                errContainer.classList.remove('hidden');
+                const errTitle = document.getElementById('survey-respond-error-title');
+                const errDesc = document.getElementById('survey-respond-error-desc');
+                if (errTitle) errTitle.textContent = 'アンケートが見つかりませんでした';
+                if (errDesc) errDesc.innerHTML = `指定されたアンケート（ID: <span class="font-mono font-bold">${surveyId || '未指定'}</span>）が存在しないか、URLが正しくない可能性があります。<br>最新のアンケートURLをご確認ください。`;
+            }
+            return;
+        }
+
+        // アンケートが見つかった場合、エラー表示を隠してフォームを表示
+        if (errContainer) errContainer.classList.add('hidden');
+        if (formContainer) formContainer.classList.remove('hidden');
+
+        activeRespondingSurvey = survey;
         currentRespondingFamily = [];
+
+        // 既存回答の読み込み（修正モード）
+        let existingResp = null;
+        if (responseId) {
+            existingResp = responsesList.find(r => r.id === responseId);
+        }
+
+        const editBanner = document.getElementById('respond-edit-mode-banner');
+        const submitBtn = document.getElementById('btn-submit-survey-response');
+
+        if (existingResp) {
+            activeEditingResponseId = existingResp.id;
+            if (editBanner) editBanner.classList.remove('hidden');
+            if (submitBtn) submitBtn.textContent = '回答を更新する';
+        } else {
+            activeEditingResponseId = null;
+            if (editBanner) editBanner.classList.add('hidden');
+            if (submitBtn) submitBtn.textContent = '回答を送信する';
+        }
+
+        document.getElementById('respond-survey-title').textContent = survey.title;
+        document.getElementById('respond-survey-desc').innerHTML = survey.description ? survey.description.replace(/\n/g, '<br>') : '';
+        document.getElementById('respond-survey-deadline').textContent = survey.deadline ? `回答期限: ${survey.deadline}` : '';
+
+        // 回答状況ボタン（全員公開の場合）
+        const btnPublicResults = document.getElementById('btn-view-public-results');
+        if (btnPublicResults) {
+            if (survey.public_results !== false) {
+                btnPublicResults.classList.remove('hidden');
+                btnPublicResults.onclick = () => openSurveyResultsModal(survey.id, true);
+            } else {
+                btnPublicResults.classList.add('hidden');
+            }
+        }
+
+        // 回答者名
+        const nameInput = document.getElementById('input-respondent-name');
+        if (nameInput) {
+            if (existingResp) {
+                nameInput.value = existingResp.respondent_name || '';
+            } else {
+                nameInput.value = (currentAppUser && currentAppUser.name) ? currentAppUser.name : '';
+            }
+        }
+
+        // 家族メンバー
+        if (existingResp && existingResp.family_members) {
+            currentRespondingFamily = JSON.parse(JSON.stringify(existingResp.family_members));
+        } else {
+            currentRespondingFamily = [];
+        }
+        renderRespondingFamilySection(survey);
+
+        // 日程調整
+        renderRespondingScheduleSection(survey, existingResp ? existingResp.schedules : null);
+
+        // 設問
+        renderRespondingQuestionsSection(survey, existingResp ? existingResp.answers : null);
+
+        // 注文
+        renderRespondingOrdersSection(survey, existingResp ? existingResp.orders : null);
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+        console.error('Error in openSurveyResponsePage:', err);
+        if (formContainer) formContainer.classList.add('hidden');
+        if (errContainer) {
+            errContainer.classList.remove('hidden');
+            const errTitle = document.getElementById('survey-respond-error-title');
+            const errDesc = document.getElementById('survey-respond-error-desc');
+            if (errTitle) errTitle.textContent = 'エラーが発生しました';
+            if (errDesc) errDesc.innerHTML = `アンケートの読み込み中にエラーが発生しました。<br><span class="text-xs text-red-500 font-mono">${err.message || err}</span>`;
+        }
     }
-    renderRespondingFamilySection(survey);
-
-    // 日程調整
-    renderRespondingScheduleSection(survey, existingResp ? existingResp.schedules : null);
-
-    // 設問
-    renderRespondingQuestionsSection(survey, existingResp ? existingResp.answers : null);
-
-    // 注文
-    renderRespondingOrdersSection(survey, existingResp ? existingResp.orders : null);
-
-    // 完了表示のリセット
-    document.getElementById('survey-respond-form-container')?.classList.remove('hidden');
-    document.getElementById('survey-respond-success-container')?.classList.add('hidden');
-
-    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function renderRespondingFamilySection(survey) {
@@ -1981,5 +2018,13 @@ function setupSurveyAdminEvents() {
             const authView = document.getElementById('auth-view');
             if (authView) authView.classList.remove('hidden');
         }
+    });
+
+    // アンケートエラー画面のボタン
+    document.getElementById('btn-survey-error-reload')?.addEventListener('click', () => {
+        window.location.reload();
+    });
+    document.getElementById('btn-survey-error-home')?.addEventListener('click', () => {
+        window.location.href = window.location.pathname;
     });
 }
