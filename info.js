@@ -1409,7 +1409,6 @@ function setupInfoEventListeners() {
 
     // ドキュメント閲覧モーダル
     document.getElementById('btn-close-doc-reader')?.addEventListener('click', closeDocumentReader);
-    document.getElementById('btn-close-doc-reader-bg')?.addEventListener('click', closeDocumentReader);
     document.getElementById('btn-export-doc-md')?.addEventListener('click', exportCurrentDocumentMd);
 
     // ドキュメント編集モーダル

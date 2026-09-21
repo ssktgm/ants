@@ -730,6 +730,259 @@ export function closeSurveyEditor() {
     editingSurveyId = null;
 }
 
+// ==========================================
+// 日本の祝日判定ロジック & カレンダーピッカー
+// ==========================================
+
+function getBasicHolidayName(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    const dayOfWeek = date.getDay();
+
+    // 固定祝日
+    if (month === 1 && day === 1) return '元日';
+    if (month === 2 && day === 11) return '建国記念の日';
+    if (month === 2 && day === 23) return '天皇誕生日';
+    if (month === 4 && day === 29) return '昭和の日';
+    if (month === 5 && day === 3) return '憲法記念日';
+    if (month === 5 && day === 4) return 'みどりの日';
+    if (month === 5 && day === 5) return 'こどもの日';
+    if (month === 8 && day === 11) return '山の日';
+    if (month === 11 && day === 3) return '文化の日';
+    if (month === 11 && day === 23) return '勤労感謝の日';
+
+    // ハッピーマンデー (第2・第3月曜日)
+    if (dayOfWeek === 1) {
+        const nth = Math.floor((day - 1) / 7) + 1;
+        if (month === 1 && nth === 2) return '成人の日';
+        if (month === 7 && nth === 3) return '海の日';
+        if (month === 9 && nth === 3) return '敬老の日';
+        if (month === 10 && nth === 2) return 'スポーツの日';
+    }
+
+    // 春分の日・秋分の日の簡易計算
+    if (month === 3) {
+        const syunbun = Math.floor(20.8431 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+        if (day === syunbun) return '春分の日';
+    }
+    if (month === 9) {
+        const syubun = Math.floor(23.2488 + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+        if (day === syubun) return '秋分の日';
+    }
+
+    return null;
+}
+
+function getJapaneseHolidayInfo(date) {
+    const basicName = getBasicHolidayName(date);
+    if (basicName) return { isHoliday: true, name: basicName };
+
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    const dayOfWeek = date.getDay();
+
+    // 振替休日判定:
+    // 当日が月曜等で、前日以前の連続した祝日の起点が日曜日である場合
+    let prev = new Date(year, month, day - 1);
+    while (getBasicHolidayName(prev)) {
+        if (prev.getDay() === 0) {
+            return { isHoliday: true, name: '振替休日' };
+        }
+        prev.setDate(prev.getDate() - 1);
+    }
+
+    // 国民の休日判定: 祝日と祝日に挟まれた平日
+    if (dayOfWeek !== 0) {
+        const prevDate = new Date(year, month, day - 1);
+        const nextDate = new Date(year, month, day + 1);
+        if (getBasicHolidayName(prevDate) && getBasicHolidayName(nextDate)) {
+            return { isHoliday: true, name: '国民の休日' };
+        }
+    }
+
+    return null;
+}
+
+// カレンダーピッカー状態管理
+let datePickerState = {
+    targetType: null, // 'schedule' | 'question'
+    targetQIdx: null,
+    viewYear: new Date().getFullYear(),
+    viewMonth: new Date().getMonth(),
+    selectedDates: new Set()
+};
+
+function openSurveyDatePicker(targetType, targetQIdx = null) {
+    datePickerState.targetType = targetType;
+    datePickerState.targetQIdx = targetQIdx;
+    const now = new Date();
+    datePickerState.viewYear = now.getFullYear();
+    datePickerState.viewMonth = now.getMonth();
+    datePickerState.selectedDates.clear();
+
+    renderDatePickerCalendar();
+    const modal = document.getElementById('modal-survey-date-picker');
+    if (modal) modal.classList.remove('hidden');
+}
+
+function closeSurveyDatePicker() {
+    const modal = document.getElementById('modal-survey-date-picker');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderDatePickerCalendar() {
+    const monthLabel = document.getElementById('dp-current-month-label');
+    const grid = document.getElementById('dp-calendar-grid');
+    const badge = document.getElementById('dp-selected-count-badge');
+    const applyBtn = document.getElementById('btn-apply-date-picker');
+
+    if (!grid) return;
+
+    const { viewYear, viewMonth, selectedDates } = datePickerState;
+    if (monthLabel) {
+        monthLabel.textContent = `${viewYear}年 ${viewMonth + 1}月`;
+    }
+    if (badge) {
+        badge.textContent = `${selectedDates.size} 日選択中`;
+    }
+    if (applyBtn) {
+        applyBtn.disabled = selectedDates.size === 0;
+    }
+
+    const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+    let html = '';
+
+    // 前月の空白マス
+    for (let i = 0; i < firstDayOfWeek; i++) {
+        html += '<div class="h-11 border border-transparent rounded-lg"></div>';
+    }
+
+    // 当月の日付マス
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(viewYear, viewMonth, d);
+        const dayOfWeek = dateObj.getDay();
+        const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const isSelected = selectedDates.has(dateStr);
+        const holiday = getJapaneseHolidayInfo(dateObj);
+
+        let colorClasses = '';
+        let badgeHtml = '';
+
+        if (isSelected) {
+            colorClasses = 'bg-teal-600 text-white font-bold shadow-xs';
+            if (holiday) {
+                badgeHtml = `<span class="text-[9px] block leading-tight truncate px-0.5 text-teal-100">${escapeHtml(holiday.name)}</span>`;
+            }
+        } else {
+            if (holiday) {
+                colorClasses = 'text-red-600 bg-red-50/70 hover:bg-red-100 font-bold border-red-100';
+                badgeHtml = `<span class="text-[9px] block leading-tight truncate px-0.5 text-red-600 font-bold">${escapeHtml(holiday.name)}</span>`;
+            } else if (dayOfWeek === 0) {
+                colorClasses = 'text-red-500 hover:bg-red-50 font-bold';
+            } else if (dayOfWeek === 6) {
+                colorClasses = 'text-blue-600 hover:bg-blue-50 font-bold';
+            } else {
+                colorClasses = 'text-gray-800 hover:bg-gray-100';
+            }
+        }
+
+        html += `
+            <button type="button" class="dp-day-cell h-11 p-1 flex flex-col items-center justify-between rounded-lg border border-gray-100 transition cursor-pointer text-xs ${colorClasses}" data-date="${dateStr}">
+                <span class="text-xs font-bold leading-none">${d}</span>
+                ${badgeHtml}
+            </button>
+        `;
+    }
+
+    grid.innerHTML = html;
+
+    // クリックトグル登録
+    grid.querySelectorAll('.dp-day-cell').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const dStr = btn.getAttribute('data-date');
+            if (selectedDates.has(dStr)) {
+                selectedDates.delete(dStr);
+            } else {
+                selectedDates.add(dStr);
+            }
+            renderDatePickerCalendar();
+        });
+    });
+}
+
+function selectDatePickerWeekends() {
+    const totalDays = new Date(datePickerState.viewYear, datePickerState.viewMonth + 1, 0).getDate();
+    for (let d = 1; d <= totalDays; d++) {
+        const date = new Date(datePickerState.viewYear, datePickerState.viewMonth, d);
+        const w = date.getDay();
+        const hol = getJapaneseHolidayInfo(date);
+        if (w === 0 || w === 6 || hol) {
+            const dateStr = `${datePickerState.viewYear}-${String(datePickerState.viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            datePickerState.selectedDates.add(dateStr);
+        }
+    }
+    renderDatePickerCalendar();
+}
+
+function handleApplyDatePicker() {
+    const { targetType, targetQIdx, selectedDates } = datePickerState;
+    if (selectedDates.size === 0) return;
+
+    const format = document.querySelector('input[name="dp-format"]:checked')?.value || 'simple';
+    const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+    // 昇順にソート
+    const sortedDates = Array.from(selectedDates).sort();
+    const formattedList = [];
+
+    sortedDates.forEach(dateStr => {
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d);
+        const wStr = dayNames[dateObj.getDay()];
+        const hol = getJapaneseHolidayInfo(dateObj);
+        const wText = hol ? `${wStr}・祝` : wStr;
+
+        if (format === 'time_slots') {
+            formattedList.push(`${m}/${d}(${wText}) 午前`);
+            formattedList.push(`${m}/${d}(${wText}) 午後`);
+            formattedList.push(`${m}/${d}(${wText}) 終日`);
+        } else if (format === 'with_year') {
+            formattedList.push(`${y}/${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}(${wText})`);
+        } else if (format === 'kanji') {
+            formattedList.push(`${m}月${d}日(${wText})`);
+        } else {
+            // simple
+            formattedList.push(`${m}/${d}(${wText})`);
+        }
+    });
+
+    if (targetType === 'schedule') {
+        currentEditorScheduleOptions.push(...formattedList);
+        renderEditorScheduleOptions();
+    } else if (targetType === 'question' && targetQIdx !== null) {
+        if (!currentEditorQuestions[targetQIdx].options) {
+            currentEditorQuestions[targetQIdx].options = [];
+        }
+        // 空または初期デフォルト選択肢なら置換、それ以外は追記
+        const currentOpts = currentEditorQuestions[targetQIdx].options;
+        const isDefault = currentOpts.length === 2 && currentOpts[0].label === '選択肢 1' && currentOpts[1].label === '選択肢 2';
+        if (isDefault) {
+            currentEditorQuestions[targetQIdx].options = formattedList.map(label => ({ label, skip_to: null }));
+        } else {
+            formattedList.forEach(label => {
+                currentEditorQuestions[targetQIdx].options.push({ label, skip_to: null });
+            });
+        }
+        renderEditorQuestions();
+    }
+
+    closeSurveyDatePicker();
+}
+
 function updateEditorSectionToggles() {
     const isSchedule = document.getElementById('chk-survey-enable-schedule')?.checked;
     const isOrders = document.getElementById('chk-survey-enable-orders')?.checked;
@@ -868,6 +1121,7 @@ function renderEditorQuestions() {
                                     <span class="text-[10px] text-gray-500 font-bold">スキップ先:</span>
                                     <select class="select-opt-skip text-xs border-0 bg-transparent text-teal-700 font-bold focus:ring-0" data-q-index="${qIdx}" data-opt-index="${optIdx}">
                                         <option value="">(通常通り次へ)</option>
+                                        <option value="__END__" ${opt.skip_to === '__END__' ? 'selected' : ''}>🏁 回答を終了（以降すべてスキップ）</option>
                                         ${otherQuestions.map((oq, oqIdx) => `<option value="${oq.id}" ${opt.skip_to === oq.id ? 'selected' : ''}>設問 ${qIdx + 2 + oqIdx}へジャンプ</option>`).join('')}
                                     </select>
                                 </div>
@@ -876,9 +1130,14 @@ function renderEditorQuestions() {
                             </div>
                         `).join('')}
                     </div>
-                    <button class="btn-add-opt mt-2 text-xs font-bold text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer" data-q-index="${qIdx}">
-                        <span>＋ 選択肢を追加</span>
-                    </button>
+                    <div class="flex items-center gap-2 mt-2">
+                        <button class="btn-add-opt text-xs font-bold text-teal-600 hover:text-teal-800 flex items-center gap-1 cursor-pointer" data-q-index="${qIdx}">
+                            <span>＋ 選択肢を追加</span>
+                        </button>
+                        <button class="btn-add-date-opt text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-2xs" data-q-index="${qIdx}">
+                            <span>📅 カレンダーから日程を追加</span>
+                        </button>
+                    </div>
                 </div>
                 ` : ''}
 
@@ -953,6 +1212,12 @@ function renderEditorQuestions() {
             if (!currentEditorQuestions[qIdx].options) currentEditorQuestions[qIdx].options = [];
             currentEditorQuestions[qIdx].options.push({ label: `選択肢 ${currentEditorQuestions[qIdx].options.length + 1}`, skip_to: null });
             renderEditorQuestions();
+        });
+    });
+    container.querySelectorAll('.btn-add-date-opt').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const qIdx = Number(btn.getAttribute('data-q-index'));
+            openSurveyDatePicker('question', qIdx);
         });
     });
     container.querySelectorAll('.input-opt-label').forEach(el => {
@@ -1757,7 +2022,12 @@ function evaluateSkipLogic(survey) {
             const checked = document.querySelector(`input[name="respond_ans_${q.id}"]:checked`);
             if (checked) {
                 const skipTo = checked.getAttribute('data-skip-to');
-                if (skipTo) {
+                if (skipTo === '__END__') {
+                    // 以降の設問すべてをスキップ対象にする（回答終了）
+                    for (let k = idx + 1; k < survey.questions.length; k++) {
+                        skippedIds.add(survey.questions[k].id);
+                    }
+                } else if (skipTo) {
                     // q の直後から skipTo の直前までをスキップ対象にする
                     const targetIdx = survey.questions.findIndex(t => t.id === skipTo);
                     if (targetIdx > idx) {
@@ -2014,6 +2284,41 @@ function setupSurveyAdminEvents() {
         currentEditorScheduleOptions.push(`候補日 ${currentEditorScheduleOptions.length + 1}`);
         renderEditorScheduleOptions();
     });
+    document.getElementById('btn-open-date-picker-sched')?.addEventListener('click', () => {
+        openSurveyDatePicker('schedule');
+    });
+
+    // カレンダー日程選択モーダルイベント
+    document.getElementById('btn-close-date-picker')?.addEventListener('click', closeSurveyDatePicker);
+    document.getElementById('btn-cancel-date-picker')?.addEventListener('click', closeSurveyDatePicker);
+    document.getElementById('btn-dp-prev-month')?.addEventListener('click', () => {
+        datePickerState.viewMonth--;
+        if (datePickerState.viewMonth < 0) {
+            datePickerState.viewMonth = 11;
+            datePickerState.viewYear--;
+        }
+        renderDatePickerCalendar();
+    });
+    document.getElementById('btn-dp-next-month')?.addEventListener('click', () => {
+        datePickerState.viewMonth++;
+        if (datePickerState.viewMonth > 11) {
+            datePickerState.viewMonth = 0;
+            datePickerState.viewYear++;
+        }
+        renderDatePickerCalendar();
+    });
+    document.getElementById('btn-dp-today')?.addEventListener('click', () => {
+        const now = new Date();
+        datePickerState.viewYear = now.getFullYear();
+        datePickerState.viewMonth = now.getMonth();
+        renderDatePickerCalendar();
+    });
+    document.getElementById('btn-dp-select-weekends')?.addEventListener('click', selectDatePickerWeekends);
+    document.getElementById('btn-dp-clear-all')?.addEventListener('click', () => {
+        datePickerState.selectedDates.clear();
+        renderDatePickerCalendar();
+    });
+    document.getElementById('btn-apply-date-picker')?.addEventListener('click', handleApplyDatePicker);
 
     // 注文品目追加
     document.getElementById('btn-add-order-item')?.addEventListener('click', () => {
