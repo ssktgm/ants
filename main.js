@@ -438,6 +438,7 @@ function parseSurveyUrlParams() {
     const urlParams = new URLSearchParams(window.location.search);
     let surveyId = urlParams.get('survey');
     let responseId = urlParams.get('response');
+    let surveyData = urlParams.get('d');
 
     let hash = window.location.hash || '';
     if (hash.startsWith('#/')) hash = '#' + hash.substring(2);
@@ -449,11 +450,12 @@ function parseSurveyUrlParams() {
         for (let i = 1; i < parts.length; i++) {
             const [k, v] = parts[i].split('=');
             if (k === 'response' && v) responseId = v;
+            if (k === 'd' && v) surveyData = v;
         }
     }
     if (surveyId) surveyId = decodeURIComponent(surveyId).trim().replace(/^\/+|\/+$/g, '');
     if (responseId) responseId = decodeURIComponent(responseId).trim();
-    return { surveyId, responseId, surveyData };
+    return { surveyId, responseId, surveyData: surveyData || null };
 }
 
 // ブラウザの戻る/進む（popstate）対応
