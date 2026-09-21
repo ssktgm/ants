@@ -322,6 +322,7 @@ function setupDashboardUI() {
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="avg" data-role="batter">打率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="ops" data-role="batter">OPS<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="obp" data-role="batter">出塁率<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="slg" data-role="batter">長打率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="h" data-role="batter">安打<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="bb" data-role="batter">四球<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="hbp" data-role="batter">死球<span></span></th>
@@ -1224,21 +1225,59 @@ async function drawCharts(games, bStats, pStats) {
 
 function calcBatterStats(stats) {
     let pa=0, ab=0, h=0, tb=0, rbi=0, r=0, sb=0, bb=0, hbp=0, so=0, hr=0;
+    let doubles=0, triples=0, sf=0, sh=0;
     stats.forEach(s => {
-        pa+=s.plate_appearances||0; ab+=s.at_bats||0; h+=s.hits||0; hr+=s.home_runs||0;
-        tb+=s.total_bases||0; rbi+=s.runs_batted_in||0; r+=s.runs||0; sb+=s.stolen_bases||0;
-        bb+=s.walks||0; hbp+=s.hit_by_pitch||0; so+=s.strike_outs||(s.strikeouts||0);
+        const curPa = s.plate_appearances || 0;
+        const curAb = s.at_bats || 0;
+        const curH = s.hits || 0;
+        const cur2b = s.doubles || 0;
+        const cur3b = s.triples || 0;
+        const curHr = s.home_runs || 0;
+        const curBb = s.walks || 0;
+        const curHbp = s.hit_by_pitch || 0;
+        const curSo = s.strike_outs || (s.strikeouts || 0);
+        const curSf = s.sacrifice_flies || (s.sac_flies || 0);
+        const curSh = s.sacrifice_hits || (s.sac_bunts || 0);
+        const curRbi = s.runs_batted_in || 0;
+        const curR = s.runs || 0;
+        const curSb = s.stolen_bases || 0;
+
+        pa += curPa;
+        ab += curAb;
+        h += curH;
+        doubles += cur2b;
+        triples += cur3b;
+        hr += curHr;
+        bb += curBb;
+        hbp += curHbp;
+        so += curSo;
+        sf += curSf;
+        sh += curSh;
+        rbi += curRbi;
+        r += curR;
+        sb += curSb;
+
+        // 塁打（TB）の計算: 単打 = 安打 - 二塁打 - 三塁打 - 本塁打
+        const cur1b = s.singles !== undefined ? s.singles : Math.max(0, curH - cur2b - cur3b - curHr);
+        const calcTb = cur1b * 1 + cur2b * 2 + cur3b * 3 + curHr * 4;
+        const curTb = (s.total_bases && s.total_bases > calcTb) ? s.total_bases : calcTb;
+        tb += curTb;
     });
+
     const avg = ab > 0 ? h / ab : 0;
-    const obp = pa > 0 ? (h + bb + hbp) / pa : 0;
+    // 公認野球規則の出塁率: (安打 + 四球 + 死球) / (打数 + 四球 + 死球 + 犠飛)
+    const obpDenom = ab + bb + hbp + sf;
+    const obp = obpDenom > 0 ? (h + bb + hbp) / obpDenom : (pa > 0 ? (h + bb + hbp) / pa : 0);
+    // 長打率: 塁打 / 打数
     const slg = ab > 0 ? tb / ab : 0;
+    // OPS: 出塁率 + 長打率
     const ops = obp + slg;
 
     const ob = h + bb + hbp;
     const runRate = ob > 0 ? (r / ob) : 0;
 
     return {
-        pa, ab, h, bb, hbp, rbi, r, sb, hr, so, ob,
+        pa, ab, h, doubles, triples, hr, tb, sf, sh, bb, hbp, rbi, r, sb, so, ob,
         avg, obp, slg, ops, runRate,
         avgStr: avg.toFixed(3).replace(/^0/, ''),
         obpStr: obp.toFixed(3).replace(/^0/, ''),
@@ -1384,9 +1423,9 @@ function renderHighlightCards(playerName, role, periodCalc, totalCalc, merged) {
                 </div>
             </div>
             <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
-                <div class="text-xs text-gray-500 font-bold mb-1">直近 OPS / 出塁率</div>
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 OPS / 出塁率・長打率</div>
                 <div class="text-2xl font-black text-purple-600">${periodCalc.opsStr}</div>
-                <div class="text-xs text-gray-500 mt-0.5">出塁率: <span class="font-bold text-gray-800">${periodCalc.obpStr}</span></div>
+                <div class="text-xs text-gray-500 mt-0.5">出塁率: <span class="font-bold text-gray-800">${periodCalc.obpStr}</span> / 長打率: <span class="font-bold text-gray-800">${periodCalc.slgStr}</span></div>
             </div>
             <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
                 <div class="text-xs text-gray-500 font-bold mb-1">直近 生還率 (R/OB)</div>
@@ -1655,23 +1694,28 @@ function renderGameDetailTable(role, merged) {
             const pa = s.plate_appearances || 0;
             const ab = s.at_bats || 0;
             const h = s.hits || 0;
-            const h1 = s.singles || 0;
             const h2 = s.doubles || 0;
             const h3 = s.triples || 0;
             const hr = s.home_runs || 0;
+            const h1 = s.singles !== undefined ? s.singles : Math.max(0, h - h2 - h3 - hr);
             const rbi = s.runs_batted_in || 0;
             const r = s.runs || 0;
             const bb = s.walks || 0;
             const hbp = s.hit_by_pitch || 0;
-            const so = s.strikeouts || 0;
-            const sh = (s.sac_flies || 0) + (s.sac_bunts || 0);
+            const so = s.strikeouts || (s.strike_outs || 0);
+            const sf = s.sacrifice_flies || (s.sac_flies || 0);
+            const sh = (s.sacrifice_hits || (s.sac_bunts || 0)) + sf;
             const sb = s.stolen_bases || 0;
             const err = s.errors || 0;
             const avg = ab > 0 ? (h / ab).toFixed(3).replace(/^0/, '') : '.000';
-            const obp = (ab + bb + hbp + (s.sac_flies||0)) > 0 ? ((h + bb + hbp) / (ab + bb + hbp + (s.sac_flies||0))).toFixed(3).replace(/^0/, '') : '.000';
-            const tb = h1 + (h2 * 2) + (h3 * 3) + (hr * 4);
-            const slg = ab > 0 ? (tb / ab).toFixed(3).replace(/^0/, '') : '.000';
-            const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3);
+            const obpDenom = ab + bb + hbp + sf;
+            const obpNum = obpDenom > 0 ? ((h + bb + hbp) / obpDenom) : (pa > 0 ? ((h + bb + hbp) / pa) : 0);
+            const obp = obpNum.toFixed(3).replace(/^0/, '');
+            const calcTb = h1 + (h2 * 2) + (h3 * 3) + (hr * 4);
+            const tb = (s.total_bases && s.total_bases > calcTb) ? s.total_bases : calcTb;
+            const slgNum = ab > 0 ? (tb / ab) : 0;
+            const slg = slgNum.toFixed(3).replace(/^0/, '');
+            const ops = (obpNum + slgNum).toFixed(3);
 
             return `
                 <tr class="hover:bg-gray-50">
@@ -1808,6 +1852,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             bb: calcPeriod.bb + calcPeriod.hbp,
             avg: calcPeriod.avg,
             obp: calcPeriod.obp,
+            slg: calcPeriod.slg,
             ops: calcPeriod.ops,
             runRate: calcPeriod.runRate,
             maAvg: latestMa.avg,
@@ -1851,6 +1896,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-blue-700 font-bold" data-ps-sort="bb">四死球<span>${getSortIcon('bb')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-red-600" data-ps-sort="avg">打率 (${limitLabel})<span>${getSortIcon('avg')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-600" data-ps-sort="obp">出塁率 (${limitLabel})<span>${getSortIcon('obp')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-teal-600" data-ps-sort="slg">長打率 (${limitLabel})<span>${getSortIcon('slg')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-purple-600" data-ps-sort="ops">OPS (${limitLabel})<span>${getSortIcon('ops')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-amber-600" data-ps-sort="runRate">生還率 (R/OB)<span>${getSortIcon('runRate')}</span></th>
                 <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-blue-600" data-ps-sort="maAvg">移動平均 打率<span>${getSortIcon('maAvg')}</span></th>
@@ -1870,6 +1916,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <td class="p-2 border text-right font-bold text-blue-700">${r.calcPeriod.bb + r.calcPeriod.hbp}</td>
                 <td class="p-2 border text-right font-black text-red-600">${r.calcPeriod.avgStr}</td>
                 <td class="p-2 border text-right font-bold text-blue-600">${r.calcPeriod.obpStr}</td>
+                <td class="p-2 border text-right font-bold text-teal-600">${r.calcPeriod.slgStr}</td>
                 <td class="p-2 border text-right font-black text-purple-700 bg-purple-50">${r.calcPeriod.opsStr}</td>
                 <td class="p-2 border text-right font-bold text-amber-600 bg-amber-50">${r.calcPeriod.runRateStr}</td>
                 <td class="p-2 border text-right font-bold text-blue-600">${r.latestMa.avgStr}</td>
@@ -2006,7 +2053,7 @@ function drawRankingTable(role) {
     });
 
     if (role === 'batter') {
-        document.getElementById('ranking-batter-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.pa}</td><td class="p-2">${r.avg.toFixed(3).replace(/^0/,'')}</td><td class="p-2 text-purple-700 font-bold">${r.ops.toFixed(3)}</td><td class="p-2">${r.obp.toFixed(3)}</td><td class="p-2">${r.h}</td><td class="p-2">${r.bb}</td><td class="p-2">${r.hbp}</td><td class="p-2">${r.rbi}</td><td class="p-2">${r.r}</td><td class="p-2">${r.sb}</td><td class="p-2">${r.hr}</td></tr>`).join('');
+        document.getElementById('ranking-batter-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.pa}</td><td class="p-2">${r.avgStr}</td><td class="p-2 text-purple-700 font-bold">${r.opsStr}</td><td class="p-2">${r.obpStr}</td><td class="p-2">${r.slgStr}</td><td class="p-2">${r.h}</td><td class="p-2">${r.bb}</td><td class="p-2">${r.hbp}</td><td class="p-2">${r.rbi}</td><td class="p-2">${r.r}</td><td class="p-2">${r.sb}</td><td class="p-2">${r.hr}</td></tr>`).join('');
     } else {
         document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
     }

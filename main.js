@@ -1,6 +1,8 @@
 import { initAttendanceApp } from './attendance.js';
 import { initDashboardApp } from './dashboard.js';
 import { initPositionSimulator } from './position_simulator.js';
+import { initInfoApp } from './info.js';
+import { openSurveyResponsePage } from './survey.js';
 
 // ==========================================
 // ★Vercel環境変数からSupabase情報を読み込む
@@ -308,6 +310,15 @@ function initAppDOM() {
             await withLoading(initDashboardApp, 'ダッシュボードを準備中...');
             switchAuthScreen('dashboard-view');
         });
+        document.getElementById('btn-app-info')?.addEventListener('click', async () => {
+            await withLoading(async () => {
+                await initInfoApp({ supabaseClient, currentUser, currentUserRole });
+            }, 'Info画面を準備中...');
+            switchAuthScreen('info-view');
+        });
+        document.getElementById('btn-back-to-menu-info')?.addEventListener('click', () => switchAuthScreen('app-menu-view'));
+        document.getElementById('btn-logout-info')?.addEventListener('click', handleLogout);
+
         document.getElementById('btn-back-to-menu')?.addEventListener('click', () => {
             switchAuthScreen('app-menu-view');
         });
@@ -344,7 +355,25 @@ function initAppDOM() {
             };
         }
 
-        // ポジションナビゲーションイベント
+        const btnInfo = document.getElementById('btn-app-info');
+        if (btnInfo) {
+            btnInfo.className = 'flex items-center justify-between w-full px-5 py-3.5 rounded-xl shadow-md transition duration-200 font-bold bg-teal-600 hover:bg-teal-700 hover:shadow-lg text-white text-left';
+            btnInfo.innerHTML = '<div class="flex items-center space-x-3 text-base sm:text-lg"><span class="text-2xl">ℹ️</span><span>Info</span></div><span class="text-white/60 text-sm font-normal">❯</span>';
+            btnInfo.onclick = async () => {
+                await withLoading(async () => {
+                    await initInfoApp({ supabaseClient, currentUser, currentUserRole });
+                }, 'Info画面を準備中...');
+                switchAuthScreen('info-view');
+            };
+        }
+
+        // ポジション & Info ナビゲーションイベント
+        document.getElementById('nav-info')?.addEventListener('click', async () => {
+            await withLoading(async () => {
+                await initInfoApp({ supabaseClient, currentUser, currentUserRole });
+            }, 'Info画面を準備中...');
+            switchAuthScreen('info-view');
+        });
         document.getElementById('nav-simulator')?.addEventListener('click', () => {
             switchAuthScreen('position-simulator-view');
             initPositionSimulator();
@@ -390,7 +419,7 @@ function pushHistoryState(screenId, subView = null) {
 
 // 画面切り替えヘルパー関数
 export function switchAuthScreen(screenId, subView = null) {
-    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings', 'position-simulator-view'].forEach(id => {
+    ['auth-view', 'signup-view', 'password-reset-view', 'password-update-view', 'app-menu-view', 'app-view', 'attendance-view', 'view-users', 'dashboard-view', 'dashboard-settings', 'position-simulator-view', 'info-view', 'survey-respond-view'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.classList.add('hidden');
     });
@@ -399,7 +428,7 @@ export function switchAuthScreen(screenId, subView = null) {
     
     pushHistoryState(screenId, subView);
 
-    if (screenId !== 'auth-view' && currentUser) {
+    if (screenId !== 'auth-view' && screenId !== 'survey-respond-view' && currentUser) {
         logAction('NAVIGATE', `画面遷移: ${screenId}${subView ? ' > ' + subView : ''}`);
     }
 }
@@ -408,6 +437,11 @@ export function switchAuthScreen(screenId, subView = null) {
 window.addEventListener('popstate', async (e) => {
     isPopStateNavigating = true;
     try {
+        const hash = window.location.hash;
+        if (hash.startsWith('#survey-')) {
+            await openSurveyResponsePage(hash.replace('#survey-', ''));
+            return;
+        }
         if (e.state && e.state.screenId) {
             switchAuthScreen(e.state.screenId, e.state.subView);
             
@@ -462,9 +496,10 @@ if (supabaseClient) {
                     let canUseDashboard = true;
                     let canUseAttendance = true;
                     let canUseSimulator = true;
+                    let canUseInfo = true;
 
                     try {
-                        const { data: userData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance, can_use_simulator').eq('email', currentUser.email).single();
+                        const { data: userData } = await supabaseClient.from('app_users').select('role, name, can_use_dispatch, can_use_dashboard, can_use_attendance, can_use_simulator, can_use_info').eq('email', currentUser.email).single();
                         
                         if (userData) {
                             currentUserRole = userData.role;
@@ -473,6 +508,7 @@ if (supabaseClient) {
                             if (userData.can_use_dashboard === false) canUseDashboard = false;
                             if (userData.can_use_attendance === false) canUseAttendance = false;
                             if (userData.can_use_simulator === false) canUseSimulator = false;
+                            if (userData.can_use_info === false) canUseInfo = false;
                         } else {
                             currentUserRole = 'user';
                         }
@@ -491,6 +527,7 @@ if (supabaseClient) {
                         canUseDashboard = true;
                         canUseAttendance = true;
                         canUseSimulator = true;
+                        canUseInfo = true;
                     }
 
                     // --- ダッシュボードボタンの共通追加処理 (全ユーザーに表示) ---
@@ -607,16 +644,37 @@ if (supabaseClient) {
                         navAttendanceSim?.classList.add('hidden');
                     }
 
+                    // Infoメニューおよびナビゲーションの表示制御
+                    const btnAppInfo = document.getElementById('btn-app-info');
+                    const navInfo = document.getElementById('nav-info');
+                    if (canUseInfo) {
+                        btnAppInfo?.classList.remove('hidden');
+                        navInfo?.classList.remove('hidden');
+                    } else {
+                        btnAppInfo?.classList.add('hidden');
+                        navInfo?.classList.add('hidden');
+                    }
+
                     const emailDisplay = document.getElementById('user-email-display');
                     if (emailDisplay) emailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email); // 名前があれば名前を表示
 
                     const simEmailDisplay = document.getElementById('sim-user-email-display');
                     if (simEmailDisplay) simEmailDisplay.textContent = currentUser.name || displayLoginId(currentUser.email);
 
+                    // URLパラメータまたはハッシュでアンケート指定がある場合はアンケート回答画面を開く
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const querySurveyId = urlParams.get('survey');
+                    const hashSurveyId = window.location.hash.startsWith('#survey-') ? window.location.hash.replace('#survey-', '') : null;
+                    const targetSurveyId = querySurveyId || hashSurveyId;
+                    if (targetSurveyId) {
+                        await openSurveyResponsePage(targetSurveyId);
+                        return;
+                    }
+
                     // URLハッシュから前回開いていた画面を復元（タブ復帰やリロード対策）
                     const hash = window.location.hash;
                     if (hash && hash !== '#app-menu-view' && hash !== '#auth-view') {
-                        const validScreens = ['app-view', 'attendance-view', 'dashboard-view'];
+                        const validScreens = ['app-view', 'attendance-view', 'dashboard-view', 'position-simulator-view', 'info-view'];
                         let restored = false;
                         for (const sId of validScreens) {
                             if (hash.startsWith('#' + sId)) {
@@ -649,6 +707,15 @@ if (supabaseClient) {
                                         console.error("Dashboard init error:", err);
                                         forceHideLoading();
                                     });
+                                } else if (sId === 'position-simulator-view') {
+                                    switchAuthScreen('position-simulator-view');
+                                    initPositionSimulator();
+                                } else if (sId === 'info-view') {
+                                    switchAuthScreen('info-view');
+                                    initInfoApp({ supabaseClient, currentUser, currentUserRole }).catch(err => {
+                                        console.error("Info init error:", err);
+                                        forceHideLoading();
+                                    });
                                 }
                                 restored = true;
                                 break;
@@ -667,6 +734,17 @@ if (supabaseClient) {
             } else {
                 currentUser = null;
                 forceHideLoading(); // セッション切れ等でログアウト状態に落ちた際、確実にローディングを解除する
+
+                // URLパラメータまたはハッシュでアンケート指定がある場合はアンケート回答画面を開く（ゲスト回答）
+                const urlParams = new URLSearchParams(window.location.search);
+                const querySurveyId = urlParams.get('survey');
+                const hashSurveyId = window.location.hash.startsWith('#survey-') ? window.location.hash.replace('#survey-', '') : null;
+                const targetSurveyId = querySurveyId || hashSurveyId;
+                if (targetSurveyId) {
+                    await openSurveyResponsePage(targetSurveyId);
+                    return;
+                }
+
                 const pwUpdateEl = document.getElementById('password-update-view');
                 if (!pwUpdateEl || pwUpdateEl.classList.contains('hidden')) {
                     switchAuthScreen('auth-view');
@@ -1317,6 +1395,7 @@ async function loadAdminUsersData() {
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-dashboard-${i}" class="rounded text-blue-600" ${u.can_use_dashboard !== false ? 'checked' : ''}><span>成績可</span></label>
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-attendance-${i}" class="rounded text-blue-600" ${u.can_use_attendance !== false ? 'checked' : ''}><span>出欠可</span></label>
                             <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-simulator-${i}" class="rounded text-blue-600" ${u.can_use_simulator !== false ? 'checked' : ''}><span>シミュレータ可</span></label>
+                            <label class="flex items-center space-x-1 text-xs font-bold text-gray-600"><input type="checkbox" id="edit-use-info-${i}" class="rounded text-teal-600" ${u.can_use_info !== false ? 'checked' : ''}><span>Info可</span></label>
                         </div>
                     </div>
                     <div class="flex items-center space-x-2 shrink-0">
@@ -1405,6 +1484,7 @@ async function saveAllAdminUsers() {
             const useDashboardEl = document.getElementById(`edit-use-dashboard-${index}`);
             const useAttendanceEl = document.getElementById(`edit-use-attendance-${index}`);
             const useSimulatorEl = document.getElementById(`edit-use-simulator-${index}`);
+            const useInfoEl = document.getElementById(`edit-use-info-${index}`);
             
             const newEmail = emailEl.disabled ? oldEmail : formatLoginId(emailEl.value.trim());
             const newName = nameEl.value.trim();
@@ -1414,6 +1494,7 @@ async function saveAllAdminUsers() {
             const canUseDashboard = useDashboardEl ? useDashboardEl.checked : true;
             const canUseAttendance = useAttendanceEl ? useAttendanceEl.checked : true;
             const canUseSimulator = useSimulatorEl ? useSimulatorEl.checked : true;
+            const canUseInfo = useInfoEl ? useInfoEl.checked : true;
 
             if (!newEmail) {
                 throw new Error('メールアドレスが空のレコードがあります。');
@@ -1429,7 +1510,8 @@ async function saveAllAdminUsers() {
                 can_use_dispatch: canUseDispatch,
                 can_use_dashboard: canUseDashboard,
                 can_use_attendance: canUseAttendance,
-                can_use_simulator: canUseSimulator
+                can_use_simulator: canUseSimulator,
+                can_use_info: canUseInfo
             };
             userUpdates.push({ oldEmail, updatePayload });
 
@@ -3553,7 +3635,7 @@ async function exportUsersCSV() {
             window.adminDelegations = delegations;
         }
 
-        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '代行専用(1/0)', '初期パスワード', '削除(1/0)'];
+        const headers = ['メールアドレス', '氏名', '役割', '所属グループ名', 'ユーザー属性名', '配車利用可(1/0)', '成績利用可(1/0)', '出欠利用可(1/0)', 'シミュレータ利用可(1/0)', 'Info利用可(1/0)', '代行入力先(カンマ区切りメールアドレス)', '代行専用(1/0)', '初期パスワード', '削除(1/0)'];
         const rows = [headers];
 
         users.forEach(u => {
@@ -3573,6 +3655,8 @@ async function exportUsersCSV() {
                 u.can_use_dispatch !== false ? '1' : '0',
                 u.can_use_dashboard !== false ? '1' : '0',
                 u.can_use_attendance !== false ? '1' : '0',
+                u.can_use_simulator !== false ? '1' : '0',
+                u.can_use_info !== false ? '1' : '0',
                 uDelegations,
                 isDummy ? '1' : '0',
                 '',
@@ -3619,6 +3703,8 @@ async function handleImportUsersCSVFile(e) {
             const dispatchIdx = headers.findIndex(h => h.includes('配車'));
             const dashboardIdx = headers.findIndex(h => h.includes('成績'));
             const attendanceIdx = headers.findIndex(h => h.includes('出欠'));
+            const simulatorIdx = headers.findIndex(h => h.includes('シミュレータ'));
+            const infoIdx = headers.findIndex(h => h.includes('Info') || h.includes('インフォ'));
             const delegationIdx = headers.findIndex(h => h.includes('代行入力先'));
             const dummyIdx = headers.findIndex(h => h.includes('代行専用'));
             const passwordIdx = headers.findIndex(h => h.includes('初期パスワード'));
@@ -3695,6 +3781,8 @@ async function handleImportUsersCSVFile(e) {
                 const canUseDispatch = dispatchIdx !== -1 ? (row[dispatchIdx] === '0' || row[dispatchIdx] === 'false' ? false : true) : true;
                 const canUseDashboard = dashboardIdx !== -1 ? (row[dashboardIdx] === '0' || row[dashboardIdx] === 'false' ? false : true) : true;
                 const canUseAttendance = attendanceIdx !== -1 ? (row[attendanceIdx] === '0' || row[attendanceIdx] === 'false' ? false : true) : true;
+                const canUseSimulator = simulatorIdx !== -1 ? (row[simulatorIdx] === '0' || row[simulatorIdx] === 'false' ? false : true) : true;
+                const canUseInfo = infoIdx !== -1 ? (row[infoIdx] === '0' || row[infoIdx] === 'false' ? false : true) : true;
                 const isDelete = deleteIdx !== -1 ? (row[deleteIdx] === '1' || row[deleteIdx] === '削除' ? true : false) : false;
 
                 let userDelegations = null;
@@ -3730,6 +3818,7 @@ async function handleImportUsersCSVFile(e) {
                 const item = {
                     email, name, role, group_id, group_name: groupName, attribute_id, attribute_name: attrName,
                     can_use_dispatch: canUseDispatch, can_use_dashboard: canUseDashboard, can_use_attendance: canUseAttendance,
+                    can_use_simulator: canUseSimulator, can_use_info: canUseInfo,
                     delegations: userDelegations,
                     is_dummy: isDummy,
                     initial_password: passwordToUpdate !== null ? passwordToUpdate : initialPassword
@@ -3747,6 +3836,8 @@ async function handleImportUsersCSVFile(e) {
                         const dispatchChanged = (existing.can_use_dispatch !== false) !== canUseDispatch;
                         const dashboardChanged = (existing.can_use_dashboard !== false) !== canUseDashboard;
                         const attendanceChanged = (existing.can_use_attendance !== false) !== canUseAttendance;
+                        const simulatorChanged = (existing.can_use_simulator !== false) !== canUseSimulator;
+                        const infoChanged = (existing.can_use_info !== false) !== canUseInfo;
 
                         let delegationChanged = false;
                         if (userDelegations !== null) {
@@ -3763,7 +3854,7 @@ async function handleImportUsersCSVFile(e) {
                             passwordChanged = true;
                         }
 
-                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || delegationChanged || passwordChanged) {
+                        if (groupChanged || roleChanged || nameChanged || attrChanged || dispatchChanged || dashboardChanged || attendanceChanged || simulatorChanged || infoChanged || delegationChanged || passwordChanged) {
                             updateList.push(item);
                         }
                     }
@@ -3868,7 +3959,9 @@ async function executeUsersImport() {
                 attribute_id: u.attribute_id,
                 can_use_dispatch: u.can_use_dispatch,
                 can_use_dashboard: u.can_use_dashboard,
-                can_use_attendance: u.can_use_attendance
+                can_use_attendance: u.can_use_attendance,
+                can_use_simulator: u.can_use_simulator,
+                can_use_info: u.can_use_info
             }));
             const { error: addErr } = await supabaseClient.from('app_users').insert(insertPayload);
             if (addErr) throw addErr;
@@ -3916,7 +4009,9 @@ async function executeUsersImport() {
                     attribute_id: u.attribute_id,
                     can_use_dispatch: u.can_use_dispatch,
                     can_use_dashboard: u.can_use_dashboard,
-                    can_use_attendance: u.can_use_attendance
+                    can_use_attendance: u.can_use_attendance,
+                    can_use_simulator: u.can_use_simulator,
+                    can_use_info: u.can_use_info
                 }).eq('email', u.email);
                 if (updErr) throw updErr;
 
