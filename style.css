@@ -216,6 +216,19 @@
   color: #ef4444;
 }
 
+.sim-player-edit-btn {
+  margin-left: 6px;
+  color: #9ca3af;
+  font-size: 11px;
+  cursor: pointer;
+  transition: color 0.15s, transform 0.15s;
+}
+
+.sim-player-edit-btn:hover {
+  color: #d97706;
+  transform: scale(1.15);
+}
+
 /* ベンチ選手バッジ */
 .sim-bench-badge {
   background-color: #fef3c7; /* amber-100 */

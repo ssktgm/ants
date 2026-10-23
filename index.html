@@ -526,6 +526,7 @@
                     </select>
                     <button id="btn-save-sim-pattern" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition shadow-sm">保存</button>
                     <button id="btn-delete-sim-pattern" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold px-3 py-1.5 rounded-lg text-sm transition">削除</button>
+                    <button id="btn-refresh-sim-pattern" title="マスターの最新選手情報（氏名・背番号）で、この配置データを上書き更新します" class="bg-sky-600 hover:bg-sky-700 text-white font-bold px-3 py-1.5 rounded-lg text-sm transition shadow-sm flex items-center gap-1">🔄 最新化</button>
                 </div>
                 <!-- 初期パターン / メンバー表 / JSON / DH -->
                 <div class="flex items-center gap-2 flex-wrap">
@@ -1106,6 +1107,40 @@
                 <button id="btn-close-new-sim-modal-footer" class="bg-gray-100 hover:bg-gray-200 border text-gray-700 font-bold px-4 py-2 rounded-lg text-sm transition">キャンセル</button>
                 <button id="btn-create-new-sim" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-lg text-sm transition shadow flex items-center gap-1">
                     <span>作成して開始</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 選手情報編集モーダル (名前・背番号修正)    -->
+    <!-- ========================================== -->
+    <div id="sim-edit-player-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 flex flex-col gap-4">
+            <div class="flex justify-between items-center border-b pb-2">
+                <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+                    <span>✏️</span><span>選手情報の変更</span>
+                </h3>
+                <button id="btn-close-edit-player-modal" class="text-gray-400 hover:text-gray-600 text-xl font-bold font-normal">×</button>
+            </div>
+
+            <input type="hidden" id="edit-player-id">
+
+            <div class="flex flex-col gap-3">
+                <div>
+                    <label for="edit-player-name" class="block font-bold text-gray-700 mb-1 text-xs">選手フルネーム <span class="text-red-500">*</span></label>
+                    <input type="text" id="edit-player-name" placeholder="選手フルネーム" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                </div>
+                <div>
+                    <label for="edit-player-number" class="block font-bold text-gray-700 mb-1 text-xs">背番号 (任意)</label>
+                    <input type="text" id="edit-player-number" placeholder="例: 10" class="w-full border border-gray-300 rounded-lg p-2 text-sm bg-white focus:ring-2 focus:ring-amber-500">
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-2 mt-2 border-t pt-3">
+                <button id="btn-close-edit-player-modal-footer" class="bg-gray-100 hover:bg-gray-200 border text-gray-700 font-bold px-4 py-2 rounded-lg text-sm transition">キャンセル</button>
+                <button id="btn-save-edit-player" class="bg-amber-600 hover:bg-amber-700 text-white font-bold px-5 py-2 rounded-lg text-sm transition shadow flex items-center gap-1">
+                    <span>保存する</span>
                 </button>
             </div>
         </div>

@@ -48,6 +48,7 @@ function getTempPattern() {
             basePositions: {},
             customSubstitutions: [],
             battingOrder: {},
+            playerSnapshots: {},
             headerInfo: {
                 date: '',
                 tournament: '',
@@ -167,7 +168,74 @@ function sanitizePattern(pat) {
     if (!pat.headerInfo) pat.headerInfo = {};
     if (!pat.teamId) pat.teamId = pat.headerInfo.teamId || 'team_default';
     if (pat.mode === undefined) pat.mode = 9;
+    if (!pat.playerSnapshots) {
+        pat.playerSnapshots = pat.headerInfo.playerSnapshots || {};
+    }
     return pat;
+}
+
+/**
+ * パターン内の選手、およびチームの選手から氏名・背番号の生データ（スナップショット）を構築
+ */
+function buildPlayerSnapshots(pattern, forceUpdateFromMaster = false) {
+    const snapshots = (pattern && !forceUpdateFromMaster && pattern.playerSnapshots) 
+        ? { ...pattern.playerSnapshots } 
+        : {};
+    
+    // パターン内のすべての選手IDを抽出
+    const playerIds = new Set();
+    if (pattern) {
+        if (pattern.basePositions) {
+            Object.values(pattern.basePositions).forEach(id => id && playerIds.add(id));
+        }
+        if (pattern.battingOrder) {
+            Object.values(pattern.battingOrder).forEach(id => id && playerIds.add(id));
+        }
+        if (pattern.customSubstitutions) {
+            pattern.customSubstitutions.forEach(rule => {
+                if (rule.type === 'sub') {
+                    if (rule.details?.outPlayerId) playerIds.add(rule.details.outPlayerId);
+                    if (rule.details?.inPlayerId) playerIds.add(rule.details.inPlayerId);
+                }
+            });
+        }
+    }
+    
+    // 現在のチームの選手IDも追加
+    const teamPlayers = getPlayersForCurrentTeam();
+    teamPlayers.forEach(p => playerIds.add(p.id));
+
+    // 各選手IDについて、まだスナップショットが無い、または強制更新の場合、マスターから取得
+    playerIds.forEach(id => {
+        if (forceUpdateFromMaster || !snapshots[id]) {
+            const master = players.find(p => p.id === id);
+            if (master) {
+                snapshots[id] = {
+                    id: master.id,
+                    name: master.name,
+                    number: master.number || ''
+                };
+            }
+        }
+    });
+
+    return snapshots;
+}
+
+/**
+ * 選手の氏名・背番号情報を取得する
+ * パターンに生データ（スナップショット）が保持されていればそれを優先し、
+ * なければ登録選手マスターから取得する
+ */
+function getPlayerInfo(playerId, pattern = null) {
+    if (!playerId) return null;
+    const pat = pattern || getCurrentPattern();
+    if (pat && pat.playerSnapshots && pat.playerSnapshots[playerId]) {
+        return pat.playerSnapshots[playerId];
+    }
+    const master = players.find(p => p.id === playerId);
+    if (master) return master;
+    return { id: playerId, name: '未配置選手', number: '' };
 }
 
 /**
@@ -223,6 +291,7 @@ async function loadData() {
                     basePositions: p.base_positions || {},
                     customSubstitutions: p.custom_substitutions || [],
                     battingOrder: p.batting_order || {},
+                    playerSnapshots: p.header_info?.playerSnapshots || {},
                     headerInfo: p.header_info || {},
                     created_at: p.created_at,
                     updated_at: p.updated_at,
@@ -354,7 +423,13 @@ async function syncPatternToDB(pattern, isDelete = false) {
         if (isDelete) {
             res = await supabaseClient.from('sim_patterns').delete().eq('id', pattern.id);
         } else {
-            const headerInfo = { ...(pattern.headerInfo || {}), teamId: pattern.teamId || currentTeamId };
+            const playerSnapshots = buildPlayerSnapshots(pattern);
+            pattern.playerSnapshots = playerSnapshots;
+            const headerInfo = { 
+                ...(pattern.headerInfo || {}), 
+                teamId: pattern.teamId || currentTeamId,
+                playerSnapshots: playerSnapshots
+            };
             res = await supabaseClient.from('sim_patterns').upsert({
                 id: pattern.id,
                 name: pattern.name,
@@ -478,6 +553,7 @@ async function createNewPattern(name = '', teamId = null, templateId = null, mod
         basePositions: basePos,
         customSubstitutions: [],
         battingOrder: battOrd,
+        playerSnapshots: buildPlayerSnapshots({ basePositions: basePos, battingOrder: battOrd }),
         headerInfo: {
             date: '',
             tournament: '',
@@ -717,11 +793,18 @@ function renderPlayersList(assignedPlayerIds, retiredPlayerIds) {
         const numLabel = player.number ? `#${player.number} ` : '';
         badge.innerHTML = `
             <span>${numLabel}${escapeHTML(player.name)}${isRetired ? ' (交代済)' : ''}</span>
-            <span class="sim-player-delete-btn" data-player-id="${player.id}">×</span>
+            <span class="sim-player-edit-btn" data-player-id="${player.id}" title="選手名・背番号を編集">✏️</span>
+            <span class="sim-player-delete-btn" data-player-id="${player.id}" title="削除">×</span>
         `;
         
         badge.addEventListener('click', (e) => {
+            if (e.target.classList.contains('sim-player-edit-btn')) {
+                e.stopPropagation();
+                handleOpenEditPlayerModal(player.id);
+                return;
+            }
             if (e.target.classList.contains('sim-player-delete-btn')) {
+                e.stopPropagation();
                 handleDeletePlayer(player.id);
                 return;
             }
@@ -783,7 +866,7 @@ function renderFieldPositions(drawPositions, currentPattern) {
     
     activePositions.forEach(pos => {
         const playerId = drawPositions[pos];
-        const player = players.find(p => p.id === playerId);
+        const player = getPlayerInfo(playerId, currentPattern);
         
         const isChanged = (currentPattern.basePositions || {})[pos] !== playerId && playerId;
         const isSelected = selectedPlayerId && selectedSourcePos === pos;
@@ -836,7 +919,7 @@ function renderBattingOrderList(pattern) {
     // 打順 1番〜最大数 順に行をレンダリング
     for (let ord = 1; ord <= maxOrder; ord++) {
         const playerId = pattern.battingOrder[ord];
-        const player = playerId ? players.find(p => p.id === playerId) : null;
+        const player = playerId ? getPlayerInfo(playerId, pattern) : null;
         
         const pos = player ? playerToPos[player.id] : null;
         const posLabel = pos ? POSITION_LABELS[pos] : '未配置';
@@ -936,13 +1019,14 @@ async function handleSwapBattingOrder(order, direction) {
 /**
  * 交代ルールの概要テキスト（守備番号・アナウンス調テキスト）を取得
  */
-function getRuleSummaryText(rule, tempPositions, isHTML) {
+function getRuleSummaryText(rule, tempPositions, isHTML, pattern = null) {
     if (!rule) return { code: '', desc: '', fullDesc: '' };
+    const pat = pattern || getCurrentPattern();
     
     if (rule.type === 'sub') {
         const { outPlayerId, inPlayerId } = rule.details;
-        const outPlayer = players.find(p => p.id === outPlayerId);
-        const inPlayer = players.find(p => p.id === inPlayerId);
+        const outPlayer = getPlayerInfo(outPlayerId, pat);
+        const inPlayer = getPlayerInfo(inPlayerId, pat);
         
         const outName = outPlayer ? outPlayer.name : '不明';
         const inName = inPlayer ? inPlayer.name : '不明';
@@ -972,7 +1056,7 @@ function getRuleSummaryText(rule, tempPositions, isHTML) {
             const fromPos = keys[i];
             const toPos = keys[i + 1];
             const pId = tempPositions[fromPos];
-            const player = players.find(p => p.id === pId);
+            const player = getPlayerInfo(pId, pat);
             if (player) {
                 const name = isHTML 
                     ? `<span class="font-bold text-amber-900">${escapeHTML(player.name)}</span>` 
@@ -990,8 +1074,8 @@ function getRuleSummaryText(rule, tempPositions, isHTML) {
         const { pos1, pos2 } = rule.details;
         const pId1 = tempPositions[pos1];
         const pId2 = tempPositions[pos2];
-        const player1 = players.find(p => p.id === pId1);
-        const player2 = players.find(p => p.id === pId2);
+        const player1 = getPlayerInfo(pId1, pat);
+        const player2 = getPlayerInfo(pId2, pat);
         
         const num1 = POSITION_NUMBERS[pos1] || pos1;
         const num2 = POSITION_NUMBERS[pos2] || pos2;
@@ -1180,7 +1264,7 @@ function initRuleFormSelects() {
         activePositions.forEach(pos => {
             const pId = currentPositions[pos];
             if (pId) {
-                const name = players.find(p => p.id === pId)?.name || '未配置';
+                const name = getPlayerInfo(pId, currentPattern)?.name || '未配置';
                 const opt = document.createElement('option');
                 opt.value = pId;
                 opt.textContent = `${name} (${POSITION_LABELS[pos]})`;
@@ -1797,6 +1881,97 @@ async function handleAddPlayer() {
     renderSimulator();
 }
 
+/**
+ * 選手情報編集モーダルのオープン
+ */
+function handleOpenEditPlayerModal(playerId) {
+    const player = players.find(p => p.id === playerId);
+    if (!player) return;
+
+    const modal = document.getElementById('sim-edit-player-modal');
+    const idInput = document.getElementById('edit-player-id');
+    const nameInput = document.getElementById('edit-player-name');
+    const numInput = document.getElementById('edit-player-number');
+
+    if (idInput) idInput.value = player.id;
+    if (nameInput) nameInput.value = player.name;
+    if (numInput) numInput.value = player.number || '';
+
+    if (modal) modal.classList.remove('hidden');
+    if (nameInput) {
+        nameInput.focus();
+        nameInput.select();
+    }
+}
+
+/**
+ * 選手情報編集モーダルのクローズ
+ */
+function handleCloseEditPlayerModal() {
+    const modal = document.getElementById('sim-edit-player-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+/**
+ * 選手情報の変更（氏名・背番号）保存処理
+ */
+async function handleSaveEditPlayer() {
+    const idInput = document.getElementById('edit-player-id');
+    const nameInput = document.getElementById('edit-player-name');
+    const numInput = document.getElementById('edit-player-number');
+
+    const playerId = idInput ? idInput.value : '';
+    const name = nameInput ? nameInput.value.trim() : '';
+    const number = numInput ? numInput.value.trim() : '';
+
+    if (!playerId) return;
+    if (!name) {
+        alert('選手フルネームを入力してください。');
+        return;
+    }
+
+    const player = players.find(p => p.id === playerId);
+    if (!player) return;
+
+    // 同チーム内の他選手との重複チェック（自分自身は除く）
+    const teamPlayers = getPlayersForCurrentTeam();
+    if (teamPlayers.some(p => p.id !== playerId && p.name === name)) {
+        alert('このチームには同じフルネームの別の選手が既に登録されています。');
+        return;
+    }
+
+    player.name = name;
+    player.number = number;
+
+    await syncPlayerToDB(player);
+
+    handleCloseEditPlayerModal();
+    initRuleFormSelects();
+    renderSimulator();
+}
+
+/**
+ * 配置データ内の選手生データ（氏名・背番号）をマスターの最新情報で上書き更新する
+ */
+async function handleRefreshPlayerSnapshots() {
+    const currentPattern = getCurrentPattern();
+    if (!currentPattern) {
+        alert('配置データが選択されていません。');
+        return;
+    }
+
+    // マスターの最新情報でスナップショットを強制上書き
+    currentPattern.playerSnapshots = buildPlayerSnapshots(currentPattern, true);
+    if (!currentPattern.headerInfo) currentPattern.headerInfo = {};
+    currentPattern.headerInfo.playerSnapshots = currentPattern.playerSnapshots;
+
+    await autoSavePattern(currentPattern);
+    initRuleFormSelects();
+    renderSimulator();
+
+    alert(`配置データ「${currentPattern.name || '現在のデータ'}」の選手情報（氏名・背番号）をマスターの最新データで上書き更新しました。`);
+}
+
 async function handleDeletePlayer(playerId) {
     const player = players.find(p => p.id === playerId);
     if (!player) return;
@@ -1925,6 +2100,9 @@ async function handleSavePattern() {
                 basePositions: currentPattern ? { ...(currentPattern.basePositions || {}) } : {},
                 customSubstitutions: currentPattern ? JSON.parse(JSON.stringify(currentPattern.customSubstitutions || [])) : [],
                 battingOrder: currentPattern ? { ...(currentPattern.battingOrder || {}) } : {},
+                playerSnapshots: currentPattern && currentPattern.playerSnapshots 
+                    ? { ...currentPattern.playerSnapshots } 
+                    : buildPlayerSnapshots(currentPattern),
                 headerInfo: currentPattern ? JSON.parse(JSON.stringify(currentPattern.headerInfo || {})) : {
                     date: '',
                     tournament: '',
@@ -2110,7 +2288,7 @@ function updateMemberTextarea(currentPattern, drawPositions, retiredPlayerIds) {
     for (let ord = 1; ord <= maxOrder; ord++) {
         const pId = currentPattern.battingOrder[ord];
         if (pId) {
-            const player = players.find(p => p.id === pId);
+            const player = getPlayerInfo(pId, currentPattern);
             const pos = playerToPos[pId];
             if (player && pos) {
                 const posNum = POSITION_NUMBERS[pos];
@@ -2128,8 +2306,9 @@ function updateMemberTextarea(currentPattern, drawPositions, retiredPlayerIds) {
         text += `(なし)\n`;
     } else {
         benchPlayers.forEach(p => {
-            const numText = p.number ? ` [#${p.number}]` : '';
-            text += `・${p.name}${numText}\n`;
+            const pInfo = getPlayerInfo(p.id, currentPattern);
+            const numText = pInfo.number ? ` [#${pInfo.number}]` : '';
+            text += `・${pInfo.name}${numText}\n`;
         });
     }
     
@@ -2140,7 +2319,7 @@ function updateMemberTextarea(currentPattern, drawPositions, retiredPlayerIds) {
     } else {
         let tempPositions = { ...(currentPattern.basePositions || {}) };
         activeRules.forEach((rule, idx) => {
-            const textObj = getRuleSummaryText(rule, tempPositions, false);
+            const textObj = getRuleSummaryText(rule, tempPositions, false, currentPattern);
             text += `${idx + 1}. [${textObj.code}] ${textObj.fullDesc}\n`;
             
             if (rule.type === 'swap') {
@@ -2210,7 +2389,7 @@ function handlePrintMemberTable() {
     for (let ord = 1; ord <= maxOrder; ord++) {
         const pId = currentPattern.battingOrder[ord];
         if (pId) {
-            const player = players.find(p => p.id === pId);
+            const player = getPlayerInfo(pId, currentPattern);
             const pos = playerToPos[pId];
             if (player && pos) {
                 lineup.push({
@@ -2237,8 +2416,10 @@ function handlePrintMemberTable() {
     for (let i = 0; i < 6; i++) {
         const leftIdx = i * 2;
         const rightIdx = i * 2 + 1;
-        const leftPlayer = benchPlayers[leftIdx];
-        const rightPlayer = benchPlayers[rightIdx];
+        const rawLeft = benchPlayers[leftIdx];
+        const rawRight = benchPlayers[rightIdx];
+        const leftPlayer = rawLeft ? getPlayerInfo(rawLeft.id, currentPattern) : null;
+        const rightPlayer = rawRight ? getPlayerInfo(rawRight.id, currentPattern) : null;
         
         benchPairs.push({
             leftName: leftPlayer ? leftPlayer.name : '',
@@ -2831,6 +3012,18 @@ function setupEventListeners() {
     document.getElementById('sim-pattern-select')?.addEventListener('change', handlePatternSelectChange);
     document.getElementById('btn-save-sim-pattern')?.addEventListener('click', handleSavePattern);
     document.getElementById('btn-delete-sim-pattern')?.addEventListener('click', handleDeletePattern);
+    document.getElementById('btn-refresh-sim-pattern')?.addEventListener('click', handleRefreshPlayerSnapshots);
+
+    // 選手編集モーダル
+    document.getElementById('btn-close-edit-player-modal')?.addEventListener('click', handleCloseEditPlayerModal);
+    document.getElementById('btn-close-edit-player-modal-footer')?.addEventListener('click', handleCloseEditPlayerModal);
+    document.getElementById('btn-save-edit-player')?.addEventListener('click', handleSaveEditPlayer);
+    document.getElementById('edit-player-name')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSaveEditPlayer();
+    });
+    document.getElementById('edit-player-number')?.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleSaveEditPlayer();
+    });
     
     // モード切替
     document.getElementById('btn-sim-mode-9')?.addEventListener('click', async () => {
