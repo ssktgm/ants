@@ -704,7 +704,7 @@ function setupDashboardUI() {
                         <div class="flex flex-wrap items-center gap-1.5" id="detail-transcript-half-tabs"></div>
                         <label class="flex items-center space-x-1.5 text-xs font-bold text-gray-700 cursor-pointer select-none bg-gray-100 px-3 py-1.5 rounded-lg border">
                             <input type="checkbox" id="detail-transcript-show-pitches" class="rounded text-blue-600">
-                            <span>投球カウント ([1]ボール等) もすべて表示</span>
+                            <span>投球カウント (BSO・全投球) もすべて表示</span>
                         </label>
                     </div>
 
@@ -3353,7 +3353,7 @@ function decodeScorerGamePlayByPlay(detailObj) {
         } else if (cd === 'Ah') {
             sPlay = '試合終了 ';
             type = 'game_end';
-        } else if (/^(Am|Ag|Ap|Odp|Sc|Sw|Qw|Qx|Pt)/.test(cd)) {
+        } else if (/^(Am|Ag|Ap|Odp|Sc|Sw|Qw|Qx)/.test(cd)) {
             sPlay = '';
         } else if (cd === 'Nb') {
             if (lineup[battingSide].length > 0) batterIdx[battingSide] = (batterIdx[battingSide] + 1) % lineup[battingSide].length;
@@ -3369,13 +3369,14 @@ function decodeScorerGamePlayByPlay(detailObj) {
             runners[1] = lineup[battingSide][(batterIdx[battingSide] - 1 + len) % len];
             runners[2] = lineup[battingSide][(batterIdx[battingSide] - 2 + len) % len];
             sPlay = 'タイブレーク (1･2塁ランナー設定) ';
-        } else if (/^P([bslf])$/.test(cd) || cd === 'Px') {
+        } else if (/^P([bslf])$/.test(cd) || cd === 'Px' || cd === 'Pt') {
             pitchSeq++;
             isPitchOnly = true;
-            if (cd === 'Pb') { ball++; sPlay = `[${pitchSeq}]ボール `; }
-            else if (cd === 'Ps') { strk++; sPlay = `[${pitchSeq}]空振りストライク `; }
-            else if (cd === 'Pl') { strk++; sPlay = `[${pitchSeq}]見逃しストライク `; }
+            if (cd === 'Pb') { if (ball < 4) ball++; sPlay = `[${pitchSeq}]ボール `; }
+            else if (cd === 'Ps') { if (strk < 3) strk++; sPlay = `[${pitchSeq}]空振りストライク `; }
+            else if (cd === 'Pl') { if (strk < 3) strk++; sPlay = `[${pitchSeq}]見逃しストライク `; }
             else if (cd === 'Pf') { if (strk < 2) strk++; sPlay = `[${pitchSeq}]ファウル `; }
+            else if (cd === 'Pt') { if (strk < 3) strk++; sPlay = `[${pitchSeq}]ファウルチップ `; }
             else { if (strk < 3) strk++; sPlay = `[${pitchSeq}]バント/カット `; }
         } else if (cd === 'Ko') {
             out++; paCompleted = true;
@@ -3610,6 +3611,11 @@ function formatGameTranscriptText(decoded, includePitches = false, halfFilter = 
     if (meta.bi) lines.push(meta.bi);
     lines.push('');
 
+    const renderTextDots = (cnt, max) => {
+        const c = Math.max(0, Math.min(max, cnt || 0));
+        return '●'.repeat(c) + '○'.repeat(max - c);
+    };
+
     timeline.forEach(item => {
         if (halfFilter !== 'all' && item.inningLabel !== halfFilter) return;
         if (!includePitches && item.isPitchOnly) return;
@@ -3621,8 +3627,10 @@ function formatGameTranscriptText(decoded, includePitches = false, halfFilter = 
         } else if (item.type === 'inning_end' || item.type === 'game_end') {
             lines.push(`  ▶ ${item.text} (${meta.topTeam} ${item.scoreTop}-${item.scoreBot} ${meta.botTeam})`);
         } else {
-            const dots = '●'.repeat(Math.min(3, item.out)) + '○'.repeat(Math.max(0, 3 - item.out));
-            const statusStr = `${meta.topTeam} ${item.scoreTop}-${item.scoreBot} ${meta.botTeam} [アウト:${dots}] ${item.basesText}`;
+            const countStr = includePitches
+                ? `[B:${renderTextDots(item.ball, 4)} S:${renderTextDots(item.strk, 3)} O:${renderTextDots(item.out, 3)}]`
+                : `[O:${renderTextDots(item.out, 3)}]`;
+            const statusStr = `${meta.topTeam} ${item.scoreTop}-${item.scoreBot} ${meta.botTeam} ${countStr} ${item.basesText}`;
             lines.push(`  ${item.text}`);
             lines.push(`    ${statusStr}`);
         }
@@ -3854,9 +3862,22 @@ function renderSelectedGameTranscript() {
         </svg>`;
     };
 
-    const renderOutDots = (outCnt) => {
-        const c = Math.max(0, Math.min(3, outCnt));
-        return `<span class="text-[11px] font-bold tracking-tight ml-1"><span class="text-green-700">○</span>${'<span class="text-red-500">●</span>'.repeat(c)}${'<span class="text-gray-300">○</span>'.repeat(3 - c)}</span>`;
+    const renderDotGroup = (label, labelClass, count, maxCount, activeClass) => {
+        const c = Math.max(0, Math.min(maxCount, count || 0));
+        const dots = Array.from({ length: maxCount }, (_, idx) =>
+            `<span class="inline-block w-2.5 h-2.5 rounded-full border ${idx < c ? activeClass : 'bg-white border-gray-300'}"></span>`
+        ).join('');
+        return `<span class="inline-flex items-center gap-0.5" data-count-type="${label}"><span class="font-black text-[11px] leading-none mr-0.5 ${labelClass}">${label}</span>${dots}</span>`;
+    };
+
+    const renderCountDots = (item) => {
+        if (!detailTranscriptShowPitches) {
+            return `<span class="inline-flex items-center ml-1" title="O:${item.out || 0}">${renderDotGroup('O', 'text-red-600', item.out, 3, 'bg-red-500 border-red-600')}</span>`;
+        }
+        const b = Math.max(0, Math.min(4, item.ball || 0));
+        const s = Math.max(0, Math.min(3, item.strk || 0));
+        const o = Math.max(0, Math.min(3, item.out || 0));
+        return `<span class="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 ml-1" title="B:${b} S:${s} O:${o}">${renderDotGroup('B', 'text-green-700', b, 4, 'bg-green-500 border-green-600')}${renderDotGroup('S', 'text-amber-600', s, 3, 'bg-amber-400 border-amber-500')}${renderDotGroup('O', 'text-red-600', o, 3, 'bg-red-500 border-red-600')}</span>`;
     };
 
     timelineEl.innerHTML = filteredItems.map(item => {
@@ -3877,7 +3898,7 @@ function renderSelectedGameTranscript() {
             <div class="text-xs font-bold">${escapeHtml(item.text)}</div>
             <div class="text-[11px] text-gray-600 mt-1 flex flex-wrap items-center justify-between gap-1">
                 <span>${escapeHtml(item.topTeam)} <strong class="text-gray-900">${item.scoreTop}-${item.scoreBot}</strong> ${escapeHtml(item.botTeam)}</span>
-                <span class="flex items-center">${renderOutDots(item.out)} ${renderBaseSvg(item.rnr)} <span class="ml-1 text-[10px] text-gray-500">${escapeHtml(item.basesText)}</span></span>
+                <span class="flex flex-wrap items-center gap-1">${renderCountDots(item)} ${renderBaseSvg(item.rnr)} <span class="ml-1 text-[10px] text-gray-500">${escapeHtml(item.basesText)}</span></span>
             </div>
         </div>`;
     }).join('');
