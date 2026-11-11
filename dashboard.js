@@ -3239,7 +3239,12 @@ function decodeScorerGamePlayByPlay(detailObj) {
     const errorEvents = []; // { inning, posName, fielderName, play, isHomeFielding }
 
     const getRnrBitmask = () => (runners[1] ? 1 : 0) + (runners[2] ? 2 : 0) + (runners[3] ? 4 : 0);
-    const findFielderByPos = (side, posStr) => lineup[side].find(p => String(p.pos) === String(posStr));
+    const findFielderByPos = (side, posStr) => lineup[side].find(p => p && String(p.pos) === String(posStr));
+    const upsertLineupByOrd = (side, ord, entry) => {
+        const idx = lineup[side].findIndex(p => p && p.ord === ord);
+        if (idx >= 0) lineup[side][idx] = entry;
+        else lineup[side].push(entry);
+    };
 
     function processActionBody(str, curBatter, initialFielderPos = null) {
         const msgs = [];
@@ -3280,10 +3285,10 @@ function decodeScorerGamePlayByPlay(detailObj) {
                 const ct = m[7], digits = m[8];
                 const pos = digits.slice(-1);
                 const errPosName = (d) => (d === '9' ? 'その他' : (SCORER_POS_NAMES[d] || 'その他'));
-                const targetPosName = errPosName(pos);
-                const resolvedThrowActor = (digits.length >= 2 && digits[0] !== '0' && digits[0] !== '9')
-                    ? digits[0]
-                    : lastPos;
+                // ScorerのEs/Ek/Ejの後続数字は「送球先・対象塁」であり、失策した野手は直前に捕球・送球した lastPos
+                const resolvedFielderPos = (lastPos !== null && lastPos !== undefined && lastPos !== '9')
+                    ? lastPos
+                    : (pos !== '9' ? pos : null);
                 if (ct === 'Th') {
                     msgs.push(`${SCORER_POS_NAMES[pos] || ''}に送球`);
                     lastPos = pos;
@@ -3293,22 +3298,21 @@ function decodeScorerGamePlayByPlay(detailObj) {
                 } else if (ct === 'Es') {
                     msgs.push(`${SCORER_POS_NAMES[pos] || ''}に送球エラー`);
                     errDetails.push({
-                        pos: resolvedThrowActor || undefined,
-                        posName: resolvedThrowActor ? errPosName(resolvedThrowActor) : '送球エラー'
+                        pos: resolvedFielderPos || undefined,
+                        posName: resolvedFielderPos ? errPosName(resolvedFielderPos) : '送球エラー'
                     });
                 } else if (ct === 'Ek' || ct === 'Ej') {
-                    msgs.push(pos !== '9' && SCORER_POS_NAMES[pos] ? `${SCORER_POS_NAMES[pos]}エラー` : 'エラー');
-                    const pResolved = (pos === '9' && lastPos) ? lastPos : pos;
-                    errDetails.push({ pos: pResolved, posName: errPosName(pResolved) });
-                } else if (ct === 'Ec') {
-                    msgs.push(`${targetPosName}捕球エラー`);
-                    errDetails.push({ pos: pos, posName: targetPosName });
-                } else if (ct === 'Eu') {
-                    msgs.push('悪送球エラー');
+                    msgs.push(resolvedFielderPos && SCORER_POS_NAMES[resolvedFielderPos] ? `${SCORER_POS_NAMES[resolvedFielderPos]}エラー` : 'エラー');
                     errDetails.push({
-                        pos: resolvedThrowActor || undefined,
-                        posName: resolvedThrowActor ? errPosName(resolvedThrowActor) : '悪送球エラー'
+                        pos: resolvedFielderPos || undefined,
+                        posName: resolvedFielderPos ? errPosName(resolvedFielderPos) : 'その他'
                     });
+                } else if (ct === 'Ec') {
+                    // Ecは野選/送球間の進塁であり公式記録上の失策ではない
+                    msgs.push(pos !== '9' && SCORER_POS_NAMES[pos] ? `${SCORER_POS_NAMES[pos]}送球(野選)` : '送球選択(野選)');
+                } else if (ct === 'Eu') {
+                    // Euも公式失策を伴わない送球間の進塁
+                    msgs.push('送球間の進塁');
                 }
             }
         }
@@ -3386,12 +3390,12 @@ function decodeScorerGamePlayByPlay(detailObj) {
             if (k === 'Db') pitchSeq++;
             if (k !== 'Dk') paCompleted = true;
             const pref = { Bb: 'フォアボール', Db: `[${pitchSeq}]デッドボール`, Dn: '打撃妨害', Dk: 'ボーク' }[k];
-            const res = processActionBody(cd.slice(2), curBatter);
-            recordErrs = res.errDetails;
+            const res = processActionBody(cd.slice(2), curBatter, k === 'Dn' ? '1' : null);
+            recordErrs = k === 'Dn' ? [{ pos: '1', posName: SCORER_POS_NAMES['1'] }, ...res.errDetails] : res.errDetails;
             sPlay = [pref, ...res.msgs].join(' ') + ' ';
         } else if (/^E([wp])/.test(cd)) {
             const lbl = cd[1] === 'w' ? 'ワイルドピッチ' : 'パスボール';
-            const res = processActionBody(cd.slice(2), curBatter);
+            const res = processActionBody(cd.slice(2), curBatter, '1');
             recordErrs = res.errDetails;
             sPlay = [lbl, ...res.msgs].join(' ') + ' ';
         } else if (cd === 'Kr') {
@@ -3400,7 +3404,7 @@ function decodeScorerGamePlayByPlay(detailObj) {
             paCompleted = true;
             const sub = cd[1];
             const pref = sub === 't' ? '振り逃げ失敗' : `振り逃げ (${sub === 'w' ? '暴投' : '捕逸'})`;
-            const res = processActionBody(cd.slice(2), curBatter);
+            const res = processActionBody(cd.slice(2), curBatter, '1');
             recordErrs = res.errDetails;
             sPlay = [pref, ...res.msgs].join(' ') + ' ';
         } else if (/^H([1-4])([a-z-])([a-z-])(\d)(.*)/.test(cd)) {
@@ -3432,25 +3436,25 @@ function decodeScorerGamePlayByPlay(detailObj) {
         } else if (/^(Rs|Rd|Rc|Rf|Rg|Rr|Rz)(.*)/.test(cd)) {
             const k = cd.slice(0, 2);
             const lbl = { Rs: '盗塁', Rd: 'ダブルスチール', Rc: '守備無関心', Rf: '盗塁失敗', Rg: '牽制アウト', Rr: '走塁アウト', Rz: '' }[k];
-            const initActor = (k === 'Rr' || k === 'Rg') && /^[01]$/.test(cd[2]) ? cd[2] : null;
+            const initActor = ((k === 'Rr' || k === 'Rg') && /^[01]$/.test(cd[2])) ? cd[2] : '1';
             const res = processActionBody(cd.slice(2), curBatter, initActor);
             recordErrs = res.errDetails;
             sPlay = (lbl ? [lbl, ...res.msgs] : res.msgs).join(' ') + ' ';
         } else if (/^Sh([0-9a-z])#(\d+):/.test(cd)) {
             const [, oChr, pid] = cd.match(/^Sh([0-9a-z])#(\d+):/);
             const ord = parseInt(oChr, 36);
-            const np = getPlayer(pid), op = lineup[battingSide][ord];
+            const np = getPlayer(pid), op = lineup[battingSide].find(p => p && p.ord === ord);
             sPlay = `${ord + 1}番${op?.name || ''}に代打${np.name}${np.num ? '#' + np.num : ''}`;
-            lineup[battingSide][ord] = { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num };
+            upsertLineupByOrd(battingSide, ord, { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num });
         } else if (/^Sha#(\d+):/.test(cd)) {
             const [, pid] = cd.match(/^Sha#(\d+):/);
             const np = getPlayer(pid), ord = batterIdx[battingSide], op = lineup[battingSide][ord];
             sPlay = `${ord + 1}番${op?.name || ''}に代打${np.name}${np.num ? '#' + np.num : ''}`;
-            lineup[battingSide][ord] = { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num };
+            upsertLineupByOrd(battingSide, op?.ord ?? ord, { ...op, ord: op?.ord ?? ord, id: parseInt(pid, 10), name: np.name, num: np.num });
         } else if (/^Sr([0-9a-z])#(\d+):/.test(cd)) {
             const [, oChr, pid] = cd.match(/^Sr([0-9a-z])#(\d+):/);
             const ord = parseInt(oChr, 36);
-            const np = getPlayer(pid), op = lineup[battingSide][ord];
+            const np = getPlayer(pid), op = lineup[battingSide].find(p => p && p.ord === ord);
             let baseFound = '';
             for (const b of [1, 2, 3]) {
                 if (runners[b]?.id === op?.id) {
@@ -3459,36 +3463,36 @@ function decodeScorerGamePlayByPlay(detailObj) {
                 }
             }
             sPlay = `${baseFound}${op?.name || ''}に代走${np.name}${np.num ? '#' + np.num : ''}`;
-            lineup[battingSide][ord] = { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num };
+            upsertLineupByOrd(battingSide, ord, { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num });
         } else if (/^S(ih|ir)(\d)#(\d+):/.test(cd)) {
             const [, st, pos, pid] = cd.match(/^S(ih|ir)(\d)#(\d+):/);
             const np = getPlayer(pid);
-            const slot = lineup[fsSide].find(p => p.id === parseInt(pid, 10));
+            const slot = lineup[fsSide].find(p => p && p.id === parseInt(pid, 10));
             if (slot) slot.pos = parseInt(pos, 10);
             sPlay = `${st === 'ih' ? '代打' : '代走'}${np.name}が${SCORER_POS_NAMES[pos] || ''}へ`;
         } else if (/^Sk(\d)(\d)#(\d+):/.test(cd)) {
             const [, p1, p2, pid] = cd.match(/^Sk(\d)(\d)#(\d+):/);
             const np = getPlayer(pid);
-            const slot = lineup[fsSide].find(p => p.id === parseInt(pid, 10));
+            const slot = lineup[fsSide].find(p => p && p.id === parseInt(pid, 10));
             if (slot) slot.pos = parseInt(p2, 10);
             sPlay = `${SCORER_POS_NAMES[p1] || ''}${np.name}が${SCORER_POS_NAMES[p2] || ''}へ`;
         } else if (/^Skh(\d)#(\d+):/.test(cd)) {
             const [, p2, pid] = cd.match(/^Skh(\d)#(\d+):/);
             const np = getPlayer(pid);
-            const slot = lineup[fsSide].find(p => p.id === parseInt(pid, 10));
+            const slot = lineup[fsSide].find(p => p && p.id === parseInt(pid, 10));
             if (slot) slot.pos = parseInt(p2, 10);
             sPlay = `${np.name}が${SCORER_POS_NAMES[p2] || ''}へ`;
         } else if (/^Sd([0-9a-z])(\d)#(\d+):/.test(cd)) {
             const [, oChr, pos, pid] = cd.match(/^Sd([0-9a-z])(\d)#(\d+):/);
             const ord = parseInt(oChr, 36);
-            const np = getPlayer(pid), op = lineup[fsSide][ord];
+            const np = getPlayer(pid), op = lineup[fsSide].find(p => p && p.ord === ord);
             sPlay = `${ord + 1}番${op?.name || ''}に代わり${np.name}が${SCORER_POS_NAMES[pos] || ''}へ`;
-            lineup[fsSide][ord] = { ...op, ord, pos: parseInt(pos, 10), id: parseInt(pid, 10), name: np.name, num: np.num };
+            upsertLineupByOrd(fsSide, ord, { ...op, ord, pos: parseInt(pos, 10), id: parseInt(pid, 10), name: np.name, num: np.num });
         } else if (/^Sda(\d)#(\d+):/.test(cd)) {
             const [, pos, pid] = cd.match(/^Sda(\d)#(\d+):/);
-            const np = getPlayer(pid), ord = 10, op = lineup[fsSide][ord];
+            const np = getPlayer(pid), ord = 10, op = lineup[fsSide].find(p => p && p.ord === ord);
             sPlay = `${ord + 1}番${op?.name || ''}に代わり${np.name}が${SCORER_POS_NAMES[pos] || ''}へ`;
-            lineup[fsSide][ord] = { ...op, ord, pos: parseInt(pos, 10), id: parseInt(pid, 10), name: np.name, num: np.num };
+            upsertLineupByOrd(fsSide, ord, { ...op, ord, pos: parseInt(pos, 10), id: parseInt(pid, 10), name: np.name, num: np.num });
         } else if (/^W/.test(cd)) {
             isPitchOnly = true;
             if (cd === 'Wtf') sPlay = `${curTeamName}：チーム初安打 `;
@@ -3572,6 +3576,9 @@ function decodeScorerGamePlayByPlay(detailObj) {
         botTeam,
         isHomeTop,
         isHomeBot,
+        homeTid: isHomeTop && !isHomeBot
+            ? (te[0]?.id ?? gteams[0]?.id ?? null)
+            : (isHomeBot && !isHomeTop ? (te[1]?.id ?? gteams[1]?.id ?? null) : null),
         ti: detailObj?.ti || '',
         bi: detailObj?.bi || '',
         maxInnings,
@@ -4024,16 +4031,18 @@ function aggregateDecodedGames(decodedList) {
         }
 
         // 2. エラー状況の集計 (守備側が自チームの場合、またはチーム不明時は両方)
-        const playRecordedErrorPlayers = new Set();
+        const gameErrCountByPlayer = new Map();
+        let gameRecordedErrTotal = 0;
         errorEvents.forEach(ev => {
             if (hasHomeTeamInGame && !ev.isHomeFielding) return;
+            gameRecordedErrTotal++;
             result.errors.byInning[ev.inning] = (result.errors.byInning[ev.inning] || 0) + 1;
             const posLbl = ev.posName || 'その他';
             result.errors.byPosition[posLbl] = (result.errors.byPosition[posLbl] || 0) + 1;
 
             if (ev.fielderName) {
                 const normKey = normalizePlayerNameKey(ev.fielderName);
-                playRecordedErrorPlayers.add(`${normKey}`);
+                gameErrCountByPlayer.set(normKey, (gameErrCountByPlayer.get(normKey) || 0) + 1);
                 if (!result.errors.byPlayer[normKey]) result.errors.byPlayer[normKey] = [];
                 result.errors.byPlayer[normKey].push({
                     inning: `${meta.date ? meta.date + ' ' : ''}${ev.inning}`,
@@ -4042,25 +4051,40 @@ function aggregateDecodedGames(decodedList) {
             }
         });
 
-        // fld[] (Scorer公式守備集計) からプレイログで拾いきれなかった失策を補完
-        if (Array.isArray(fld)) {
+        // fld[] (Scorer公式守備集計) からプレイログで拾いきれなかった失策を補完 (対象試合でまだ未記録の不足分がある場合のみ)
+        const ourScErrors = meta.isHomeTop ? (meta.topSum?.e || 0) : (meta.isHomeBot ? (meta.botSum?.e || 0) : 0);
+        if (Array.isArray(fld) && (gameRecordedErrTotal === 0 || (ourScErrors > 0 && gameRecordedErrTotal < ourScErrors))) {
+            const fldByPlayer = new Map();
             fld.forEach(f => {
+                if (meta.homeTid != null && f.tid != null && String(f.tid) !== String(meta.homeTid)) return;
                 const errCnt = Array.isArray(f.st) ? (parseInt(f.st[4], 10) || 0) : 0;
                 if (errCnt <= 0) return;
                 const pName = playerMap.get(parseInt(f.pid, 10))?.name || allPlayers.find(p => p.id == f.pid)?.name;
                 if (!pName) return;
                 const normKey = normalizePlayerNameKey(pName);
-                const existingCount = (result.errors.byPlayer[normKey] || []).filter(e => !meta.date || e.inning.startsWith(meta.date)).length;
-                if (existingCount < errCnt) {
-                    const posLabel = FLD_POS_NAMES[f.st[0]] || '守備';
-                    if (!result.errors.byPlayer[normKey]) result.errors.byPlayer[normKey] = [];
-                    for (let k = existingCount; k < errCnt; k++) {
+                const posLabel = FLD_POS_NAMES[f.st[0]] || '守備';
+                if (!fldByPlayer.has(normKey)) fldByPlayer.set(normKey, { total: 0, items: [] });
+                const entry = fldByPlayer.get(normKey);
+                entry.total += errCnt;
+                entry.items.push({ posLabel, cnt: errCnt });
+            });
+
+            fldByPlayer.forEach((entry, normKey) => {
+                let remaining = entry.total - (gameErrCountByPlayer.get(normKey) || 0);
+                if (remaining <= 0) return;
+                if (!result.errors.byPlayer[normKey]) result.errors.byPlayer[normKey] = [];
+                entry.items.forEach(({ posLabel, cnt }) => {
+                    const take = Math.min(remaining, cnt);
+                    for (let k = 0; k < take; k++) {
+                        result.errors.byPosition[posLabel] = (result.errors.byPosition[posLabel] || 0) + 1;
+                        result.errors.byInning['記録集計'] = (result.errors.byInning['記録集計'] || 0) + 1;
                         result.errors.byPlayer[normKey].push({
                             inning: meta.date || '試合内',
                             play: `記録失策 (${posLabel})`
                         });
                     }
-                }
+                    remaining -= take;
+                });
             });
         }
 
@@ -4241,11 +4265,22 @@ async function renderTeamDetailOverview(detailData) {
     const errSummaryEl = document.getElementById('detail-team-errors-summary');
     if (errSummaryEl) {
         const posEntries = Object.entries(detailData.errors.byPosition).sort((a, b) => b[1] - a[1]);
-        const innEntries = Object.entries(detailData.errors.byInning);
+        const parseInningOrder = (lbl) => {
+            const m = String(lbl).match(/^(\d+)回(表|ｳﾗ|裏)?/);
+            if (!m) return 9999;
+            return parseInt(m[1], 10) * 10 + (m[2] === '表' ? 0 : 1);
+        };
+        const innEntries = Object.entries(detailData.errors.byInning)
+            .sort((a, b) => parseInningOrder(a[0]) - parseInningOrder(b[0]) || a[0].localeCompare(b[0]));
+        const totalErrors = posEntries.reduce((sum, [, cnt]) => sum + cnt, 0);
         if (posEntries.length === 0) {
             errSummaryEl.innerHTML = '<div class="text-gray-400 text-center py-6">対象試合で記録されたエラーはありません</div>';
         } else {
             errSummaryEl.innerHTML = `
+                <div class="flex items-center justify-between text-[11px] font-bold text-yellow-900 bg-yellow-100/70 border border-yellow-200 rounded px-2.5 py-1 mb-2">
+                    <span>総記録エラー数</span>
+                    <span class="text-sm font-black">${totalErrors} 件</span>
+                </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                     ${posEntries.map(([pos, cnt]) => `
                         <div class="bg-yellow-50 border border-yellow-200 rounded p-2 text-center">
