@@ -5,8 +5,9 @@ let allGames = [];
 let allBatterStats = [];
 let allPitcherStats = [];
 let allPlayers = [];
-let dashboardSettings = { homeTeamNames: ['ありんこアントス@A軍'], defaultFilterDate: { from: '', to: '', teamRegex: '', category: '', outcome: 'all' } };
+let dashboardSettings = { homeTeamNames: ['ありんこアントス@A軍'], defaultFilterDate: { from: '', to: '', teamRegex: '', category: '', outcome: 'all', firstScore: 'all' } };
 let isFilterInitialized = false;
+let isRankingRegulationEnabled = true;
 let charts = {};
 let personalCharts = {};
 let comparisonCharts = {};
@@ -86,65 +87,67 @@ function setupDashboardUI() {
                 <button data-tab="detail-analysis" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">詳細分析（工事中）</button>
             </div>
             
-            <div id="tab-content-team-summary">
-                <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-6 text-sm">
-                    <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
-                        <div class="flex items-center space-x-2">
-                            <span class="p-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-black">🔍</span>
-                            <h3 class="font-bold text-gray-800 text-sm">チーム成績 絞り込みフィルタ</h3>
-                        </div>
-                        <span class="text-[11px] text-gray-400 font-medium hidden sm:inline">選択項目を変更すると自動で即時再集計されます</span>
+            <!-- 共通絞り込みフィルタ（チーム成績・個人成績・ランキング・選手比較・テストモードで共有） -->
+            <div id="dashboard-common-filter" class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 mb-6 text-sm">
+                <div class="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="p-1 bg-blue-50 text-blue-600 rounded-lg text-xs font-black">🔍</span>
+                        <h3 class="font-bold text-gray-800 text-sm">成績・ランキング 共通絞り込みフィルタ</h3>
                     </div>
+                    <span class="text-[11px] text-gray-400 font-medium hidden sm:inline">選択項目を変更すると自動で即時再集計されます</span>
+                </div>
 
-                    <!-- 1行目: 期間 / 相手チーム / 大会カテゴリ -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
-                            <label class="block text-xs font-bold text-gray-600 mb-1">📅 期間指定</label>
-                            <div class="flex items-center space-x-1.5">
-                                <input type="date" id="db-filter-date-from" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none">
-                                <span class="text-gray-400 font-bold text-xs">〜</span>
-                                <input type="date" id="db-filter-date-to" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none">
-                            </div>
-                        </div>
-                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
-                            <label class="block text-xs font-bold text-gray-600 mb-1">⚔️ 相手チーム名 (正規表現可)</label>
-                            <input type="text" id="db-filter-team-regex" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="例: イーグルス|シャークス">
-                        </div>
-                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
-                            <label class="block text-xs font-bold text-gray-600 mb-1">🏆 大会・カテゴリ (カンマ区切り)</label>
-                            <input type="text" id="db-filter-category" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="例: 練習試合, 東部近隣大会">
+                <!-- 1行目: 期間 / 相手チーム / 大会カテゴリ -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                    <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                        <label class="block text-xs font-bold text-gray-600 mb-1">📅 期間指定</label>
+                        <div class="flex items-center space-x-1.5">
+                            <input type="date" id="db-filter-date-from" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none">
+                            <span class="text-gray-400 font-bold text-xs">〜</span>
+                            <input type="date" id="db-filter-date-to" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none">
                         </div>
                     </div>
-
-                    <!-- 2行目: 勝敗結果 / 先制点 / 操作ボタン -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
-                            <label class="block text-xs font-bold text-gray-600 mb-1">📊 勝敗結果</label>
-                            <select id="db-filter-outcome" class="border border-gray-300 p-1.5 rounded-md w-full text-xs font-bold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none cursor-pointer">
-                                <option value="all">全試合 (問わない)</option>
-                                <option value="win">⭕ 勝ち試合のみ</option>
-                                <option value="loss">❌ 負け試合のみ</option>
-                                <option value="draw">🔺 引き分けのみ</option>
-                            </select>
-                        </div>
-                        <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
-                            <label class="block text-xs font-bold text-gray-600 mb-1">⚡ 先制点</label>
-                            <select id="db-filter-first-score" class="border border-gray-300 p-1.5 rounded-md w-full text-xs font-bold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none cursor-pointer">
-                                <option value="all">全試合 (問わない)</option>
-                                <option value="scored">⚡ 先制点を取った試合</option>
-                                <option value="conceded">🛡️ 先制点を取られた試合</option>
-                            </select>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <button id="btn-apply-dashboard-filter" class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-lg shadow-sm hover:shadow transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1">
-                                <span>適用</span>
-                            </button>
-                            <button id="btn-clear-dashboard-filter" class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-semibold py-2 px-3 rounded-lg border border-gray-200 transition-all duration-200 cursor-pointer whitespace-nowrap">
-                                リセット
-                            </button>
-                        </div>
+                    <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                        <label class="block text-xs font-bold text-gray-600 mb-1">⚔️ 相手チーム名 (正規表現可)</label>
+                        <input type="text" id="db-filter-team-regex" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="例: イーグルス|シャークス">
+                    </div>
+                    <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                        <label class="block text-xs font-bold text-gray-600 mb-1">🏆 大会・カテゴリ (カンマ区切り)</label>
+                        <input type="text" id="db-filter-category" class="border border-gray-300 p-1.5 rounded-md w-full text-xs bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none" placeholder="例: 練習試合, 東部近隣大会">
                     </div>
                 </div>
+
+                <!-- 2行目: 勝敗結果 / 先制点 / 操作ボタン -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                    <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                        <label class="block text-xs font-bold text-gray-600 mb-1">📊 勝敗結果</label>
+                        <select id="db-filter-outcome" class="border border-gray-300 p-1.5 rounded-md w-full text-xs font-bold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none cursor-pointer">
+                            <option value="all">全試合 (問わない)</option>
+                            <option value="win">⭕ 勝ち試合のみ</option>
+                            <option value="loss">❌ 負け試合のみ</option>
+                            <option value="draw">🔺 引き分けのみ</option>
+                        </select>
+                    </div>
+                    <div class="bg-gray-50/70 p-2.5 rounded-lg border border-gray-100">
+                        <label class="block text-xs font-bold text-gray-600 mb-1">⚡ 先制点</label>
+                        <select id="db-filter-first-score" class="border border-gray-300 p-1.5 rounded-md w-full text-xs font-bold text-gray-800 bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none cursor-pointer">
+                            <option value="all">全試合 (問わない)</option>
+                            <option value="scored">⚡ 先制点を取った試合</option>
+                            <option value="conceded">🛡️ 先制点を取られた試合</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="btn-apply-dashboard-filter" class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-bold py-2 px-3 rounded-lg shadow-sm hover:shadow transition-all duration-200 cursor-pointer flex items-center justify-center space-x-1">
+                            <span>適用</span>
+                        </button>
+                        <button id="btn-clear-dashboard-filter" class="bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-semibold py-2 px-3 rounded-lg border border-gray-200 transition-all duration-200 cursor-pointer whitespace-nowrap">
+                            デフォルトに戻す
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-content-team-summary">
 
                 <div class="space-y-6">
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -308,22 +311,37 @@ function setupDashboardUI() {
             </div>
 
             <div id="tab-content-ranking" class="hidden space-y-6">
-                <div class="flex border-b mb-4 space-x-2">
-                    <button data-ranking-tab="batter" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap transition-colors">打撃ランキング</button>
-                    <button data-ranking-tab="pitcher" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">投手ランキング</button>
+                <div class="flex flex-wrap justify-between items-center border-b pb-2 mb-4 gap-3">
+                    <div class="flex space-x-2">
+                        <button data-ranking-tab="batter" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap transition-colors">打撃ランキング</button>
+                        <button data-ranking-tab="pitcher" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">投手ランキング</button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3 text-xs bg-blue-50/80 border border-blue-200 px-3 py-2 rounded-lg">
+                        <span id="ranking-summary-info" class="font-bold text-blue-900">対象試合: 0試合 / 規定打席: 0打席 (試合数×2)</span>
+                        <label class="flex items-center space-x-1.5 cursor-pointer font-bold text-blue-800 bg-white px-2.5 py-1 rounded border border-blue-200 shadow-xs select-none">
+                            <input type="checkbox" id="ranking-regulation-cb" checked class="rounded text-blue-600 focus:ring-blue-500">
+                            <span>規定打席到達のみ表示 (試合数×2打席)</span>
+                        </label>
+                    </div>
                 </div>
                 
-                <div id="ranking-content-batter" class="bg-white p-4 rounded-lg shadow-md">
+                <div id="ranking-content-batter" class="bg-white p-4 rounded-lg shadow-md space-y-2">
+                    <div class="text-[11px] text-gray-500 flex flex-wrap justify-between gap-2 pb-1">
+                        <span>※規定打席＝対象試合数×2打席</span>
+                        <span>※出塁率＝(安打＋四球＋死球)÷(打数＋四球＋死球＋犠飛) ／ 長打率＝塁打÷打数 ／ OPS＝出塁率＋長打率</span>
+                    </div>
                     <div class="overflow-x-auto"><table class="w-full text-sm text-left border">
                         <thead class="bg-gray-100">
                             <tr>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="name" data-role="batter">選手<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="pa" data-role="batter">打席<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="ab" data-role="batter">打数<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="avg" data-role="batter">打率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="ops" data-role="batter">OPS<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="obp" data-role="batter">出塁率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="slg" data-role="batter">長打率<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="h" data-role="batter">安打<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="tb" data-role="batter">塁打<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="bb" data-role="batter">四球<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="hbp" data-role="batter">死球<span></span></th>
                                 <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="rbi" data-role="batter">打点<span></span></th>
@@ -387,7 +405,7 @@ function setupDashboardUI() {
                     <h3 class="font-bold text-lg mb-4 text-gray-800 border-b pb-2">集計設定</h3>
                     <div class="space-y-4">
                         <div>
-                            <label class="block text-sm font-bold text-gray-700 mb-2">自チームとして集計するチーム名</label>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">自チームとして集計するチーム名 (DB同期)</label>
                             <div id="home-team-list" class="flex flex-wrap gap-2 mb-3"></div>
                             <div class="flex items-center space-x-2">
                                 <input type="text" id="new-home-team-name" placeholder="チーム名を追加 (例: ありんこアントス@A軍)" class="border p-2 rounded w-full md:w-1/2">
@@ -395,7 +413,7 @@ function setupDashboardUI() {
                             </div>
                         </div>
                         <div class="mt-6 border-t pt-4">
-                            <label class="block text-sm font-bold text-gray-700 mb-2">デフォルトのフィルタ設定</label>
+                            <label class="block text-sm font-bold text-gray-700 mb-2">デフォルトのフィルタ設定 (DB同期)</label>
                             <div class="space-y-3 max-w-md">
                                 <div class="flex items-center space-x-2">
                                     <span class="text-sm font-semibold text-gray-600 w-24">期間:</span>
@@ -411,33 +429,86 @@ function setupDashboardUI() {
                                     <span class="text-sm font-semibold text-gray-600 w-24">カテゴリ:</span>
                                     <input type="text" id="setting-default-category" placeholder="例: 練習試合" class="border p-1.5 rounded text-sm w-full">
                                 </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-semibold text-gray-600 w-24">勝敗結果:</span>
+                                    <select id="setting-default-outcome" class="border p-1.5 rounded text-sm w-full bg-white">
+                                        <option value="all">全試合 (問わない)</option>
+                                        <option value="win">⭕ 勝ち試合のみ</option>
+                                        <option value="loss">❌ 負け試合のみ</option>
+                                        <option value="draw">🔺 引き分けのみ</option>
+                                    </select>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-semibold text-gray-600 w-24">先制点:</span>
+                                    <select id="setting-default-first-score" class="border p-1.5 rounded text-sm w-full bg-white">
+                                        <option value="all">全試合 (問わない)</option>
+                                        <option value="scored">⚡ 先制点を取った試合</option>
+                                        <option value="conceded">🛡️ 先制点を取られた試合</option>
+                                    </select>
+                                </div>
                             </div>
-                            <p class="text-xs text-gray-500 mt-2 mb-3">※ダッシュボードを開いた時や、フィルタをクリアした時に適用される初期設定値です。</p>
-                            <button id="btn-save-default-date" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm">設定を保存</button>
+                            <p class="text-xs text-gray-500 mt-2 mb-3">※DB（Supabase）に保存され、全端末・全ブラウザで共通の初期設定値として同期されます。</p>
+                            <button id="btn-save-default-date" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-bold shadow-sm">設定を保存 (DB同期)</button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div id="tab-content-import-data" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
-                <h3 class="text-lg font-bold mb-4 border-b pb-2">CSVデータインポート</h3>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">データ種別</label>
-                        <select id="csv-import-type" class="w-full md:w-1/2 border p-2 rounded">
-                            <option value="batter">打者成績 (scorer_stats_raw_b.csv)</option>
-                            <option value="pitcher">投手成績 (scorer_stats_raw_p.csv)</option>
-                        </select>
+            <div id="tab-content-import-data" class="hidden space-y-6 mb-6">
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-bold mb-4 border-b pb-2">① CSVデータインポート</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">データ種別</label>
+                            <select id="csv-import-type" class="w-full md:w-1/2 border p-2 rounded">
+                                <option value="batter">打者成績 (scorer_stats_raw_b.csv)</option>
+                                <option value="pitcher">投手成績 (scorer_stats_raw_p.csv)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">CSVファイルを選択</label>
+                            <input type="file" id="csv-import-file" accept=".csv" class="w-full border p-1 rounded">
+                        </div>
+                        <button id="btn-exec-csv-import" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded shadow font-bold mt-2 disabled:bg-gray-400">
+                            インポート実行
+                        </button>
                     </div>
-                    <div>
-                        <label class="block text-sm font-bold text-gray-700 mb-1">CSVファイルを選択</label>
-                        <input type="file" id="csv-import-file" accept=".csv" class="w-full border p-1 rounded">
-                    </div>
-                    <button id="btn-exec-csv-import" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded shadow font-bold mt-2 disabled:bg-gray-400">
-                        インポート実行
-                    </button>
+                    <div id="import-result-msg" class="mt-4 text-sm font-bold hidden"></div>
                 </div>
-                <div id="import-result-msg" class="mt-4 text-sm font-bold hidden"></div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md">
+                    <h3 class="text-lg font-bold mb-2 border-b pb-2">② Scorerバックアップデータ (scorer_data*.txt) の一括インポート＆データ抽出</h3>
+                    <p class="text-xs text-gray-600 mb-4">
+                        Scorerアプリのバックアップファイル（<code>scorer_dataYYYYMMDD.txt</code>）から、DBへの直接一括インポートや、<code>scorer_stats_raw_b.csv</code>・<code>scorer_stats_raw_p.csv</code>・個別試合ファイル（<code>scorer_gameYYYYMMDD.txt</code>）の抽出ダウンロードが行えます。
+                    </p>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-bold text-gray-700 mb-1">バックアップファイル (scorer_data*.txt) を選択</label>
+                            <input type="file" id="backup-extract-file" accept=".txt,.json" class="w-full border p-1.5 rounded bg-white">
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="btn-backup-import-db" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded shadow font-bold text-xs">
+                                📥 DBへ直接一括インポート (打者・投手・試合)
+                            </button>
+                            <button id="btn-extract-raw-b" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded shadow font-bold text-xs">
+                                📄 scorer_stats_raw_b.csv を抽出保存
+                            </button>
+                            <button id="btn-extract-raw-p" class="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded shadow font-bold text-xs">
+                                📄 scorer_stats_raw_p.csv を抽出保存
+                            </button>
+                        </div>
+                        <div id="backup-game-extract-area" class="hidden border-t pt-4 mt-4 space-y-2">
+                            <label class="block text-sm font-bold text-gray-700">試合別データ (scorer_gameYYYYMMDD.txt) を抽出</label>
+                            <div class="flex flex-wrap gap-2 items-center">
+                                <select id="backup-game-select" class="border p-2 rounded text-xs font-bold bg-white flex-1 min-w-[240px]"></select>
+                                <button id="btn-extract-single-game" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded shadow font-bold text-xs">
+                                    ⚾ 選択した試合データを抽出保存
+                                </button>
+                            </div>
+                        </div>
+                        <div id="backup-extract-msg" class="mt-2 text-sm font-bold hidden"></div>
+                    </div>
+                </div>
             </div>
 
             <div id="tab-content-detail-analysis" class="hidden bg-white p-6 rounded-lg shadow-md mb-6">
@@ -589,9 +660,15 @@ function setupDashboardUI() {
         });
 
         document.getElementById('btn-exec-csv-import').addEventListener('click', handleCsvImport);
+        document.getElementById('backup-extract-file')?.addEventListener('change', handleBackupFileSelect);
+        document.getElementById('btn-backup-import-db')?.addEventListener('click', handleBackupImportDb);
+        document.getElementById('btn-extract-raw-b')?.addEventListener('click', () => handleExtractRawCsv('batter'));
+        document.getElementById('btn-extract-raw-p')?.addEventListener('click', () => handleExtractRawCsv('pitcher'));
+        document.getElementById('btn-extract-single-game')?.addEventListener('click', handleExtractSingleGame);
         document.getElementById('btn-load-detail-data')?.addEventListener('click', handleDetailDataLoad);
 
         // タブ切り替え制御
+        const filterVisibleTabs = new Set(['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode']);
         document.querySelectorAll('#dashboard-tabs button').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 document.querySelectorAll('#dashboard-tabs button').forEach(b => {
@@ -601,9 +678,15 @@ function setupDashboardUI() {
                 ['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'settings', 'import-data', 'detail-analysis'].forEach(t => document.getElementById(`tab-content-${t}`)?.classList.add('hidden'));
 
                 const target = e.currentTarget;
+                const tabName = target.dataset.tab;
                 target.classList.remove('text-gray-500', 'border-transparent');
                 target.classList.add('text-blue-600', 'border-blue-600');
-                document.getElementById(`tab-content-${target.dataset.tab}`).classList.remove('hidden');
+                document.getElementById(`tab-content-${tabName}`)?.classList.remove('hidden');
+
+                const commonFilterEl = document.getElementById('dashboard-common-filter');
+                if (commonFilterEl) {
+                    commonFilterEl.classList.toggle('hidden', !filterVisibleTabs.has(tabName));
+                }
             });
         });
 
@@ -623,6 +706,12 @@ function setupDashboardUI() {
             });
         });
 
+        // 規定打席フィルタの切り替え
+        document.getElementById('ranking-regulation-cb')?.addEventListener('change', (e) => {
+            isRankingRegulationEnabled = e.target.checked;
+            renderRanking();
+        });
+
         // ランキングテーブルのソートイベント設定
         document.querySelectorAll('#tab-content-ranking th[data-sort]').forEach(th => {
             th.addEventListener('click', (e) => {
@@ -632,10 +721,15 @@ function setupDashboardUI() {
             });
         });
 
-        // フィルタ制御
+        // フィルタ制御（全タブ連動・即時反映）
         document.getElementById('btn-apply-dashboard-filter').addEventListener('click', applyFiltersAndRender);
-        document.getElementById('db-filter-outcome')?.addEventListener('change', applyFiltersAndRender);
-        document.getElementById('db-filter-first-score')?.addEventListener('change', applyFiltersAndRender);
+        ['db-filter-date-from', 'db-filter-date-to', 'db-filter-outcome', 'db-filter-first-score'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', applyFiltersAndRender);
+        });
+        ['db-filter-team-regex', 'db-filter-category'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', applyFiltersAndRender);
+            document.getElementById(id)?.addEventListener('input', applyFiltersAndRender);
+        });
         document.getElementById('btn-clear-dashboard-filter').addEventListener('click', () => {
             document.getElementById('db-filter-date-from').value = dashboardSettings.defaultFilterDate.from || '';
             document.getElementById('db-filter-date-to').value = dashboardSettings.defaultFilterDate.to || '';
@@ -663,7 +757,7 @@ function setupDashboardUI() {
         document.getElementById('tm-players-list')?.addEventListener('change', renderTestMode);
         document.getElementById('comp-players-list')?.addEventListener('change', renderComparison);
         
-        document.getElementById('comp-role')?.addEventListener('change', (e) => {
+        document.getElementById('comp-role')?.addEventListener('change', () => {
             renderComparison();
         });
 
@@ -674,30 +768,34 @@ function setupDashboardUI() {
             const to = document.getElementById('setting-default-date-to').value;
             const teamRegex = document.getElementById('setting-default-team-regex').value.trim();
             const category = document.getElementById('setting-default-category').value.trim();
+            const outcome = document.getElementById('setting-default-outcome')?.value || 'all';
+            const firstScore = document.getElementById('setting-default-first-score')?.value || 'all';
             
-            const updatedFilter = { from, to, teamRegex, category };
+            const updatedFilter = { from, to, teamRegex, category, outcome, firstScore };
             
-            // localStorage に保存
+            // localStorage にもキャッシュ保存
             localStorage.setItem('ants_defaultFilterDate', JSON.stringify(updatedFilter));
             
-            // 管理者であればSupabaseにも保存して共有する
-            if (currentUserRole === 'admin') {
-                showLoading('デフォルトのフィルタ設定を保存中 (DB同期)...');
-                try {
-                    const { error } = await supabaseClient.from('dashboard_settings').upsert(
+            // Supabase (dashboard_settings および master_data) に保存して全端末・全ユーザーで同期
+            showLoading('デフォルトのフィルタ設定を保存中 (DB同期)...');
+            try {
+                const [res1, res2] = await Promise.all([
+                    supabaseClient.from('dashboard_settings').upsert(
                         { key: 'defaultFilterDate', value: updatedFilter },
                         { onConflict: 'key' }
-                    );
-                    if (error) throw error;
-                    alert('デフォルトのフィルタ設定を保存し、DBと同期しました。');
-                } catch (e) {
-                    console.error('Supabase sync failed', e);
-                    alert('DBへの同期に失敗しましたが、このブラウザには保存されました: ' + e.message);
-                } finally {
-                    hideLoading();
-                }
-            } else {
-                alert('デフォルトのフィルタ設定をこのブラウザに保存しました。');
+                    ),
+                    supabaseClient.from('master_data').upsert(
+                        { category: 'DASHBOARD_DEFAULT_FILTER', value: JSON.stringify(updatedFilter) },
+                        { onConflict: 'category' }
+                    )
+                ]);
+                if (res1.error && res2.error) throw res1.error;
+                alert('デフォルトのフィルタ設定をDBに保存し、同期しました。');
+            } catch (e) {
+                console.error('Supabase sync failed', e);
+                alert('DBへの同期に失敗しましたが、このブラウザには保存されました: ' + e.message);
+            } finally {
+                hideLoading();
             }
             
             dashboardSettings.defaultFilterDate = updatedFilter;
@@ -707,11 +805,15 @@ function setupDashboardUI() {
             const filterDateTo = document.getElementById('db-filter-date-to');
             const filterTeamRegex = document.getElementById('db-filter-team-regex');
             const filterCategory = document.getElementById('db-filter-category');
+            const filterOutcome = document.getElementById('db-filter-outcome');
+            const filterFirstScore = document.getElementById('db-filter-first-score');
 
             if (filterDateFrom) filterDateFrom.value = from;
             if (filterDateTo) filterDateTo.value = to;
             if (filterTeamRegex) filterTeamRegex.value = teamRegex;
             if (filterCategory) filterCategory.value = category;
+            if (filterOutcome) filterOutcome.value = outcome;
+            if (filterFirstScore) filterFirstScore.value = firstScore;
 
             // 即座に再描画を実行
             applyFiltersAndRender();
@@ -728,13 +830,15 @@ async function loadDashboardData() {
             { data: bStatsData, error: bStatsErr },
             { data: pStatsData, error: pStatsErr },
             { data: plData, error: plErr },
-            { data: settingsData, error: settingsErr }
+            { data: settingsData },
+            { data: masterSettingsData }
         ] = await Promise.all([
             supabaseClient.from('games').select('*').order('date', { ascending: true }),
             supabaseClient.from('batter_stats').select('*'),
             supabaseClient.from('pitcher_stats').select('*'),
             supabaseClient.from('players').select('*'),
-            supabaseClient.from('dashboard_settings').select('*')
+            supabaseClient.from('dashboard_settings').select('*'),
+            supabaseClient.from('master_data').select('*').in('category', ['DASHBOARD_DEFAULT_FILTER', 'DASHBOARD_HOME_TEAMS'])
         ]);
         
         if (gamesErr) throw gamesErr;
@@ -748,13 +852,16 @@ async function loadDashboardData() {
         
         // デフォルト初期値の定義
         let homeTeamNames = ['ありんこアントス@A軍'];
-        let defaultFilterDate = { from: '', to: '', teamRegex: '', category: '', outcome: 'all' };
+        let defaultFilterDate = { from: '', to: '', teamRegex: '', category: '', outcome: 'all', firstScore: 'all' };
+        let loadedHomeFromDb = false;
+        let loadedFilterFromDb = false;
 
-        // 1. DB (Supabase) からの共通デフォルト設定を読み込み
-        if (settingsData) {
+        // 1. DB (Supabase: dashboard_settings & master_data) からの設定を最優先で読み込み
+        if (settingsData && Array.isArray(settingsData)) {
             const homeTeamsObj = settingsData.find(s => s.key === 'homeTeamNames');
-            if (homeTeamsObj && homeTeamsObj.value !== null && homeTeamsObj.value !== undefined) {
+            if (homeTeamsObj && Array.isArray(homeTeamsObj.value) && homeTeamsObj.value.length > 0) {
                 homeTeamNames = homeTeamsObj.value;
+                loadedHomeFromDb = true;
             }
             const defaultFilterObj = settingsData.find(s => s.key === 'defaultFilterDate');
             if (defaultFilterObj && defaultFilterObj.value) {
@@ -764,25 +871,79 @@ async function loadDashboardData() {
                     teamRegex: defaultFilterObj.value.teamRegex || '',
                     category: defaultFilterObj.value.category || '',
                     outcome: defaultFilterObj.value.outcome || 'all',
+                    firstScore: defaultFilterObj.value.firstScore || 'all',
                 };
+                loadedFilterFromDb = true;
             }
         }
 
-        // 2. localStorage からの個人別設定を読み込み (あれば上書き)
-        const localHomeTeams = localStorage.getItem('ants_homeTeamNames');
-        if (localHomeTeams) {
-            try {
-                homeTeamNames = JSON.parse(localHomeTeams);
-            } catch (e) {
-                console.error('Failed to parse local homeTeamNames', e);
+        if (masterSettingsData && Array.isArray(masterSettingsData)) {
+            if (!loadedHomeFromDb) {
+                const mHome = masterSettingsData.find(m => m.category === 'DASHBOARD_HOME_TEAMS');
+                if (mHome && mHome.value) {
+                    try {
+                        const parsed = JSON.parse(mHome.value);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            homeTeamNames = parsed;
+                            loadedHomeFromDb = true;
+                        }
+                    } catch (e) {}
+                }
+            }
+            if (!loadedFilterFromDb) {
+                const mFilter = masterSettingsData.find(m => m.category === 'DASHBOARD_DEFAULT_FILTER');
+                if (mFilter && mFilter.value) {
+                    try {
+                        const parsed = JSON.parse(mFilter.value);
+                        if (parsed && typeof parsed === 'object') {
+                            defaultFilterDate = {
+                                from: parsed.from || '',
+                                to: parsed.to || '',
+                                teamRegex: parsed.teamRegex || '',
+                                category: parsed.category || '',
+                                outcome: parsed.outcome || 'all',
+                                firstScore: parsed.firstScore || 'all',
+                            };
+                            loadedFilterFromDb = true;
+                        }
+                    } catch (e) {}
+                }
             }
         }
-        const localDefaultFilter = localStorage.getItem('ants_defaultFilterDate');
-        if (localDefaultFilter) {
-            try {
-                defaultFilterDate = JSON.parse(localDefaultFilter);
-            } catch (e) {
-                console.error('Failed to parse local defaultFilterDate', e);
+
+        // 2. DBにまだ設定が存在しない場合のみ localStorage をフォールバックとして参照し、DBへ初期同期する
+        // DBに設定がある場合は localStorage 側をDBの最新値で上書きして不整合を防止する
+        if (loadedHomeFromDb) {
+            localStorage.setItem('ants_homeTeamNames', JSON.stringify(homeTeamNames));
+        } else {
+            const localHomeTeams = localStorage.getItem('ants_homeTeamNames');
+            if (localHomeTeams) {
+                try {
+                    homeTeamNames = JSON.parse(localHomeTeams);
+                } catch (e) {
+                    console.error('Failed to parse local homeTeamNames', e);
+                }
+            }
+        }
+
+        if (loadedFilterFromDb) {
+            localStorage.setItem('ants_defaultFilterDate', JSON.stringify(defaultFilterDate));
+        } else {
+            const localDefaultFilter = localStorage.getItem('ants_defaultFilterDate');
+            if (localDefaultFilter) {
+                try {
+                    const parsed = JSON.parse(localDefaultFilter);
+                    defaultFilterDate = {
+                        from: parsed.from || '',
+                        to: parsed.to || '',
+                        teamRegex: parsed.teamRegex || '',
+                        category: parsed.category || '',
+                        outcome: parsed.outcome || 'all',
+                        firstScore: parsed.firstScore || 'all',
+                    };
+                } catch (e) {
+                    console.error('Failed to parse local defaultFilterDate', e);
+                }
             }
         }
 
@@ -790,16 +951,26 @@ async function loadDashboardData() {
         dashboardSettings.defaultFilterDate = defaultFilterDate;
 
         renderHomeTeamList();
-        document.getElementById('setting-default-date-from').value = dashboardSettings.defaultFilterDate.from || '';
-        document.getElementById('setting-default-date-to').value = dashboardSettings.defaultFilterDate.to || '';
-        document.getElementById('setting-default-team-regex').value = dashboardSettings.defaultFilterDate.teamRegex || '';
-        document.getElementById('setting-default-category').value = dashboardSettings.defaultFilterDate.category || '';
-        if (!isFilterInitialized) {
-            document.getElementById('btn-clear-dashboard-filter').click(); // 初回ロード時にデフォルト期間を適用
-            isFilterInitialized = true;
-        }
+        const setFromEl = document.getElementById('setting-default-date-from');
+        const setToEl = document.getElementById('setting-default-date-to');
+        const setRegexEl = document.getElementById('setting-default-team-regex');
+        const setCatEl = document.getElementById('setting-default-category');
+        const setOutcomeEl = document.getElementById('setting-default-outcome');
+        const setFirstScoreEl = document.getElementById('setting-default-first-score');
 
-        applyFiltersAndRender();
+        if (setFromEl) setFromEl.value = dashboardSettings.defaultFilterDate.from || '';
+        if (setToEl) setToEl.value = dashboardSettings.defaultFilterDate.to || '';
+        if (setRegexEl) setRegexEl.value = dashboardSettings.defaultFilterDate.teamRegex || '';
+        if (setCatEl) setCatEl.value = dashboardSettings.defaultFilterDate.category || '';
+        if (setOutcomeEl) setOutcomeEl.value = dashboardSettings.defaultFilterDate.outcome || 'all';
+        if (setFirstScoreEl) setFirstScoreEl.value = dashboardSettings.defaultFilterDate.firstScore || 'all';
+
+        if (!isFilterInitialized) {
+            document.getElementById('btn-clear-dashboard-filter').click(); // 初回ロード時にDBのデフォルトフィルタを適用
+            isFilterInitialized = true;
+        } else {
+            applyFiltersAndRender();
+        }
     } catch (e) {
         console.error(e);
         alert('成績データの取得に失敗しました: ' + e.message);
@@ -957,7 +1128,7 @@ function applyFiltersAndRender() {
         const dateStr = g.date ? g.date.split('T')[0] : '';
         if (from && dateStr < from) return false;
         if (to && dateStr > to) return false;
-        if (categories.length > 0 && !categories.includes(g.category)) return false;
+        if (categories.length > 0 && !categories.some(cat => (g.title || '').includes(cat) || (g.category || '').includes(cat))) return false;
         if (regex) {
             const isMatchFirst = regex.test(g.team_first);
             const isMatchSecond = regex.test(g.team_second);
@@ -1258,20 +1429,24 @@ function calcBatterStats(stats) {
         sb += curSb;
 
         // 塁打（TB）の計算: 単打 = 安打 - 二塁打 - 三塁打 - 本塁打
+        // 長打率 = 塁打数 / 打数 を正確に保つため、内訳（単打×1 + 二塁打×2 + 三塁打×3 + 本塁打×4）または total_bases を使用
         const cur1b = s.singles !== undefined ? s.singles : Math.max(0, curH - cur2b - cur3b - curHr);
         const calcTb = cur1b * 1 + cur2b * 2 + cur3b * 3 + curHr * 4;
-        const curTb = (s.total_bases && s.total_bases > calcTb) ? s.total_bases : calcTb;
+        const curTb = calcTb > 0 ? calcTb : (s.total_bases || 0);
         tb += curTb;
     });
 
-    const avg = ab > 0 ? h / ab : 0;
+    const avgRaw = ab > 0 ? h / ab : 0;
+    const avg = Math.round(avgRaw * 1000) / 1000;
     // 公認野球規則の出塁率: (安打 + 四球 + 死球) / (打数 + 四球 + 死球 + 犠飛)
     const obpDenom = ab + bb + hbp + sf;
-    const obp = obpDenom > 0 ? (h + bb + hbp) / obpDenom : (pa > 0 ? (h + bb + hbp) / pa : 0);
-    // 長打率: 塁打 / 打数
-    const slg = ab > 0 ? tb / ab : 0;
-    // OPS: 出塁率 + 長打率
-    const ops = obp + slg;
+    const obpRaw = obpDenom > 0 ? (h + bb + hbp) / obpDenom : (pa > 0 ? (h + bb + hbp) / pa : 0);
+    const obp = Math.round(obpRaw * 1000) / 1000;
+    // 長打率: 塁打数 / 打数
+    const slgRaw = ab > 0 ? tb / ab : 0;
+    const slg = Math.round(slgRaw * 1000) / 1000;
+    // OPS: 出塁率 + 長打率 (小数第3位表示同士の和と完全一致するよう丸め後の値を加算)
+    const ops = Math.round((obp + slg) * 1000) / 1000;
 
     const ob = h + bb + hbp;
     const runRate = ob > 0 ? (r / ob) : 0;
@@ -1709,13 +1884,15 @@ function renderGameDetailTable(role, merged) {
             const err = s.errors || 0;
             const avg = ab > 0 ? (h / ab).toFixed(3).replace(/^0/, '') : '.000';
             const obpDenom = ab + bb + hbp + sf;
-            const obpNum = obpDenom > 0 ? ((h + bb + hbp) / obpDenom) : (pa > 0 ? ((h + bb + hbp) / pa) : 0);
+            const obpRaw = obpDenom > 0 ? ((h + bb + hbp) / obpDenom) : (pa > 0 ? ((h + bb + hbp) / pa) : 0);
+            const obpNum = Math.round(obpRaw * 1000) / 1000;
             const obp = obpNum.toFixed(3).replace(/^0/, '');
             const calcTb = h1 + (h2 * 2) + (h3 * 3) + (hr * 4);
-            const tb = (s.total_bases && s.total_bases > calcTb) ? s.total_bases : calcTb;
-            const slgNum = ab > 0 ? (tb / ab) : 0;
+            const tb = calcTb > 0 ? calcTb : (s.total_bases || 0);
+            const slgRaw = ab > 0 ? (tb / ab) : 0;
+            const slgNum = Math.round(slgRaw * 1000) / 1000;
             const slg = slgNum.toFixed(3).replace(/^0/, '');
-            const ops = (obpNum + slgNum).toFixed(3);
+            const ops = (Math.round((obpNum + slgNum) * 1000) / 1000).toFixed(3);
 
             return `
                 <tr class="hover:bg-gray-50">
@@ -2014,12 +2191,27 @@ function handleExportPsCsv() {
 
 // --- タブ3: ランキング ---
 function renderRanking() {
-    const { bStats, pStats } = currentFiltered;
+    const { games, bStats, pStats } = currentFiltered;
+    const gameCount = games ? games.length : 0;
+    const regulationPA = gameCount * 2;
+
+    const infoEl = document.getElementById('ranking-summary-info');
+    if (infoEl) {
+        infoEl.textContent = `対象試合: ${gameCount}試合 / 規定打席: ${regulationPA}打席 (試合数×2)`;
+    }
+
     const bMap = {}, pMap = {};
     bStats.forEach(s => { if(!bMap[s.player_id]) bMap[s.player_id] = []; bMap[s.player_id].push(s); });
     pStats.forEach(s => { if(!pMap[s.player_id]) pMap[s.player_id] = []; pMap[s.player_id].push(s); });
 
-    currentRankingData.batter = Object.keys(bMap).map(pid => ({ name: allPlayers.find(x=>x.id==pid)?.name || '不明', ...calcBatterStats(bMap[pid]) })).filter(x => x.pa > 0);
+    const allBatters = Object.keys(bMap)
+        .map(pid => ({ name: allPlayers.find(x=>x.id==pid)?.name || '不明', ...calcBatterStats(bMap[pid]) }))
+        .filter(x => x.pa > 0);
+
+    currentRankingData.batter = isRankingRegulationEnabled
+        ? allBatters.filter(x => x.pa >= regulationPA)
+        : allBatters;
+
     currentRankingData.pitcher = Object.keys(pMap).map(pid => ({ name: allPlayers.find(x=>x.id==pid)?.name || '不明', ...calcPitcherStats(pMap[pid]) })).filter(x => x.outs > 0);
 
     drawRankingTable('batter');
@@ -2053,9 +2245,16 @@ function drawRankingTable(role) {
     });
 
     if (role === 'batter') {
-        document.getElementById('ranking-batter-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.pa}</td><td class="p-2">${r.avgStr}</td><td class="p-2 text-purple-700 font-bold">${r.opsStr}</td><td class="p-2">${r.obpStr}</td><td class="p-2">${r.slgStr}</td><td class="p-2">${r.h}</td><td class="p-2">${r.bb}</td><td class="p-2">${r.hbp}</td><td class="p-2">${r.rbi}</td><td class="p-2">${r.r}</td><td class="p-2">${r.sb}</td><td class="p-2">${r.hr}</td></tr>`).join('');
+        const tbody = document.getElementById('ranking-batter-tbody');
+        if (tbody) {
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="15" class="p-4 text-center text-gray-500">該当する選手データがありません（規定打席フィルタを解除すると全選手が表示されます）</td></tr>`;
+            } else {
+                tbody.innerHTML = data.map(r => `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-bold">${r.name}</td><td class="p-2">${r.pa}</td><td class="p-2">${r.ab}</td><td class="p-2 font-bold text-red-600">${r.avgStr}</td><td class="p-2 text-purple-700 font-bold bg-purple-50">${r.opsStr}</td><td class="p-2 text-blue-600">${r.obpStr}</td><td class="p-2 text-teal-600">${r.slgStr}</td><td class="p-2">${r.h}</td><td class="p-2">${r.tb}</td><td class="p-2">${r.bb}</td><td class="p-2">${r.hbp}</td><td class="p-2">${r.rbi}</td><td class="p-2">${r.r}</td><td class="p-2">${r.sb}</td><td class="p-2">${r.hr}</td></tr>`).join('');
+            }
+        }
     } else {
-        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b"><td class="p-2 font-bold">${r.name}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
+        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-bold">${r.name}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
     }
 
     // アイコンの更新
@@ -2190,24 +2389,28 @@ async function handleAddHomeTeam() {
 
     const updatedTeams = [...dashboardSettings.homeTeamNames, newName];
 
-    // localStorage に保存
+    // localStorage にキャッシュ保存
     localStorage.setItem('ants_homeTeamNames', JSON.stringify(updatedTeams));
 
-    // 管理者であればSupabaseにも保存して共有する
-    if (currentUserRole === 'admin') {
-        showLoading('自チーム名を追加中 (DB同期)...');
-        try {
-            const { error } = await supabaseClient.from('dashboard_settings').upsert(
+    // Supabaseにも保存して共有する
+    showLoading('自チーム名を追加中 (DB同期)...');
+    try {
+        const [res1, res2] = await Promise.all([
+            supabaseClient.from('dashboard_settings').upsert(
                 { key: 'homeTeamNames', value: updatedTeams },
                 { onConflict: 'key' }
-            );
-            if (error) throw error;
-        } catch (e) {
-            console.error('Supabase sync failed', e);
-            console.warn('DBへの同期に失敗しましたが、このブラウザには保存されました: ' + e.message);
-        } finally {
-            hideLoading();
-        }
+            ),
+            supabaseClient.from('master_data').upsert(
+                { category: 'DASHBOARD_HOME_TEAMS', value: JSON.stringify(updatedTeams) },
+                { onConflict: 'category' }
+            )
+        ]);
+        if (res1.error && res2.error) throw res1.error;
+    } catch (e) {
+        console.error('Supabase sync failed', e);
+        console.warn('DBへの同期に失敗しましたが、このブラウザには保存されました: ' + e.message);
+    } finally {
+        hideLoading();
     }
 
     dashboardSettings.homeTeamNames = updatedTeams;
@@ -2222,24 +2425,28 @@ window.dashboard_removeHomeTeam = async function(nameToRemove) {
     
     const updatedTeams = dashboardSettings.homeTeamNames.filter(name => name !== nameToRemove);
 
-    // localStorage に保存
+    // localStorage にキャッシュ保存
     localStorage.setItem('ants_homeTeamNames', JSON.stringify(updatedTeams));
 
-    // 管理者であればSupabaseにも保存して共有する
-    if (currentUserRole === 'admin') {
-        showLoading('自チーム名を削除中 (DB同期)...');
-        try {
-            const { error } = await supabaseClient.from('dashboard_settings').upsert(
+    // Supabaseにも保存して共有する
+    showLoading('自チーム名を削除中 (DB同期)...');
+    try {
+        const [res1, res2] = await Promise.all([
+            supabaseClient.from('dashboard_settings').upsert(
                 { key: 'homeTeamNames', value: updatedTeams },
                 { onConflict: 'key' }
-            );
-            if (error) throw error;
-        } catch (e) {
-            console.error('Supabase sync failed', e);
-            console.warn('DBへの同期に失敗しましたが、このブラウザからは削除されました: ' + e.message);
-        } finally {
-            hideLoading();
-        }
+            ),
+            supabaseClient.from('master_data').upsert(
+                { category: 'DASHBOARD_HOME_TEAMS', value: JSON.stringify(updatedTeams) },
+                { onConflict: 'category' }
+            )
+        ]);
+        if (res1.error && res2.error) throw res1.error;
+    } catch (e) {
+        console.error('Supabase sync failed', e);
+        console.warn('DBへの同期に失敗しましたが、このブラウザからは削除されました: ' + e.message);
+    } finally {
+        hideLoading();
     }
 
     dashboardSettings.homeTeamNames = updatedTeams;
@@ -2265,10 +2472,8 @@ async function handleCsvImport() {
         // BOM(Byte Order Mark)が含まれている場合は除去して誤動作を防ぐ
         text = text.replace(/^\uFEFF/, '');
         
-        // 投手データの改行欠落バグを正規表現で強制補正（例: "FO247,難波" -> "FO\n247,難波"）
-        if (type === 'pitcher') {
-            text = text.replace(/([A-Za-z0-9]+)(\d{3},[^0-9,])/g, '$1\n$2');
-        }
+        // Scorer出力CSVの改行欠落バグを正規表現で強制補正（例: "FO247,難波" -> "FO\n247,難波"）
+        text = text.replace(/([A-Za-z0-9]+)(\d{3},[^0-9,])/g, '$1\n$2');
 
         const rows = parseCSV(text);
         if (rows.length < 2) return alert("データが空かフォーマットが不正です。");
@@ -2376,6 +2581,372 @@ async function handleCsvImport() {
         }
     };
     reader.readAsText(file);
+}
+
+// --- Scorer バックアップデータ (scorer_data*.txt) の解析・CSV抽出・単一試合抽出・DB直接インポート ---
+let loadedScorerBackup = null;
+let loadedScorerExtracted = null;
+
+function formatScorerCsvDate(daStr) {
+    if (!daStr) return '';
+    // "2026-08-30" -> "2026-8-30" (Scorer標準CSV出力形式)
+    const parts = String(daStr).split('T')[0].split('-');
+    if (parts.length === 3) {
+        return `${parseInt(parts[0], 10)}-${parseInt(parts[1], 10)}-${parseInt(parts[2], 10)}`;
+    }
+    return daStr;
+}
+
+function normalizeIsoDate(daStr) {
+    if (!daStr) return null;
+    const parts = String(daStr).split('T')[0].replace(/\//g, '-').split('-');
+    if (parts.length === 3) {
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const d = parseInt(parts[2], 10);
+        if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+            return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+    }
+    return null;
+}
+
+function extractScoreStringFromBackupGame(g) {
+    if (!g || !g.sc) return '';
+    try {
+        const scObj = typeof g.sc === 'string' ? JSON.parse(g.sc) : g.sc;
+        if (Array.isArray(scObj) && scObj[1] && Array.isArray(scObj[1]) && scObj[1][0] && scObj[1][1]) {
+            return `${scObj[1][0][0]}-${scObj[1][1][0]}`;
+        }
+    } catch (e) {}
+    return '';
+}
+
+function extractFromScorerBackup(backupData) {
+    const playersMap = new Map();
+    const gamesMap = new Map();
+    const batterStats = [];
+    const pitcherStats = [];
+    const rawBRows = [
+        ['選手ID', '選手名', '背番号', '試合ID', '日付', '先攻チーム', '得点', '後攻チーム', 'タイトル', 'カテゴリ', '球場', '打席', '打数', '得点', '安打', '二塁打', '三塁打', '本塁打', '塁打', '打点', '盗塁', '盗塁死', '犠打', '犠飛', '四球', '死球', '三振', '残塁', '併殺打', '得点圏打数', '得点圏安打', 'GO', 'FO']
+    ];
+    const rawPRows = [
+        ['選手ID', '選手名', '背番号', '試合ID', '日付', '先攻チーム', '得点', '後攻チーム', 'タイトル', 'カテゴリ', '球場', '先発', '勝数', '負数', 'セーブ', 'ホールド', 'QS', 'アウト数', '球数', 'S数', '打者', '打数', '安打', '本塁打', '四球', '死球', '三振', '失点', '自責点', '暴投', 'ボーク', '犠打', '犠飛', 'GO', 'FO']
+    ];
+
+    const rawGamesById = new Map();
+    if (Array.isArray(backupData.game)) {
+        backupData.game.forEach(g => {
+            const gid = parseInt(g._id, 10);
+            if (isNaN(gid)) return;
+            rawGamesById.set(gid, g);
+            const scoreStr = extractScoreStringFromBackupGame(g);
+            gamesMap.set(gid, {
+                id: gid,
+                date: normalizeIsoDate(g.da),
+                team_first: g.tn || null,
+                score: scoreStr || null,
+                team_second: g.bn || null,
+                title: g.tt || null,
+                category: g.ca || null,
+                stadium: g.pa || null
+            });
+        });
+    }
+
+    if (Array.isArray(backupData.player)) {
+        backupData.player.forEach(p => {
+            const pid = parseInt(p._id, 10);
+            if (isNaN(pid)) return;
+            const pName = p.di || p.na || '不明';
+            const pNum = p.nu !== undefined && p.nu !== null ? String(p.nu) : '';
+
+            playersMap.set(pid, {
+                id: pid,
+                name: pName,
+                uniform_number: pNum || null
+            });
+
+            if (!p.st) return;
+            let stObj = null;
+            try {
+                stObj = typeof p.st === 'string' ? JSON.parse(p.st) : p.st;
+            } catch (e) {
+                return;
+            }
+            if (!stObj) return;
+
+            // 打撃成績 (stObj.bat)
+            // st配列(長さ23): [0:打席, 1:打数, 2:得点, 3:安打, 4:二塁打, 5:三塁打, 6:本塁打, 7:塁打, 8:打点, 9:盗塁, 10:盗塁死, 11:犠打, 12:犠飛, 13:四球, 14:死球, 15:三振, 16:残塁, 17:併殺打, 18:得点圏打数, 19:得点圏安打, 20:妨害出塁(CSV対象外), 21:GO, 22:FO]
+            if (Array.isArray(stObj.bat)) {
+                stObj.bat.forEach(bEntry => {
+                    const gid = parseInt(bEntry.id, 10);
+                    const st = bEntry.st;
+                    if (isNaN(gid) || !Array.isArray(st) || st.length < 22) return;
+                    const gRaw = rawGamesById.get(gid);
+                    const scoreStr = gRaw ? extractScoreStringFromBackupGame(gRaw) : '';
+                    const csvDate = gRaw ? formatScorerCsvDate(gRaw.da) : '';
+
+                    const goVal = st.length >= 23 ? (st[21] ?? 0) : (st[20] ?? 0);
+                    const foVal = st.length >= 23 ? (st[22] ?? 0) : (st[21] ?? 0);
+
+                    const bCols = [
+                        st[0] ?? 0, st[1] ?? 0, st[2] ?? 0, st[3] ?? 0, st[4] ?? 0,
+                        st[5] ?? 0, st[6] ?? 0, st[7] ?? 0, st[8] ?? 0, st[9] ?? 0,
+                        st[10] ?? 0, st[11] ?? 0, st[12] ?? 0, st[13] ?? 0, st[14] ?? 0,
+                        st[15] ?? 0, st[16] ?? 0, st[17] ?? 0, st[18] ?? 0, st[19] ?? 0,
+                        goVal, foVal
+                    ];
+
+                    rawBRows.push([
+                        pid, pName, pNum, gid, csvDate,
+                        gRaw?.tn || '', scoreStr, gRaw?.bn || '', gRaw?.tt || '', gRaw?.ca || '', gRaw?.pa || '',
+                        ...bCols
+                    ]);
+
+                    const dbColNames = ['plate_appearances','at_bats','runs','hits','doubles','triples','home_runs','total_bases','runs_batted_in','stolen_bases','caught_stealing','sacrifice_hits','sacrifice_flies','walks','hit_by_pitch','strike_outs','left_on_base','double_plays','scoring_position_at_bats','scoring_position_hits','go','fo'];
+                    const statRow = { player_id: pid, game_id: gid };
+                    dbColNames.forEach((col, idx) => {
+                        statRow[col] = parseInt(bCols[idx], 10) || 0;
+                    });
+                    batterStats.push(statRow);
+                });
+            }
+
+            // 投手成績 (stObj.pit)
+            // st配列(長さ24): [0:先発, 1:勝数, 2:負数, 3:セーブ, 4:アウト数, 5:球数, 6:打者, 7:打数, 8:安打, 9:本塁打, 10:四球, 11:死球, 12:三振, 13:失点, 14:自責点, 15:暴投, 16:ボーク, 17:犠打, 18:犠飛, 19:ボール数(S数=球数-st[19]), 20:QS, 21:ホールド, 22:GO, 23:FO]
+            if (Array.isArray(stObj.pit)) {
+                stObj.pit.forEach(pEntry => {
+                    const gid = parseInt(pEntry.id, 10);
+                    const st = pEntry.st;
+                    if (isNaN(gid) || !Array.isArray(st) || st.length < 24) return;
+                    const gRaw = rawGamesById.get(gid);
+                    const scoreStr = gRaw ? extractScoreStringFromBackupGame(gRaw) : '';
+                    const csvDate = gRaw ? formatScorerCsvDate(gRaw.da) : '';
+
+                    const pitchCount = parseInt(st[5], 10) || 0;
+                    const ballsCount = parseInt(st[19], 10) || 0;
+                    const strikesCount = Math.max(0, pitchCount - ballsCount);
+
+                    const pCols = [
+                        st[0] ?? 0,       // 先発
+                        st[1] ?? 0,       // 勝数
+                        st[2] ?? 0,       // 負数
+                        st[3] ?? 0,       // セーブ
+                        st[21] ?? 0,      // ホールド
+                        st[20] ?? 0,      // QS
+                        st[4] ?? 0,       // アウト数
+                        pitchCount,       // 球数
+                        strikesCount,     // S数
+                        st[6] ?? 0,       // 打者
+                        st[7] ?? 0,       // 打数
+                        st[8] ?? 0,       // 安打
+                        st[9] ?? 0,       // 本塁打
+                        st[10] ?? 0,      // 四球
+                        st[11] ?? 0,      // 死球
+                        st[12] ?? 0,      // 三振
+                        st[13] ?? 0,      // 失点
+                        st[14] ?? 0,      // 自責点
+                        st[15] ?? 0,      // 暴投
+                        st[16] ?? 0,      // ボーク
+                        st[17] ?? 0,      // 犠打
+                        st[18] ?? 0,      // 犠飛
+                        st[22] ?? 0,      // GO
+                        st[23] ?? 0       // FO
+                    ];
+
+                    rawPRows.push([
+                        pid, pName, pNum, gid, csvDate,
+                        gRaw?.tn || '', scoreStr, gRaw?.bn || '', gRaw?.tt || '', gRaw?.ca || '', gRaw?.pa || '',
+                        ...pCols
+                    ]);
+
+                    const dbColNames = ['is_starter','wins','losses','saves','holds','qs','outs','pitch_count','strikes','batters_faced','at_bats','hits_allowed','home_runs_allowed','walks_allowed','hit_batters','strike_outs','runs_allowed','earned_runs','wild_pitches','balks','sacrifice_hits_allowed','sacrifice_flies_allowed','go','fo'];
+                    const statRow = { player_id: pid, game_id: gid };
+                    dbColNames.forEach((col, idx) => {
+                        statRow[col] = parseInt(pCols[idx], 10) || 0;
+                    });
+                    pitcherStats.push(statRow);
+                });
+            }
+        });
+    }
+
+    return {
+        players: Array.from(playersMap.values()),
+        games: Array.from(gamesMap.values()),
+        batterStats,
+        pitcherStats,
+        rawBRows,
+        rawPRows,
+        rawGamesById
+    };
+}
+
+function handleBackupFileSelect(e) {
+    const file = e.target.files?.[0];
+    const msgEl = document.getElementById('backup-extract-msg');
+    const gameSel = document.getElementById('backup-game-select');
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+        try {
+            const text = String(ev.target.result || '').replace(/^\uFEFF/, '');
+            const data = JSON.parse(text);
+            if (!data.game || !Array.isArray(data.game)) {
+                throw new Error('Scorerのバックアップデータ (game配列を含むJSON) ではありません。');
+            }
+            loadedScorerBackup = data;
+            loadedScorerExtracted = extractFromScorerBackup(data);
+
+            if (gameSel) {
+                const sortedGames = [...data.game].sort((a, b) => String(b.da || '').localeCompare(String(a.da || '')) || (b._id - a._id));
+                gameSel.innerHTML = sortedGames.map(g => {
+                    const sc = extractScoreStringFromBackupGame(g);
+                    const dateStr = (g.da || '').split('T')[0];
+                    return `<option value="${g._id}">${dateStr} | ${g.tn || ''} ${sc} ${g.bn || ''} (${g.tt || '試合'}) [ID:${g._id}]</option>`;
+                }).join('');
+            }
+
+            if (msgEl) {
+                msgEl.textContent = `読み込み完了: 試合 ${loadedScorerExtracted.games.length}件 / 選手 ${loadedScorerExtracted.players.length}名 / 打者成績 ${loadedScorerExtracted.batterStats.length}件 / 投手成績 ${loadedScorerExtracted.pitcherStats.length}件`;
+                msgEl.className = 'mt-3 text-sm font-bold text-indigo-700';
+                msgEl.classList.remove('hidden');
+            }
+        } catch (err) {
+            loadedScorerBackup = null;
+            loadedScorerExtracted = null;
+            if (msgEl) {
+                msgEl.textContent = `読み込みエラー: ${err.message}`;
+                msgEl.className = 'mt-3 text-sm font-bold text-red-600';
+                msgEl.classList.remove('hidden');
+            }
+        }
+    };
+    reader.readAsText(file);
+}
+
+async function handleBackupImportDb() {
+    const msgEl = document.getElementById('backup-extract-msg');
+    if (!loadedScorerExtracted) {
+        return alert('先に scorer_data*.txt ファイルを選択してください。');
+    }
+
+    showLoading('バックアップデータから全成績をDBへ一括インポート中...');
+    try {
+        const { players, games, batterStats, pitcherStats } = loadedScorerExtracted;
+
+        if (players.length > 0) {
+            const { error: pErr } = await supabaseClient.from('players').upsert(players);
+            if (pErr) throw pErr;
+        }
+        if (games.length > 0) {
+            const { error: gErr } = await supabaseClient.from('games').upsert(games);
+            if (gErr) throw gErr;
+        }
+        if (batterStats.length > 0) {
+            const { error: bErr } = await supabaseClient.from('batter_stats').upsert(batterStats, { onConflict: 'player_id, game_id' });
+            if (bErr) throw bErr;
+        }
+        if (pitcherStats.length > 0) {
+            const { error: pitErr } = await supabaseClient.from('pitcher_stats').upsert(pitcherStats, { onConflict: 'player_id, game_id' });
+            if (pitErr) throw pitErr;
+        }
+
+        await logAction('IMPORT_BACKUP', `Scorerバックアップから 試合:${games.length}件, 打者:${batterStats.length}件, 投手:${pitcherStats.length}件を一括インポートしました`);
+        if (msgEl) {
+            msgEl.textContent = `DBインポート完了: 試合 ${games.length}件 / 打者成績 ${batterStats.length}件 / 投手成績 ${pitcherStats.length}件を保存しました。`;
+            msgEl.className = 'mt-3 text-sm font-bold text-green-600';
+            msgEl.classList.remove('hidden');
+        }
+        await loadDashboardData();
+    } catch (err) {
+        if (msgEl) {
+            msgEl.textContent = `DBインポートエラー: ${err.message}`;
+            msgEl.className = 'mt-3 text-sm font-bold text-red-600';
+            msgEl.classList.remove('hidden');
+        }
+    } finally {
+        hideLoading();
+    }
+}
+
+function handleExtractRawCsv(type) {
+    if (!loadedScorerExtracted) {
+        return alert('先に scorer_data*.txt ファイルを選択してください。');
+    }
+    const rows = type === 'batter' ? loadedScorerExtracted.rawBRows : loadedScorerExtracted.rawPRows;
+    const filename = type === 'batter' ? 'scorer_stats_raw_b.csv' : 'scorer_stats_raw_p.csv';
+
+    const csvText = '\uFEFF' + rows.map(row => row.map(cell => {
+        const s = cell === null || cell === undefined ? '' : String(cell);
+        return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
+    }).join(',')).join('\n') + '\n';
+
+    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
+}
+
+function handleExtractSingleGame() {
+    if (!loadedScorerBackup || !loadedScorerExtracted) {
+        return alert('先に scorer_data*.txt ファイルを選択してください。');
+    }
+    const gameSel = document.getElementById('backup-game-select');
+    const selectedGid = parseInt(gameSel?.value, 10);
+    if (isNaN(selectedGid)) {
+        return alert('抽出する試合を選択してください。');
+    }
+
+    const gObj = loadedScorerExtracted.rawGamesById.get(selectedGid);
+    if (!gObj) {
+        return alert('選択された試合データが見つかりません。');
+    }
+
+    // 該当試合に参加したチームと選手を抽出して単一試合データ (kind: "GD") 形式を構築
+    const teamIds = new Set([gObj.ti, gObj.bi].filter(x => x !== undefined && x !== null));
+    const filteredTeams = Array.isArray(loadedScorerBackup.team)
+        ? loadedScorerBackup.team.filter(t => teamIds.has(t._id))
+        : [];
+    const filteredPlayers = Array.isArray(loadedScorerBackup.player)
+        ? loadedScorerBackup.player.filter(p => {
+            if (teamIds.has(p.te)) return true;
+            if (!p.st) return false;
+            try {
+                const stObj = typeof p.st === 'string' ? JSON.parse(p.st) : p.st;
+                const inBat = Array.isArray(stObj.bat) && stObj.bat.some(b => b.id == selectedGid);
+                const inPit = Array.isArray(stObj.pit) && stObj.pit.some(pt => pt.id == selectedGid);
+                return inBat || inPit;
+            } catch (e) {
+                return false;
+            }
+        })
+        : [];
+
+    const gameExportObj = {
+        kind: 'GD',
+        version: loadedScorerBackup.version || 2,
+        team: filteredTeams,
+        player: filteredPlayers,
+        game: [gObj],
+        cat: loadedScorerBackup.cat || [],
+        sys: loadedScorerBackup.sys || []
+    };
+
+    const dateDigits = (gObj.da || '').split('T')[0].replace(/[^0-9]/g, '') || String(selectedGid);
+    const filename = `scorer_game${dateDigits}.txt`;
+    const jsonText = JSON.stringify(gameExportObj);
+
+    const blob = new Blob([jsonText], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(link.href);
 }
 
 function handleDetailDataLoad() {
