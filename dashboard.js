@@ -531,6 +531,7 @@ function setupDashboardUI() {
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="detail-db-status-badge" class="text-xs font-bold px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">DBデータ確認中...</span>
+                            <button id="btn-detail-exit-preview" class="hidden text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300">DB表示に戻す</button>
                         </div>
                     </div>
 
@@ -552,6 +553,7 @@ function setupDashboardUI() {
                             </div>
                         </details>
                     </div>
+                    <div id="detail-games-quicklist" class="hidden mt-3 pt-3 border-t border-gray-100"></div>
                 </div>
 
                 <!-- 試合ごとの文字起こし・スコアボード表示エリア（個別試合選択時に表示） -->
@@ -562,6 +564,7 @@ function setupDashboardUI() {
                             <div class="text-xs text-gray-500 mt-0.5" id="detail-transcript-meta"></div>
                         </div>
                         <div class="flex flex-wrap gap-2">
+                            <button id="btn-detail-back-to-all" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold">← 全試合合算に戻る</button>
                             <button id="btn-detail-copy-transcript" class="bg-gray-100 hover:bg-gray-200 text-gray-800 border px-3 py-1.5 rounded-lg text-xs font-bold">📋 テキストをコピー</button>
                             <button id="btn-detail-download-transcript" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">📥 .txt ダウンロード</button>
                         </div>
@@ -711,7 +714,12 @@ function setupDashboardUI() {
         document.getElementById('btn-extract-game-transcript')?.addEventListener('click', handleExtractGameTranscript);
         document.getElementById('btn-preview-backup-detail')?.addEventListener('click', handlePreviewBackupDetail);
         document.getElementById('btn-load-detail-data')?.addEventListener('click', handleDetailDataLoad);
-        document.getElementById('detail-scope-select')?.addEventListener('change', () => renderDetailAnalysisTab(false));
+        document.getElementById('detail-scope-select')?.addEventListener('change', (e) => renderDetailAnalysisTab(true, e.target.value));
+        document.getElementById('btn-detail-back-to-all')?.addEventListener('click', () => renderDetailAnalysisTab(true, 'all'));
+        document.getElementById('btn-detail-exit-preview')?.addEventListener('click', () => {
+            tempPreviewDetails = [];
+            renderDetailAnalysisTab(false, 'all');
+        });
         document.getElementById('detail-transcript-show-pitches')?.addEventListener('change', (e) => {
             detailTranscriptShowPitches = e.target.checked;
             renderSelectedGameTranscript();
@@ -2792,8 +2800,10 @@ function extractFromScorerBackup(backupData) {
     }
 
     const rawGamesById = new Map();
-    if (Array.isArray(backupData.game)) {
-        backupData.game.forEach(g => {
+    const rawGameList = Array.isArray(backupData.game)
+        ? backupData.game
+        : (backupData.game ? [backupData.game] : (backupData.cd && backupData.cf ? [backupData] : []));
+    rawGameList.forEach(g => {
             const gid = parseInt(g.gid ?? g._id, 10);
             if (isNaN(gid)) return;
             rawGamesById.set(gid, g);
@@ -2850,7 +2860,6 @@ function extractFromScorerBackup(backupData) {
                 });
             }
         });
-    }
 
     // グローバル選手マスタ (backupData.player) で最新名称・背番号を上書き登録
     if (Array.isArray(backupData.player)) {
@@ -2989,8 +2998,9 @@ function handleBackupFileSelect(e) {
         try {
             const text = String(ev.target.result || '').replace(/^\uFEFF/, '');
             const data = JSON.parse(text);
-            if (!data.game || !Array.isArray(data.game)) {
-                throw new Error('Scorerのバックアップ／試合データ (game配列を含むJSON) ではありません。');
+            const hasGames = Array.isArray(data.game) ? data.game.length > 0 : Boolean(data.game || (data.cd && data.cf));
+            if (!hasGames) {
+                throw new Error('Scorerのバックアップ／試合データ (gameデータを含むJSON) ではありません。');
             }
             loadedScorerBackup = data;
             loadedScorerExtracted = extractFromScorerBackup(data);
@@ -3651,8 +3661,10 @@ function getDetailGamesMatchingCurrentFilter() {
 
 function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
     const badgeEl = document.getElementById('detail-db-status-badge');
+    const exitPreviewBtn = document.getElementById('btn-detail-exit-preview');
     const emptyEl = document.getElementById('detail-empty-notice');
     const scopeSel = document.getElementById('detail-scope-select');
+    const quickListEl = document.getElementById('detail-games-quicklist');
     const overviewEl = document.getElementById('detail-team-overview');
     const dashEl = document.getElementById('detail-analysis-dashboard');
     const transcriptPanel = document.getElementById('detail-transcript-panel');
@@ -3666,9 +3678,11 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
             ? `一時プレビュー表示中 (${availableDetails.length}試合)`
             : `DB保存詳細データ: 全${allGameDetails.length}試合（フィルタ一致: ${availableDetails.length}試合）`;
     }
+    exitPreviewBtn?.classList.toggle('hidden', !isPreviewMode);
 
     if (availableDetails.length === 0) {
         emptyEl?.classList.remove('hidden');
+        quickListEl?.classList.add('hidden');
         overviewEl?.classList.add('hidden');
         dashEl?.classList.add('hidden');
         transcriptPanel?.classList.add('hidden');
@@ -3701,15 +3715,33 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
 
     const decodedList = targetDetails.map(gd => decodeScorerGamePlayByPlay(gd));
 
-    // 個別試合が選択されていれば、スコアボード＆文字起こしパネルを表示
+    // 個別試合が選択されていればスコアボード＆文字起こしパネルを表示、全試合合算時はクイック選択一覧を表示
     if (selectedScope !== 'all' && decodedList.length === 1) {
         currentDecodedGameForTranscript = decodedList[0];
         detailTranscriptHalfFilter = 'all';
         renderSelectedGameTranscript();
         transcriptPanel?.classList.remove('hidden');
+        quickListEl?.classList.add('hidden');
     } else {
         currentDecodedGameForTranscript = null;
         transcriptPanel?.classList.add('hidden');
+        if (quickListEl) {
+            quickListEl.innerHTML = `
+                <div class="text-xs font-bold text-gray-700 mb-2">📝 試合ごとのスコアボード＆戦績文字起こしを見る（クリックで切り替え）:</div>
+                <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                    ${availableDetails.map(gd => {
+                        const sc = extractScoreStringFromBackupGame(gd);
+                        return `<button type="button" data-quick-gid="${gd.gid}" class="text-xs px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 text-indigo-900 font-semibold transition-colors">${escapeHtml(gd.date || '')} ${escapeHtml(gd.tn)} ${escapeHtml(sc)} ${escapeHtml(gd.bn)}</button>`;
+                    }).join('')}
+                </div>
+            `;
+            quickListEl.classList.remove('hidden');
+            quickListEl.querySelectorAll('button[data-quick-gid]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    renderDetailAnalysisTab(true, btn.dataset.quickGid);
+                });
+            });
+        }
     }
 
     // 詳細集計データを生成して各種グラフ・選手別UIへ反映
@@ -4108,9 +4140,7 @@ function aggregateDecodedGames(decodedList) {
                         currentBatterBucket.ab++;
                         innBucket.outs.strikeout++;
                     } else if (/^Gob?/.test(cd)) {
-                        if (/^Gob/.test(cd) && !cd.includes('Cb')) {
-                            // 犠打は打数に含めないがイベントとしては記録
-                        } else if (!cd.includes('Cb')) {
+                        if (!cd.includes('Cb')) {
                             currentBatterBucket.ab++;
                         }
                         currentBatterBucket.groundout++;
@@ -4120,7 +4150,9 @@ function aggregateDecodedGames(decodedList) {
                         else currentBatterBucket.directions.inner++;
                     } else if (/^Fo/.test(cd)) {
                         currentBatterBucket.flyout++;
-                        currentBatterBucket.ab++;
+                        if (!cd.includes('Cf')) {
+                            currentBatterBucket.ab++;
+                        }
                         innBucket.outs.flyout++;
                         if (text.includes('レフト')) currentBatterBucket.directions.left++;
                         else if (text.includes('センター')) currentBatterBucket.directions.center++;
