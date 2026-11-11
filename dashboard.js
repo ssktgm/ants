@@ -15,7 +15,6 @@ let detailTranscriptHalfFilter = 'all'; // 'all' or specific half-inning label e
 let charts = {};
 let personalCharts = {};
 let comparisonCharts = {};
-let testModeCharts = {};
 let currentRankingData = { batter: [], pitcher: [] };
 let rankingSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
 let psAllSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
@@ -85,7 +84,6 @@ function setupDashboardUI() {
                 <button data-tab="personal-summary" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">個人成績</button>
                 <button data-tab="ranking" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">ランキング</button>
                 <button data-tab="comparison" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">選手比較</button>
-                <button data-tab="test-mode" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">テストモード</button>
                 <button data-tab="settings" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">設定</button>
                 <button data-tab="import-data" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">データインポート</button>
                 <button data-tab="detail-analysis" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">詳細分析・文字起こし</button>
@@ -381,27 +379,39 @@ function setupDashboardUI() {
             </div>
 
             <div id="tab-content-comparison" class="hidden space-y-6">
-                <div class="bg-white p-4 rounded-lg shadow-md text-sm">
-                    <div class="flex flex-wrap gap-4 mb-4 items-end">
-                        <div><label class="block font-bold text-gray-600 mb-1">役割</label><select id="comp-role" class="border p-2 rounded w-24"><option value="batter">打撃</option><option value="pitcher">投手</option></select></div>
+                <div class="bg-white p-4 rounded-lg shadow-md text-sm space-y-4">
+                    <div class="flex flex-wrap gap-4 items-end">
+                        <div>
+                            <label class="block font-bold text-gray-600 mb-1">役割</label>
+                            <select id="comp-role" class="border p-2 rounded w-28 font-bold bg-white">
+                                <option value="batter">⚾ 打撃</option>
+                                <option value="pitcher">🥎 投手</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block font-bold text-gray-600 mb-1">計算方法</label>
+                            <select id="comp-calc-mode" class="border p-2 rounded font-bold bg-white">
+                                <option value="cumulative">📊 累積成績</option>
+                                <option value="moving_avg">📈 移動平均（直近N試合）</option>
+                            </select>
+                        </div>
+                        <div id="comp-window-wrap" class="hidden">
+                            <label class="block font-bold text-gray-600 mb-1">移動平均 試合数</label>
+                            <div class="flex items-center space-x-1">
+                                <input type="number" id="comp-ma-window" value="5" min="1" max="100" class="border p-2 rounded w-20 text-center font-bold">
+                                <span class="text-xs text-gray-500 font-semibold">試合</span>
+                            </div>
+                        </div>
                     </div>
-                    <label class="block font-bold text-gray-600 mb-2 border-t pt-2">比較する選手を選択</label>
-                    <div class="mb-2 max-h-40 overflow-y-auto border p-3 rounded grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50" id="comp-players-list"></div>
+                    <div id="comp-ma-note" class="hidden bg-yellow-50 p-2.5 rounded border border-yellow-200 text-xs text-yellow-800 font-bold">
+                        ※移動平均モード: 累積ではなく、各時点の直近指定試合数での「移動平均」で選手間の調子の推移を比較します。
+                    </div>
+                    <div>
+                        <label class="block font-bold text-gray-600 mb-2 border-t pt-2">比較する選手を選択</label>
+                        <div class="mb-2 max-h-40 overflow-y-auto border p-3 rounded grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50" id="comp-players-list"></div>
+                    </div>
                 </div>
                 <div id="comp-charts-container" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
-            </div>
-
-            <div id="tab-content-test-mode" class="hidden space-y-6">
-                <div class="bg-yellow-50 p-3 rounded border border-yellow-200 text-sm text-yellow-800 mb-2 font-bold">【テストモード】累積ではなく、直近の指定試合数での「移動平均」で調子の推移を確認できます。</div>
-                <div class="bg-white p-4 rounded-lg shadow-md text-sm">
-                    <div class="flex flex-wrap gap-4 mb-4 items-end">
-                        <div><label class="block font-bold text-gray-600 mb-1">役割</label><select id="tm-role" class="border p-2 rounded w-24"><option value="batter">打撃</option><option value="pitcher">投手</option></select></div>
-                        <div><label class="block font-bold text-gray-600 mb-1">移動平均 試合数</label><input type="number" id="tm-window" value="5" min="1" class="border p-2 rounded w-24"></div>
-                    </div>
-                    <label class="block font-bold text-gray-600 mb-2 border-t pt-2">比較する選手を選択</label>
-                    <div class="mb-2 max-h-40 overflow-y-auto border p-3 rounded grid grid-cols-2 md:grid-cols-4 gap-2 bg-gray-50" id="tm-players-list"></div>
-                </div>
-                <div id="tm-charts-container" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
             </div>
 
             <div id="tab-content-settings" class="hidden space-y-6">
@@ -554,39 +564,10 @@ function setupDashboardUI() {
                         </details>
                     </div>
                     <div id="detail-games-quicklist" class="hidden mt-3 pt-3 border-t border-gray-100"></div>
-                </div>
-
-                <!-- 試合ごとの文字起こし・スコアボード表示エリア（個別試合選択時に表示） -->
-                <div id="detail-transcript-panel" class="hidden bg-white p-5 rounded-xl shadow-md border border-gray-200 space-y-4">
-                    <div class="flex flex-wrap justify-between items-center gap-2 border-b pb-3">
-                        <div>
-                            <h4 class="font-black text-gray-800 text-base" id="detail-transcript-title">📋 試合スコア ＆ 戦績文字起こし</h4>
-                            <div class="text-xs text-gray-500 mt-0.5" id="detail-transcript-meta"></div>
-                        </div>
-                        <div class="flex flex-wrap gap-2">
-                            <button id="btn-detail-back-to-all" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold">← 全試合合算に戻る</button>
-                            <button id="btn-detail-copy-transcript" class="bg-gray-100 hover:bg-gray-200 text-gray-800 border px-3 py-1.5 rounded-lg text-xs font-bold">📋 テキストをコピー</button>
-                            <button id="btn-detail-download-transcript" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">📥 .txt ダウンロード</button>
-                        </div>
+                    <div id="detail-jump-transcript-bar" class="hidden mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2 bg-purple-50/70 px-3 py-2 rounded-lg border border-purple-200">
+                        <span class="text-xs font-bold text-purple-900">📋 選択した試合の詳細スコアボード ＆ 試合経過文字起こしが下の分析エリアの下に表示されています</span>
+                        <button type="button" id="btn-jump-to-transcript" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm whitespace-nowrap cursor-pointer">📝 文字起こしへジャンプ ↓</button>
                     </div>
-
-                    <!-- イニングスコア表 (R H B E) -->
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-xs text-center border border-gray-300" id="detail-scoreboard-table"></table>
-                    </div>
-                    <div class="text-xs text-gray-600 space-y-0.5 bg-gray-50 p-2.5 rounded border" id="detail-battery-hr-info"></div>
-
-                    <!-- Scorer風コントローラ (試合全体 / 各攻撃回 + 投球表示トグル) -->
-                    <div class="flex flex-wrap justify-between items-center gap-3 pt-1">
-                        <div class="flex flex-wrap items-center gap-1.5" id="detail-transcript-half-tabs"></div>
-                        <label class="flex items-center space-x-1.5 text-xs font-bold text-gray-700 cursor-pointer select-none bg-gray-100 px-3 py-1.5 rounded-lg border">
-                            <input type="checkbox" id="detail-transcript-show-pitches" class="rounded text-blue-600">
-                            <span>投球カウント ([1]ボール等) もすべて表示</span>
-                        </label>
-                    </div>
-
-                    <!-- タイムラインカード一覧 -->
-                    <div id="detail-transcript-timeline" class="max-h-[540px] overflow-y-auto space-y-1.5 border rounded-lg p-3 bg-stone-50"></div>
                 </div>
 
                 <!-- チーム詳細サマリー（エラー発生・イニング別得点アウト状況） -->
@@ -696,6 +677,40 @@ function setupDashboardUI() {
 
                     </div>
                 </div>
+
+                <!-- 試合ごとの文字起こし・スコアボード表示エリア（詳細分析の下に配置・個別試合選択時に表示） -->
+                <div id="detail-transcript-panel" class="hidden bg-white p-5 rounded-xl shadow-md border border-gray-200 space-y-4">
+                    <div class="flex flex-wrap justify-between items-center gap-2 border-b pb-3">
+                        <div>
+                            <h4 class="font-black text-gray-800 text-base" id="detail-transcript-title">📋 試合スコア ＆ 戦績文字起こし</h4>
+                            <div class="text-xs text-gray-500 mt-0.5" id="detail-transcript-meta"></div>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" id="btn-jump-to-detail-top" class="bg-gray-50 hover:bg-gray-100 text-gray-700 border px-3 py-1.5 rounded-lg text-xs font-bold">↑ 分析トップへ</button>
+                            <button type="button" id="btn-detail-back-to-all" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold">← 全試合合算に戻る</button>
+                            <button type="button" id="btn-detail-copy-transcript" class="bg-gray-100 hover:bg-gray-200 text-gray-800 border px-3 py-1.5 rounded-lg text-xs font-bold">📋 テキストをコピー</button>
+                            <button type="button" id="btn-detail-download-transcript" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">📥 .txt ダウンロード</button>
+                        </div>
+                    </div>
+
+                    <!-- イニングスコア表 (R H B E) -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-xs text-center border border-gray-300" id="detail-scoreboard-table"></table>
+                    </div>
+                    <div class="text-xs text-gray-600 space-y-0.5 bg-gray-50 p-2.5 rounded border" id="detail-battery-hr-info"></div>
+
+                    <!-- Scorer風コントローラ (試合全体 / 各攻撃回 + 投球表示トグル) -->
+                    <div class="flex flex-wrap justify-between items-center gap-3 pt-1">
+                        <div class="flex flex-wrap items-center gap-1.5" id="detail-transcript-half-tabs"></div>
+                        <label class="flex items-center space-x-1.5 text-xs font-bold text-gray-700 cursor-pointer select-none bg-gray-100 px-3 py-1.5 rounded-lg border">
+                            <input type="checkbox" id="detail-transcript-show-pitches" class="rounded text-blue-600">
+                            <span>投球カウント ([1]ボール等) もすべて表示</span>
+                        </label>
+                    </div>
+
+                    <!-- タイムラインカード一覧 -->
+                    <div id="detail-transcript-timeline" class="max-h-[540px] overflow-y-auto space-y-1.5 border rounded-lg p-3 bg-stone-50"></div>
+                </div>
             </div>
         `;
         document.getElementById('app-view')?.parentNode.appendChild(container);
@@ -726,6 +741,12 @@ function setupDashboardUI() {
         });
         document.getElementById('btn-detail-copy-transcript')?.addEventListener('click', handleCopyCurrentTranscript);
         document.getElementById('btn-detail-download-transcript')?.addEventListener('click', handleDownloadCurrentTranscript);
+        document.getElementById('btn-jump-to-transcript')?.addEventListener('click', () => {
+            document.getElementById('detail-transcript-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        document.getElementById('btn-jump-to-detail-top')?.addEventListener('click', () => {
+            document.getElementById('tab-content-detail-analysis')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
 
         // タブ切り替え制御
         document.querySelectorAll('#dashboard-tabs button').forEach(btn => {
@@ -797,13 +818,12 @@ function setupDashboardUI() {
         document.getElementById('btn-export-ps-csv')?.addEventListener('click', handleExportPsCsv);
         document.getElementById('btn-print-ps')?.addEventListener('click', () => window.print());
 
-        ['tm-role', 'tm-window'].forEach(id => document.getElementById(id)?.addEventListener('change', renderTestMode));
-        document.getElementById('tm-players-list')?.addEventListener('change', renderTestMode);
         document.getElementById('comp-players-list')?.addEventListener('change', renderComparison);
-        
-        document.getElementById('comp-role')?.addEventListener('change', () => {
-            renderComparison();
+        ['comp-role', 'comp-calc-mode'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', renderComparison);
         });
+        document.getElementById('comp-ma-window')?.addEventListener('change', renderComparison);
+        document.getElementById('comp-ma-window')?.addEventListener('input', renderComparison);
 
         document.getElementById('btn-add-home-team')?.addEventListener('click', handleAddHomeTeam);
         
@@ -853,12 +873,12 @@ function setupDashboardUI() {
 }
 
 function switchDashboardTab(tabName) {
-    const filterVisibleTabs = new Set(['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'detail-analysis']);
+    const filterVisibleTabs = new Set(['team-summary', 'personal-summary', 'ranking', 'comparison', 'detail-analysis']);
     document.querySelectorAll('#dashboard-tabs button').forEach(b => {
         b.classList.remove('text-blue-600', 'border-blue-600');
         b.classList.add('text-gray-500', 'border-transparent');
     });
-    ['team-summary', 'personal-summary', 'ranking', 'comparison', 'test-mode', 'settings', 'import-data', 'detail-analysis'].forEach(t => {
+    ['team-summary', 'personal-summary', 'ranking', 'comparison', 'settings', 'import-data', 'detail-analysis'].forEach(t => {
         document.getElementById(`tab-content-${t}`)?.classList.add('hidden');
     });
 
@@ -1292,19 +1312,13 @@ function applyFiltersAndRender() {
     const cpList = document.getElementById('comp-players-list');
     if (cpList) {
         const checkedVals = new Set(Array.from(document.querySelectorAll('.comp-player-cb:checked')).map(cb => cb.value));
-        cpList.innerHTML = activePlayers.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="comp-player-cb rounded text-blue-600" ${checkedVals.has(String(p.id)) ? 'checked' : ''}><span>${p.name}</span></label>`).join('');
-    }
-    const tmList = document.getElementById('tm-players-list');
-    if (tmList) {
-        const checkedVals = new Set(Array.from(document.querySelectorAll('.tm-player-cb:checked')).map(cb => cb.value));
-        tmList.innerHTML = activePlayers.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="tm-player-cb rounded text-blue-600" ${checkedVals.has(String(p.id)) ? 'checked' : ''}><span>${p.name}</span></label>`).join('');
+        cpList.innerHTML = activePlayers.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="comp-player-cb rounded text-blue-600" ${checkedVals.has(String(p.id)) ? 'checked' : ''}><span>${escapeHtml(p.name)}</span></label>`).join('');
     }
 
     renderTeamSummary(filteredGames, filteredBStats, filteredPStats);
     renderRanking();
     renderPersonalSummary();
     renderComparison();
-    renderTestMode();
     renderDetailAnalysisTab(true);
 }
 
@@ -2414,25 +2428,31 @@ function drawRankingTable(role) {
     if (activeTh) activeTh.textContent = state.order === 'asc' ? ' ▲' : ' ▼';
 }
 
-// --- タブ4: 選手間比較 ---
+// --- タブ4: 選手間比較（累積 ＆ 移動平均 統合） ---
 async function renderComparison() {
     await loadChartJs();
-    const role = document.getElementById('comp-role').value;
+    const role = document.getElementById('comp-role')?.value || 'batter';
+    const calcMode = document.getElementById('comp-calc-mode')?.value || 'cumulative';
+    const isMovingAvg = calcMode === 'moving_avg';
+    const wSize = Math.max(1, parseInt(document.getElementById('comp-ma-window')?.value, 10) || 5);
     const selectedPids = Array.from(document.querySelectorAll('.comp-player-cb:checked')).map(cb => cb.value);
-    
+
+    document.getElementById('comp-window-wrap')?.classList.toggle('hidden', !isMovingAvg);
+    document.getElementById('comp-ma-note')?.classList.toggle('hidden', !isMovingAvg);
+
     Object.values(comparisonCharts).forEach(c => c.destroy());
     comparisonCharts = {};
     const container = document.getElementById('comp-charts-container');
-    if(container) container.innerHTML = '';
-    if(selectedPids.length === 0) return;
+    if (container) container.innerHTML = '';
+    if (selectedPids.length === 0) return;
 
     const { games, bStats, pStats } = currentFiltered;
-    const allDates = [...new Set(games.filter(g => g.date).map(g => g.date.split('T')[0]))].sort();
+    const allDates = [...new Set(games.map(g => normalizeIsoDate(g.date)).filter(Boolean))].sort();
     const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899'];
 
-    const metrics = role === 'batter' 
-        ? [{key: 'avg', name: '打率'}, {key: 'ops', name: 'OPS'}, {key: 'obp', name: '出塁率'}, {key: 'slg', name: '長打率'}]
-        : [{key: 'era', name: '防御率'}, {key: 'whip', name: 'WHIP'}, {key: 'k7', name: 'K/7'}, {key: 'bb7', name: 'BB/7'}, {key: 'sRate', name: 'S率(%)'}];
+    const metrics = role === 'batter'
+        ? [{ key: 'avg', name: '打率' }, { key: 'ops', name: 'OPS' }, { key: 'obp', name: '出塁率' }, { key: 'slg', name: '長打率' }]
+        : [{ key: 'era', name: '防御率' }, { key: 'whip', name: 'WHIP' }, { key: 'k7', name: 'K/7' }, { key: 'bb7', name: 'BB/7' }, { key: 'sRate', name: 'S率(%)' }];
 
     metrics.forEach((metricObj, mIndex) => {
         const chartId = `chart-comp-${mIndex}`;
@@ -2443,80 +2463,58 @@ async function renderComparison() {
 
         const datasets = selectedPids.map((pid, i) => {
             const tStats = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == pid);
-            const merged = tStats.map(s => ({ date: games.find(x => x.id === s.game_id)?.date.split('T')[0] || '', stats: s })).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
-            
-            let cCum = [], dMap = {};
-            merged.forEach(m => {
-                cCum.push(m.stats);
-                const cStat = role === 'batter' ? calcBatterStats(cCum) : calcPitcherStats(cCum);
-                let val = cStat[metricObj.key];
-                if (metricObj.key === 'sRate') val = val * 100;
-                dMap[m.date] = val;
-            });
+            const merged = tStats
+                .map(s => ({ date: normalizeIsoDate(games.find(x => x.id === s.game_id)?.date), stats: s }))
+                .filter(x => x.date)
+                .sort((a, b) => a.date.localeCompare(b.date));
 
-            let lastVal = null;
-            const dataArr = allDates.map(d => { if(dMap[d] !== undefined) lastVal = dMap[d]; return lastVal; });
-            
-            return { label: allPlayers.find(x => x.id == pid)?.name || '不明', data: dataArr, borderColor: colors[i % colors.length], spanGaps: true, tension: 0.1 };
-        });
-
-        comparisonCharts[chartId] = new window.Chart(document.getElementById(chartId).getContext('2d'), {
-            type: 'line', data: { labels: allDates, datasets },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: `選手比較 (${metricObj.name})` } } }
-        });
-    });
-}
-
-// --- タブ5: テストモード(移動平均) ---
-async function renderTestMode() {
-    await loadChartJs();
-    const role = document.getElementById('tm-role').value;
-    const wSize = parseInt(document.getElementById('tm-window').value) || 5;
-    const selectedPids = Array.from(document.querySelectorAll('.tm-player-cb:checked')).map(cb => cb.value);
-    
-    Object.values(testModeCharts).forEach(c => c.destroy());
-    testModeCharts = {};
-    const container = document.getElementById('tm-charts-container');
-    if (container) container.innerHTML = '';
-    if (selectedPids.length === 0) return;
-
-    const { games, bStats, pStats } = currentFiltered;
-    const allDates = [...new Set(games.filter(g => g.date).map(g => g.date.split('T')[0]))].sort();
-    const colors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899'];
-
-    const metrics = role === 'batter' 
-        ? [{key: 'avg', name: '打率'}, {key: 'ops', name: 'OPS'}, {key: 'obp', name: '出塁率'}, {key: 'slg', name: '長打率'}]
-        : [{key: 'era', name: '防御率'}, {key: 'whip', name: 'WHIP'}, {key: 'k7', name: 'K/7'}, {key: 'bb7', name: 'BB/7'}, {key: 'sRate', name: 'S率(%)'}];
-
-    metrics.forEach((metricObj, mIndex) => {
-        const chartId = `chart-tm-${mIndex}`;
-        const wrap = document.createElement('div');
-        wrap.className = 'bg-white p-4 rounded shadow-md relative h-[300px] md:h-[400px]';
-        wrap.innerHTML = `<canvas id="${chartId}"></canvas>`;
-        container.appendChild(wrap);
-
-        const datasets = selectedPids.map((pid, i) => {
-            const tStats = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == pid);
-            const merged = tStats.map(s => ({ date: games.find(x => x.id === s.game_id)?.date.split('T')[0] || '', stats: s })).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
-            
-            let dMap = {};
-            for (let j = 0; j < merged.length; j++) {
-                const wStats = merged.slice(Math.max(0, j - wSize + 1), j + 1).map(m => m.stats);
-                const wStat = role === 'batter' ? calcBatterStats(wStats) : calcPitcherStats(wStats);
-                let val = wStat[metricObj.key];
-                if (metricObj.key === 'sRate') val = val * 100;
-                dMap[merged[j].date] = val;
+            const dMap = {};
+            if (isMovingAvg) {
+                for (let j = 0; j < merged.length; j++) {
+                    const wStats = merged.slice(Math.max(0, j - wSize + 1), j + 1).map(m => m.stats);
+                    const wStat = role === 'batter' ? calcBatterStats(wStats) : calcPitcherStats(wStats);
+                    let val = wStat[metricObj.key];
+                    if (metricObj.key === 'sRate') val = val * 100;
+                    dMap[merged[j].date] = val;
+                }
+            } else {
+                const cCum = [];
+                merged.forEach(m => {
+                    cCum.push(m.stats);
+                    const cStat = role === 'batter' ? calcBatterStats(cCum) : calcPitcherStats(cCum);
+                    let val = cStat[metricObj.key];
+                    if (metricObj.key === 'sRate') val = val * 100;
+                    dMap[m.date] = val;
+                });
             }
 
             let lastVal = null;
-            const dataArr = allDates.map(d => { if(dMap[d] !== undefined) lastVal = dMap[d]; return lastVal; });
-            
-            return { label: allPlayers.find(x => x.id == pid)?.name || '不明', data: dataArr, borderColor: colors[i % colors.length], spanGaps: true, tension: 0.1 };
+            const dataArr = allDates.map(d => {
+                if (dMap[d] !== undefined) lastVal = dMap[d];
+                return lastVal;
+            });
+
+            return {
+                label: allPlayers.find(x => x.id == pid)?.name || '不明',
+                data: dataArr,
+                borderColor: colors[i % colors.length],
+                spanGaps: true,
+                tension: 0.1
+            };
         });
 
-        testModeCharts[chartId] = new window.Chart(document.getElementById(chartId).getContext('2d'), {
-            type: 'line', data: { labels: allDates, datasets },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: `移動平均 (${metricObj.name})` } } }
+        const chartTitle = isMovingAvg
+            ? `選手比較・直近${wSize}試合 移動平均 (${metricObj.name})`
+            : `選手比較・累積 (${metricObj.name})`;
+
+        comparisonCharts[chartId] = new window.Chart(document.getElementById(chartId).getContext('2d'), {
+            type: 'line',
+            data: { labels: allDates, datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { title: { display: true, text: chartTitle } }
+            }
         });
     });
 }
@@ -3437,9 +3435,9 @@ function decodeScorerGamePlayByPlay(detailObj) {
             const res = processActionBody(cd.slice(2), curBatter, initActor);
             recordErrs = res.errDetails;
             sPlay = (lbl ? [lbl, ...res.msgs] : res.msgs).join(' ') + ' ';
-        } else if (/^Sh([0-9a-c])#(\d+):/.test(cd)) {
-            const [, oChr, pid] = cd.match(/^Sh([0-9a-c])#(\d+):/);
-            const ord = parseInt(oChr, 16);
+        } else if (/^Sh([0-9a-z])#(\d+):/.test(cd)) {
+            const [, oChr, pid] = cd.match(/^Sh([0-9a-z])#(\d+):/);
+            const ord = parseInt(oChr, 36);
             const np = getPlayer(pid), op = lineup[battingSide][ord];
             sPlay = `${ord + 1}番${op?.name || ''}に代打${np.name}${np.num ? '#' + np.num : ''}`;
             lineup[battingSide][ord] = { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num };
@@ -3448,9 +3446,9 @@ function decodeScorerGamePlayByPlay(detailObj) {
             const np = getPlayer(pid), ord = batterIdx[battingSide], op = lineup[battingSide][ord];
             sPlay = `${ord + 1}番${op?.name || ''}に代打${np.name}${np.num ? '#' + np.num : ''}`;
             lineup[battingSide][ord] = { ...op, ord, id: parseInt(pid, 10), name: np.name, num: np.num };
-        } else if (/^Sr([0-9a-c])#(\d+):/.test(cd)) {
-            const [, oChr, pid] = cd.match(/^Sr([0-9a-c])#(\d+):/);
-            const ord = parseInt(oChr, 16);
+        } else if (/^Sr([0-9a-z])#(\d+):/.test(cd)) {
+            const [, oChr, pid] = cd.match(/^Sr([0-9a-z])#(\d+):/);
+            const ord = parseInt(oChr, 36);
             const np = getPlayer(pid), op = lineup[battingSide][ord];
             let baseFound = '';
             for (const b of [1, 2, 3]) {
@@ -3479,9 +3477,9 @@ function decodeScorerGamePlayByPlay(detailObj) {
             const slot = lineup[fsSide].find(p => p.id === parseInt(pid, 10));
             if (slot) slot.pos = parseInt(p2, 10);
             sPlay = `${np.name}が${SCORER_POS_NAMES[p2] || ''}へ`;
-        } else if (/^Sd([0-9a-c])(\d)#(\d+):/.test(cd)) {
-            const [, oChr, pos, pid] = cd.match(/^Sd([0-9a-c])(\d)#(\d+):/);
-            const ord = parseInt(oChr, 16);
+        } else if (/^Sd([0-9a-z])(\d)#(\d+):/.test(cd)) {
+            const [, oChr, pos, pid] = cd.match(/^Sd([0-9a-z])(\d)#(\d+):/);
+            const ord = parseInt(oChr, 36);
             const np = getPlayer(pid), op = lineup[fsSide][ord];
             sPlay = `${ord + 1}番${op?.name || ''}に代わり${np.name}が${SCORER_POS_NAMES[pos] || ''}へ`;
             lineup[fsSide][ord] = { ...op, ord, pos: parseInt(pos, 10), id: parseInt(pid, 10), name: np.name, num: np.num };
@@ -3665,6 +3663,7 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
     const emptyEl = document.getElementById('detail-empty-notice');
     const scopeSel = document.getElementById('detail-scope-select');
     const quickListEl = document.getElementById('detail-games-quicklist');
+    const jumpBarEl = document.getElementById('detail-jump-transcript-bar');
     const overviewEl = document.getElementById('detail-team-overview');
     const dashEl = document.getElementById('detail-analysis-dashboard');
     const transcriptPanel = document.getElementById('detail-transcript-panel');
@@ -3683,6 +3682,7 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
     if (availableDetails.length === 0) {
         emptyEl?.classList.remove('hidden');
         quickListEl?.classList.add('hidden');
+        jumpBarEl?.classList.add('hidden');
         overviewEl?.classList.add('hidden');
         dashEl?.classList.add('hidden');
         transcriptPanel?.classList.add('hidden');
@@ -3715,16 +3715,18 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
 
     const decodedList = targetDetails.map(gd => decodeScorerGamePlayByPlay(gd));
 
-    // 個別試合が選択されていればスコアボード＆文字起こしパネルを表示、全試合合算時はクイック選択一覧を表示
+    // 個別試合が選択されていれば分析の下にスコアボード＆文字起こしパネルを表示し、上部へジャンプリンクを出す
     if (selectedScope !== 'all' && decodedList.length === 1) {
         currentDecodedGameForTranscript = decodedList[0];
         detailTranscriptHalfFilter = 'all';
         renderSelectedGameTranscript();
         transcriptPanel?.classList.remove('hidden');
+        jumpBarEl?.classList.remove('hidden');
         quickListEl?.classList.add('hidden');
     } else {
         currentDecodedGameForTranscript = null;
         transcriptPanel?.classList.add('hidden');
+        jumpBarEl?.classList.add('hidden');
         if (quickListEl) {
             quickListEl.innerHTML = `
                 <div class="text-xs font-bold text-gray-700 mb-2">📝 試合ごとのスコアボード＆戦績文字起こしを見る（クリックで切り替え）:</div>
@@ -3739,6 +3741,7 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
             quickListEl.querySelectorAll('button[data-quick-gid]').forEach(btn => {
                 btn.addEventListener('click', () => {
                     renderDetailAnalysisTab(true, btn.dataset.quickGid);
+                    document.getElementById('detail-transcript-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 });
             });
         }
