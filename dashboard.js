@@ -4311,7 +4311,7 @@ function renderSelectedGameTranscript() {
         const c1 = (mask & 1) ? '#f59e0b' : '#ffffff';
         const c2 = (mask & 2) ? '#f59e0b' : '#ffffff';
         const c3 = (mask & 4) ? '#f59e0b' : '#ffffff';
-        return `<svg viewBox="0 0 36 24" class="w-8 h-5 inline-block align-middle ml-1" aria-label="${escapeHtml(formatBaseOccupiedText(mask))}">
+        return `<svg viewBox="0 0 36 24" class="w-8 h-5 inline-block align-middle shrink-0" aria-label="${escapeHtml(formatBaseOccupiedText(mask))}">
             <polygon points="18,2 23,7 18,12 13,7" fill="${c2}" stroke="#9ca3af" stroke-width="1.2"/>
             <polygon points="25,9 30,14 25,19 20,14" fill="${c1}" stroke="#9ca3af" stroke-width="1.2"/>
             <polygon points="11,9 16,14 11,19 6,14" fill="${c3}" stroke="#9ca3af" stroke-width="1.2"/>
@@ -4323,17 +4323,17 @@ function renderSelectedGameTranscript() {
         const dots = Array.from({ length: maxCount }, (_, idx) =>
             `<span class="inline-block w-2.5 h-2.5 rounded-full border ${idx < c ? activeClass : 'bg-white border-gray-300'}"></span>`
         ).join('');
-        return `<span class="inline-flex items-center gap-0.5" data-count-type="${label}"><span class="font-black text-[11px] leading-none mr-0.5 ${labelClass}">${label}</span>${dots}</span>`;
+        return `<span class="inline-flex items-center gap-0.5 shrink-0" data-count-type="${label}"><span class="inline-block w-2.5 text-center font-black text-[11px] leading-none mr-0.5 ${labelClass}">${label}</span>${dots}</span>`;
     };
 
     const renderCountDots = (item) => {
         if (!detailTranscriptShowPitches) {
-            return `<span class="inline-flex items-center ml-1" title="O:${item.out || 0}">${renderDotGroup('O', 'text-red-600', item.out, 3, 'bg-red-500 border-red-600')}</span>`;
+            return `<span class="inline-flex items-center shrink-0" title="O:${item.out || 0}">${renderDotGroup('O', 'text-red-600', item.out, 3, 'bg-red-500 border-red-600')}</span>`;
         }
         const b = Math.max(0, Math.min(4, item.ball || 0));
         const s = Math.max(0, Math.min(3, item.strk || 0));
         const o = Math.max(0, Math.min(3, item.out || 0));
-        return `<span class="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5 ml-1" title="B:${b} S:${s} O:${o}">${renderDotGroup('B', 'text-green-700', b, 4, 'bg-green-500 border-green-600')}${renderDotGroup('S', 'text-amber-600', s, 3, 'bg-amber-400 border-amber-500')}${renderDotGroup('O', 'text-red-600', o, 3, 'bg-red-500 border-red-600')}</span>`;
+        return `<span class="inline-flex items-center gap-x-2 shrink-0" title="B:${b} S:${s} O:${o}">${renderDotGroup('B', 'text-green-700', b, 4, 'bg-green-500 border-green-600')}${renderDotGroup('S', 'text-amber-600', s, 3, 'bg-amber-400 border-amber-500')}${renderDotGroup('O', 'text-red-600', o, 3, 'bg-red-500 border-red-600')}</span>`;
     };
 
     timelineEl.innerHTML = filteredItems.map(item => {
@@ -4352,9 +4352,9 @@ function renderSelectedGameTranscript() {
         const pitchClass = item.isPitchOnly ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white border-emerald-200 text-emerald-950';
         return `<div class="border px-3 py-2 rounded shadow-2xs ${pitchClass}">
             <div class="text-xs font-bold">${escapeHtml(item.text)}</div>
-            <div class="text-[11px] text-gray-600 mt-1 flex flex-wrap items-center justify-between gap-1">
+            <div class="text-[11px] text-gray-600 mt-1 flex flex-wrap items-center justify-between gap-2">
                 <span>${escapeHtml(item.topTeam)} <strong class="text-gray-900">${item.scoreTop}-${item.scoreBot}</strong> ${escapeHtml(item.botTeam)}</span>
-                <span class="flex flex-wrap items-center gap-1">${renderCountDots(item)} ${renderBaseSvg(item.rnr)} <span class="ml-1 text-[10px] text-gray-500">${escapeHtml(item.basesText)}</span></span>
+                <span class="ml-auto flex flex-wrap items-center justify-end gap-2 shrink-0">${renderCountDots(item)}<span class="inline-flex items-center gap-1 w-[104px] shrink-0" data-runner-slot="fixed">${renderBaseSvg(item.rnr)}<span class="text-[10px] text-gray-500 whitespace-nowrap">${escapeHtml(item.basesText)}</span></span></span>
             </div>
         </div>`;
     }).join('');
