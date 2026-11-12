@@ -15,9 +15,9 @@ let detailTranscriptHalfFilter = 'all'; // 'all' or specific half-inning label e
 let charts = {};
 let personalCharts = {};
 let comparisonCharts = {};
-let currentRankingData = { batter: [], pitcher: [] };
-let rankingSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
-let psAllSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' } };
+let currentRankingData = { batter: [], pitcher: [], fielder: [] };
+let rankingSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' }, fielder: { key: 'fpct', order: 'desc' } };
+let psAllSortState = { batter: { key: 'ops', order: 'desc' }, pitcher: { key: 'era', order: 'asc' }, fielder: { key: 'fpct', order: 'desc' } };
 let parsedDetailData = null;
 let detailCharts = {};
 
@@ -208,6 +208,7 @@ function setupDashboardUI() {
                             <select id="ps-role" class="border p-2 rounded w-28 font-bold">
                                 <option value="batter">⚾ 打撃</option>
                                 <option value="pitcher">🥎 投手</option>
+                                <option value="fielder">🛡️ 守備</option>
                             </select>
                         </div>
                         <div>
@@ -317,6 +318,7 @@ function setupDashboardUI() {
                     <div class="flex space-x-2">
                         <button data-ranking-tab="batter" class="px-4 py-2 font-bold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap transition-colors">打撃ランキング</button>
                         <button data-ranking-tab="pitcher" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">投手ランキング</button>
+                        <button data-ranking-tab="fielder" class="px-4 py-2 font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-700 whitespace-nowrap transition-colors">守備ランキング</button>
                     </div>
                     <div class="flex flex-wrap items-center gap-3 text-xs bg-blue-50/80 border border-blue-200 px-3 py-2 rounded-lg">
                         <span id="ranking-summary-info" class="font-bold text-blue-900">対象試合: 0試合 / 規定打席: 0打席 (試合数×2)</span>
@@ -374,6 +376,28 @@ function setupDashboardUI() {
                             </tr>
                         </thead>
                         <tbody id="ranking-pitcher-tbody"></tbody>
+                    </table></div>
+                </div>
+                <div id="ranking-content-fielder" class="bg-white p-4 rounded-lg shadow-md space-y-2 hidden">
+                    <div class="text-[11px] text-gray-500 flex flex-wrap justify-between gap-2 pb-1">
+                        <span>※守備率＝(刺殺＋捕殺)÷(刺殺＋捕殺＋失策) ／ 捕逸＝捕手記録(cat)または1捕手試合のパスボール記録から算出</span>
+                        <span class="text-amber-700">※UZR・DRSは打球速度・詳細ゾーン別リーグ平均等がないため算出対象外</span>
+                    </div>
+                    <div class="overflow-x-auto"><table class="w-full text-sm text-left border">
+                        <thead class="bg-gray-100">
+                            <tr>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="name" data-role="fielder">選手<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="games" data-role="fielder">試合<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="chances" data-role="fielder">守備機会<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none font-bold text-indigo-700" data-sort="fpct" data-role="fielder">守備率<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="po" data-role="fielder">刺殺<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="a" data-role="fielder">捕殺<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none text-red-600" data-sort="e" data-role="fielder">失策<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none text-amber-700" data-sort="pb" data-role="fielder">捕逸<span></span></th>
+                                <th class="p-2 cursor-pointer hover:bg-gray-200 select-none" data-sort="dp" data-role="fielder">併殺<span></span></th>
+                            </tr>
+                        </thead>
+                        <tbody id="ranking-fielder-tbody"></tbody>
                     </table></div>
                 </div>
             </div>
@@ -806,12 +830,12 @@ function setupDashboardUI() {
                     b.classList.remove('text-blue-600', 'border-blue-600');
                     b.classList.add('text-gray-500', 'border-transparent');
                 });
-                ['batter', 'pitcher'].forEach(t => document.getElementById(`ranking-content-${t}`).classList.add('hidden'));
+                ['batter', 'pitcher', 'fielder'].forEach(t => document.getElementById(`ranking-content-${t}`)?.classList.add('hidden'));
 
                 const target = e.currentTarget;
                 target.classList.remove('text-gray-500', 'border-transparent');
                 target.classList.add('text-blue-600', 'border-blue-600');
-                document.getElementById(`ranking-content-${target.dataset.rankingTab}`).classList.remove('hidden');
+                document.getElementById(`ranking-content-${target.dataset.rankingTab}`)?.classList.remove('hidden');
             });
         });
 
@@ -854,8 +878,9 @@ function setupDashboardUI() {
         ['ps-mode', 'ps-player', 'ps-role', 'ps-limit-games', 'ps-ma-unit', 'ps-ma-window'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
             if (id === 'ps-role') updateRoleScopedPlayerSelectors('ps');
             const unit = document.getElementById('ps-ma-unit')?.value;
+            const psRoleVal = document.getElementById('ps-role')?.value || 'batter';
             const labelEl = document.getElementById('ps-ma-window-label');
-            if (labelEl) labelEl.textContent = unit === 'ab' ? '打数/登板' : '試合';
+            if (labelEl) labelEl.textContent = unit === 'ab' ? (psRoleVal === 'fielder' ? '機会' : '打数/登板') : '試合';
             const isSingle = document.getElementById('ps-mode')?.value === 'single';
             document.getElementById('ps-player-select-wrap')?.classList.toggle('hidden', !isSingle);
             renderPersonalSummary();
@@ -972,6 +997,24 @@ function updateSettingsSyncStatusUi(isSynced, customMsg = '') {
     }
 }
 
+async function fetchAllRows(buildQuery, pageSize = 1000) {
+    const firstQuery = buildQuery();
+    if (typeof firstQuery?.range !== 'function') {
+        return await firstQuery;
+    }
+    const allRows = [];
+    let offset = 0;
+    while (true) {
+        const { data, error } = await buildQuery().range(offset, offset + pageSize - 1);
+        if (error) return { data: null, error };
+        const batch = Array.isArray(data) ? data : [];
+        allRows.push(...batch);
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+    }
+    return { data: allRows, error: null };
+}
+
 // --- ダッシュボードデータ処理・グラフ描画 ---
 async function loadDashboardData() {
     showLoading('成績データを読み込み中...');
@@ -980,23 +1023,25 @@ async function loadDashboardData() {
             { data: gamesData, error: gamesErr },
             { data: bStatsData, error: bStatsErr },
             { data: pStatsData, error: pStatsErr },
-            { data: plData },
+            { data: plData, error: plErr },
             { data: settingsData },
             { data: masterSettingsData },
-            { data: detailRowsData }
+            { data: detailRowsData, error: detailErr }
         ] = await Promise.all([
-            supabaseClient.from('games').select('*').order('date', { ascending: true }),
-            supabaseClient.from('batter_stats').select('*'),
-            supabaseClient.from('pitcher_stats').select('*'),
-            supabaseClient.from('players').select('*'),
+            fetchAllRows(() => supabaseClient.from('games').select('*').order('date', { ascending: true }).order('id', { ascending: true })),
+            fetchAllRows(() => supabaseClient.from('batter_stats').select('*').order('game_id', { ascending: true }).order('player_id', { ascending: true })),
+            fetchAllRows(() => supabaseClient.from('pitcher_stats').select('*').order('game_id', { ascending: true }).order('player_id', { ascending: true })),
+            fetchAllRows(() => supabaseClient.from('players').select('*').order('id', { ascending: true })),
             supabaseClient.from('dashboard_settings').select('*'),
             supabaseClient.from('master_data').select('key, data').in('key', ['DASHBOARD_DEFAULT_FILTER', 'DASHBOARD_HOME_TEAMS']),
-            supabaseClient.from('master_data').select('key, data').like('key', 'SCORER_GAME_DETAIL_%')
+            fetchAllRows(() => supabaseClient.from('master_data').select('key, data').like('key', 'SCORER_GAME_DETAIL_%').order('key', { ascending: true }))
         ]);
         
         if (gamesErr) throw gamesErr;
         if (bStatsErr) throw bStatsErr;
         if (pStatsErr) throw pStatsErr;
+        if (plErr) throw plErr;
+        if (detailErr) console.warn('detailRowsData fetch warning:', detailErr);
 
         allGames = gamesData || [];
         allBatterStats = bStatsData || [];
@@ -1373,8 +1418,9 @@ function applyFiltersAndRender() {
     const gameIds = new Set(filteredGames.map(g => g.id));
     const filteredBStats = allBatterStats.filter(s => gameIds.has(s.game_id));
     const filteredPStats = allPitcherStats.filter(s => gameIds.has(s.game_id));
+    const filteredFStats = buildFieldingStatsFromFilteredGames(filteredGames);
 
-    currentFiltered = { games: filteredGames, bStats: filteredBStats, pStats: filteredPStats };
+    currentFiltered = { games: filteredGames, bStats: filteredBStats, pStats: filteredPStats, fStats: filteredFStats };
 
     updateRoleScopedPlayerSelectors('all');
 
@@ -1385,26 +1431,172 @@ function applyFiltersAndRender() {
     renderDetailAnalysisTab(true);
 }
 
-// 対象ロール(打撃/投手)として実際に出場記録があるか判定 (ベンチ登録のみの0打席・0登板レコードを除外)
+function parseHomePassedBallsFromCd(gd, isHomeTop, isHomeBot) {
+    const tokens = String(gd?.cd || '').split('=');
+    let battingSide = 0;
+    let pbCount = 0;
+    for (const cd of tokens) {
+        if (/^I([tb])(\d+)$/.test(cd)) {
+            battingSide = cd[1] === 't' ? 0 : 1;
+        } else if (/^(Ep|Kp)/.test(cd)) {
+            const isHomeFielding = battingSide === 0 ? isHomeBot : isHomeTop;
+            if (isHomeFielding) pbCount++;
+        }
+    }
+    return pbCount;
+}
+
+function buildFieldingStatsFromFilteredGames(filteredGames) {
+    const detailsList = allGameDetails.length > 0 ? allGameDetails : tempPreviewDetails;
+    if (!Array.isArray(detailsList) || detailsList.length === 0 || !Array.isArray(filteredGames) || filteredGames.length === 0) {
+        return [];
+    }
+
+    const detailByGid = new Map();
+    const detailByKey = new Map();
+    detailsList.forEach(gd => {
+        if (!gd) return;
+        if (gd.gid !== undefined && gd.gid !== null) detailByGid.set(String(gd.gid), gd);
+        const key = `${normalizeIsoDate(gd.date)}__${(gd.tn || '').trim()}__${(gd.bn || '').trim()}`;
+        if (!detailByKey.has(key)) detailByKey.set(key, gd);
+    });
+
+    const playersById = new Map();
+    const playersByNormName = new Map();
+    (allPlayers || []).forEach(p => {
+        playersById.set(String(p.id), p);
+        const nk = normalizePlayerNameKey(p.name);
+        if (nk && !playersByNormName.has(nk)) playersByNormName.set(nk, p);
+    });
+
+    const rows = [];
+    filteredGames.forEach(g => {
+        const key = `${normalizeIsoDate(g.date)}__${(g.team_first || '').trim()}__${(g.team_second || '').trim()}`;
+        const gd = detailByGid.get(String(g.id)) || detailByKey.get(key);
+        if (!gd) return;
+        const fldList = Array.isArray(gd.fld) ? gd.fld : [];
+        const catList = Array.isArray(gd.cat) ? gd.cat : [];
+        if (fldList.length === 0 && catList.length === 0) return;
+
+        const isHomeTop = isHomeTeam(gd.tn || g.team_first);
+        const isHomeBot = isHomeTeam(gd.bn || g.team_second);
+        let homeTid = null;
+        const te = safeJsonParse(gd.te, []);
+        if (((isHomeTop && !isHomeBot) || (!isHomeTop && isHomeBot)) && Array.isArray(te) && te.length >= 2) {
+            homeTid = isHomeTop ? te[0].id : te[1].id;
+        }
+
+        const gamePl = safeJsonParse(gd.pl, []);
+        const gamePlMap = new Map();
+        if (Array.isArray(gamePl)) {
+            gamePl.forEach(gp => {
+                const pid = parseInt(gp.id ?? gp.pid, 10);
+                if (!isNaN(pid) && pid > 0) gamePlMap.set(pid, formatScorerPlayerDisplayName(gp));
+            });
+        }
+
+        const resolvePlayer = (rawPid) => {
+            const pidNum = parseInt(rawPid, 10);
+            const byId = playersById.get(String(pidNum));
+            if (byId) return { id: byId.id, name: byId.name };
+            const rawName = gamePlMap.get(pidNum) || '';
+            const byName = rawName ? playersByNormName.get(normalizePlayerNameKey(rawName)) : null;
+            if (byName) return { id: byName.id, name: byName.name };
+            return { id: pidNum, name: rawName || '不明' };
+        };
+
+        const perPlayer = new Map();
+        const ensureBucket = (rawPid) => {
+            const resolved = resolvePlayer(rawPid);
+            const mapKey = String(resolved.id);
+            if (!perPlayer.has(mapKey)) {
+                perPlayer.set(mapKey, {
+                    player_id: resolved.id,
+                    player_name: resolved.name,
+                    game_id: g.id,
+                    po: 0,
+                    assists: 0,
+                    errors: 0,
+                    chances: 0,
+                    dp: 0,
+                    pb: 0,
+                    positions: new Set()
+                });
+            }
+            return perPlayer.get(mapKey);
+        };
+
+        const catcherIdsInGame = new Set();
+        fldList.forEach(f => {
+            if (homeTid != null && f.tid != null && String(f.tid) !== String(homeTid)) return;
+            const pid = parseInt(f.pid, 10);
+            if (isNaN(pid) || pid <= 0 || !Array.isArray(f.st)) return;
+            const bucket = ensureBucket(pid);
+            const posIdx = parseInt(f.st[0], 10);
+            const posLabel = FLD_POS_NAMES[posIdx] || '';
+            if (posLabel) bucket.positions.add(posLabel);
+            if (posIdx === 1) catcherIdsInGame.add(String(bucket.player_id));
+            bucket.po += parseInt(f.st[2], 10) || 0;
+            bucket.assists += parseInt(f.st[3], 10) || 0;
+            bucket.errors += parseInt(f.st[4], 10) || 0;
+            bucket.dp += parseInt(f.st[5], 10) || 0;
+        });
+
+        if (catList.length > 0) {
+            catList.forEach(c => {
+                if (homeTid != null && c.tid != null && String(c.tid) !== String(homeTid)) return;
+                const pid = parseInt(c.pid, 10);
+                if (isNaN(pid) || pid <= 0 || !Array.isArray(c.st)) return;
+                const bucket = ensureBucket(pid);
+                bucket.positions.add('キャッチャー');
+                bucket.pb += parseInt(c.st[0], 10) || 0;
+            });
+        } else if (catcherIdsInGame.size === 1 && gd.cd) {
+            // cat[] 未保存の既存DB詳細レコード向け: 1捕手試合のパスボールをプレイログから補完
+            const onlyCatcherId = Array.from(catcherIdsInGame)[0];
+            const bucket = perPlayer.get(onlyCatcherId);
+            if (bucket) bucket.pb += parseHomePassedBallsFromCd(gd, isHomeTop, isHomeBot);
+        }
+
+        perPlayer.forEach(bucket => {
+            bucket.chances = bucket.po + bucket.assists + bucket.errors;
+            bucket.positions = Array.from(bucket.positions);
+            rows.push(bucket);
+        });
+    });
+
+    return rows;
+}
+
+// 対象ロール(打撃/投手/守備)として実際に出場記録があるか判定 (ベンチ登録のみの0打席・0登板レコードを除外)
 function hasRoleAppearance(statRow, role) {
     if (!statRow) return false;
     if (role === 'pitcher') {
         return (statRow.outs || 0) > 0 || (statRow.batters_faced || 0) > 0;
+    }
+    if (role === 'fielder') {
+        return (statRow.chances || 0) > 0 || (statRow.pb || 0) > 0 || (statRow.dp || 0) > 0 || (Array.isArray(statRow.positions) && statRow.positions.length > 0);
     }
     return (statRow.plate_appearances || 0) > 0 || (statRow.at_bats || 0) > 0;
 }
 
 // フィルタ済み試合において指定ロールで実際に出場した選手のみを返す
 function getActivePlayersForRole(role) {
-    const statsList = role === 'pitcher' ? currentFiltered.pStats : currentFiltered.bStats;
+    const statsList = role === 'pitcher'
+        ? currentFiltered.pStats
+        : (role === 'fielder' ? currentFiltered.fStats : currentFiltered.bStats);
     const activeIds = new Set();
+    const fallbackNames = new Map();
     (statsList || []).forEach(s => {
-        if (hasRoleAppearance(s, role)) activeIds.add(s.player_id);
+        if (!hasRoleAppearance(s, role)) return;
+        activeIds.add(String(s.player_id));
+        if (s.player_name) fallbackNames.set(String(s.player_id), s.player_name);
     });
-    return {
-        activeIds,
-        players: allPlayers.filter(p => activeIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
-    };
+    const playersById = new Map((allPlayers || []).map(p => [String(p.id), p]));
+    const players = Array.from(activeIds)
+        .map(idStr => playersById.get(idStr) || { id: idStr, name: fallbackNames.get(idStr) || '不明' })
+        .sort((a, b) => a.name.localeCompare(b.name));
+    return { activeIds, players };
 }
 
 function updateRoleScopedPlayerSelectors(target = 'all') {
@@ -1415,7 +1607,7 @@ function updateRoleScopedPlayerSelectors(target = 'all') {
             const { activeIds, players } = getActivePlayersForRole(psRole);
             const currentVal = psSel.value;
             psSel.innerHTML = players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-            if (currentVal && activeIds.has(parseInt(currentVal, 10))) psSel.value = currentVal;
+            if (currentVal && activeIds.has(String(currentVal))) psSel.value = currentVal;
         }
     }
     if (target === 'all' || target === 'comp') {
@@ -1733,6 +1925,44 @@ function calcPitcherStats(stats) {
     };
 }
 
+function calcFielderStats(stats) {
+    let po = 0, a = 0, e = 0, pb = 0, dp = 0, games = 0;
+    const posSet = new Set();
+    (stats || []).forEach(s => {
+        games++;
+        po += s.po || 0;
+        a += s.assists || 0;
+        e += s.errors || 0;
+        pb += s.pb || 0;
+        dp += s.dp || 0;
+        if (Array.isArray(s.positions)) s.positions.forEach(p => posSet.add(p));
+    });
+    const chances = po + a + e;
+    const fpctRaw = chances > 0 ? (po + a) / chances : 0;
+    const fpct = chances > 0 ? Math.round(fpctRaw * 1000) / 1000 : -1;
+    const fpctVal = chances > 0 ? Math.round(fpctRaw * 1000) / 1000 : 0;
+    const fpctStr = chances > 0 ? fpctVal.toFixed(3).replace(/^0/, '') : '-';
+    return {
+        games,
+        chances,
+        po,
+        a,
+        e,
+        pb,
+        dp,
+        positionsText: Array.from(posSet).join('・') || '-',
+        fpct,
+        fpctVal,
+        fpctStr
+    };
+}
+
+function calcStatsByRole(role, stats) {
+    if (role === 'pitcher') return calcPitcherStats(stats);
+    if (role === 'fielder') return calcFielderStats(stats);
+    return calcBatterStats(stats);
+}
+
 // --- タブ2: 個人成績・履歴・移動平均分析 ---
 async function renderPersonalSummary() {
     await loadChartJs();
@@ -1769,8 +1999,9 @@ async function renderPersonalSummary() {
 }
 
 function getPlayerMergedGames(pid, role) {
-    const { games, bStats, pStats } = currentFiltered;
-    const targetStats = (role === 'batter' ? bStats : pStats)
+    const { games, bStats, pStats, fStats } = currentFiltered;
+    const srcStats = role === 'batter' ? bStats : (role === 'pitcher' ? pStats : (fStats || []));
+    const targetStats = srcStats
         .filter(s => s.player_id == pid && hasRoleAppearance(s, role));
     return targetStats.map(s => {
         const game = games.find(g => g.id === s.game_id);
@@ -1786,11 +2017,13 @@ function getPlayerMergedGames(pid, role) {
 
 // 単一選手の試合別履歴＆移動平均ビューのレンダリング
 function renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindow) {
-    const playerName = allPlayers.find(p => p.id == pid)?.name || '選手';
+    const playerName = allPlayers.find(p => p.id == pid)?.name
+        || (currentFiltered.fStats || []).find(s => s.player_id == pid)?.player_name
+        || '選手';
     const allMerged = getPlayerMergedGames(pid, role);
 
     // 全期間（通算）データ
-    const totalCalc = role === 'batter' ? calcBatterStats(allMerged.map(x => x.stats)) : calcPitcherStats(allMerged.map(x => x.stats));
+    const totalCalc = calcStatsByRole(role, allMerged.map(x => x.stats));
 
     // 直近N試合フィルター適用
     let merged = [...allMerged];
@@ -1801,7 +2034,7 @@ function renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindo
         }
     }
 
-    const periodCalc = role === 'batter' ? calcBatterStats(merged.map(x => x.stats)) : calcPitcherStats(merged.map(x => x.stats));
+    const periodCalc = calcStatsByRole(role, merged.map(x => x.stats));
 
     // 1. 直近ハイライトカード描画
     renderHighlightCards(playerName, role, periodCalc, totalCalc, merged);
@@ -1896,6 +2129,35 @@ function renderHighlightCards(playerName, role, periodCalc, totalCalc, merged) {
             </div>
         `;
     }
+    if (role === 'fielder') {
+        const hasChances = periodCalc.chances > 0 && totalCalc.chances > 0;
+        const fpctDiff = hasChances ? (periodCalc.fpctVal - totalCalc.fpctVal) : 0;
+        const diffStr = hasChances ? ((fpctDiff >= 0 ? '+' : '') + fpctDiff.toFixed(3).replace(/^0/, '')) : '-';
+        container.innerHTML = `
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">直近 守備率 vs 通算</div>
+                <div class="text-2xl font-black text-indigo-700">${periodCalc.fpctStr}</div>
+                <div class="text-xs ${fpctDiff >= 0 ? 'text-green-600' : 'text-red-500'} font-bold mt-0.5">
+                    通算 (${totalCalc.fpctStr}) 比: ${diffStr}
+                </div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">守備機会 / 刺殺・捕殺</div>
+                <div class="text-2xl font-black text-gray-800">${periodCalc.chances} <span class="text-xs font-normal text-gray-500">機会</span></div>
+                <div class="text-xs text-gray-500 mt-0.5">刺殺: <span class="font-bold text-gray-800">${periodCalc.po}</span> / 捕殺: <span class="font-bold text-gray-800">${periodCalc.a}</span></div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">失策 / 捕逸</div>
+                <div class="text-2xl font-black text-red-600">${periodCalc.e} <span class="text-xs font-normal text-gray-500">E</span> / <span class="text-amber-600">${periodCalc.pb}</span> <span class="text-xs font-normal text-gray-500">PB</span></div>
+                <div class="text-xs text-gray-500 mt-0.5">併殺: <span class="font-bold text-gray-800">${periodCalc.dp}</span></div>
+            </div>
+            <div class="bg-white p-3 rounded-lg shadow border border-gray-100">
+                <div class="text-xs text-gray-500 font-bold mb-1">守備試合 / 守備位置</div>
+                <div class="text-2xl font-black text-blue-600">${periodCalc.games} <span class="text-xs font-normal text-gray-500">試合</span></div>
+                <div class="text-xs text-gray-500 mt-0.5 truncate" title="${escapeHtml(periodCalc.positionsText)}">${escapeHtml(periodCalc.positionsText)}</div>
+            </div>
+        `;
+    }
 }
 
 // 移動平均データの計算処理
@@ -1909,7 +2171,7 @@ function calculateMovingAverageData(merged, role, maUnit, maWindow) {
             const startIdx = Math.max(0, i - maWindow + 1);
             const windowSlice = merged.slice(startIdx, i + 1);
             const stats = windowSlice.map(x => x.stats);
-            const calc = role === 'batter' ? calcBatterStats(stats) : calcPitcherStats(stats);
+            const calc = calcStatsByRole(role, stats);
             const currentGame = merged[i];
             const opp = isHomeTeam(currentGame.game?.team_first) ? currentGame.game?.team_second : currentGame.game?.team_first;
 
@@ -1922,25 +2184,29 @@ function calculateMovingAverageData(merged, role, maUnit, maWindow) {
             });
         }
     } else {
-        // 打数/登板単位の移動平均
+        // 打数/登板/守備機会単位の移動平均
         for (let i = 0; i < merged.length; i++) {
             let accCount = 0;
             const windowSlice = [];
             for (let j = i; j >= 0; j--) {
                 windowSlice.unshift(merged[j]);
-                const count = role === 'batter' ? (merged[j].stats.at_bats || 0) : 1;
+                const count = role === 'batter'
+                    ? (merged[j].stats.at_bats || 0)
+                    : (role === 'fielder' ? (merged[j].stats.chances || 0) : 1);
                 accCount += count;
                 if (accCount >= maWindow) break;
             }
             const stats = windowSlice.map(x => x.stats);
-            const calc = role === 'batter' ? calcBatterStats(stats) : calcPitcherStats(stats);
+            const calc = calcStatsByRole(role, stats);
             const currentGame = merged[i];
             const opp = isHomeTeam(currentGame.game?.team_first) ? currentGame.game?.team_second : currentGame.game?.team_first;
 
             results.push({
                 label: `${currentGame.date.substring(5)} vs ${opp || ''}`,
                 date: currentGame.date,
-                windowSpan: role === 'batter' ? `直近 ${calc.ab} 打数` : `直近 ${windowSlice.length} 登板`,
+                windowSpan: role === 'batter'
+                    ? `直近 ${calc.ab} 打数`
+                    : (role === 'fielder' ? `直近 ${calc.chances} 機会` : `直近 ${windowSlice.length} 登板`),
                 calc,
                 stats
             });
@@ -1966,7 +2232,7 @@ function drawRawStatsGraph(playerName, role, merged) {
         runningStats.push(m.stats);
         const opp = isHomeTeam(m.game?.team_first) ? m.game?.team_second : m.game?.team_first;
         labels.push(`${m.date.substring(5)} vs ${opp || ''}`);
-        const calc = role === 'batter' ? calcBatterStats(runningStats) : calcPitcherStats(runningStats);
+        const calc = calcStatsByRole(role, runningStats);
         cumDataPoints.push(calc);
     });
 
@@ -1993,7 +2259,7 @@ function drawRawStatsGraph(playerName, role, merged) {
                 }
             }
         });
-    } else {
+    } else if (role === 'pitcher') {
         personalCharts.rawGraph = new window.Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
@@ -2015,6 +2281,27 @@ function drawRawStatsGraph(playerName, role, merged) {
                 }
             }
         });
+    } else {
+        personalCharts.rawGraph = new window.Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: '累積守備率', data: cumDataPoints.map(d => d.fpctVal), borderColor: '#4f46e5', backgroundColor: '#4f46e5', tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { min: 0, max: 1, ticks: { font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
     }
 }
 
@@ -2022,7 +2309,8 @@ function drawRawStatsGraph(playerName, role, merged) {
 function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
     const subtitleEl = document.getElementById('ps-ma-graph-subtitle');
     if (subtitleEl) {
-        subtitleEl.textContent = `(${playerName} - 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'}移動平均)`;
+        const unitLbl = maUnit === 'ab' ? (role === 'fielder' ? '守備機会' : '打数/登板') : '試合';
+        subtitleEl.textContent = `(${playerName} - 直近${maWindow}${unitLbl}移動平均)`;
     }
 
     if (personalCharts.maGraph) {
@@ -2056,7 +2344,7 @@ function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
                 }
             }
         });
-    } else {
+    } else if (role === 'pitcher') {
         personalCharts.maGraph = new window.Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
@@ -2074,6 +2362,27 @@ function drawMovingAvgGraph(playerName, role, maData, maUnit, maWindow) {
                 },
                 scales: {
                     y: { min: 0, ticks: { font: { size: 10 } } },
+                    x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+                }
+            }
+        });
+    } else {
+        personalCharts.maGraph = new window.Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    { label: '移動平均 守備率', data: maData.map(d => d.calc.fpctVal), borderColor: '#4f46e5', backgroundColor: '#4f46e5', tension: 0.2 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' }
+                },
+                scales: {
+                    y: { min: 0, max: 1, ticks: { font: { size: 10 } } },
                     x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
                 }
             }
@@ -2136,7 +2445,7 @@ function renderGameDetailTable(role, merged) {
             const sf = s.sacrifice_flies || (s.sac_flies || 0);
             const sh = (s.sacrifice_hits || (s.sac_bunts || 0)) + sf;
             const sb = s.stolen_bases || 0;
-            const err = s.errors || 0;
+            const err = s.errors ?? (currentFiltered.fStats?.find(f => f.player_id == s.player_id && f.game_id == s.game_id)?.errors || 0);
             const avg = ab > 0 ? (h / ab).toFixed(3).replace(/^0/, '') : '.000';
             const obpDenom = ab + bb + hbp + sf;
             const obpRaw = obpDenom > 0 ? ((h + bb + hbp) / obpDenom) : (pa > 0 ? ((h + bb + hbp) / pa) : 0);
@@ -2173,7 +2482,7 @@ function renderGameDetailTable(role, merged) {
                 </tr>
             `;
         }).join('');
-    } else {
+    } else if (role === 'pitcher') {
         thead.innerHTML = `
             <tr>
                 <th class="p-2 border">日付</th>
@@ -2228,6 +2537,41 @@ function renderGameDetailTable(role, merged) {
                 </tr>
             `;
         }).join('');
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border">日付</th>
+                <th class="p-2 border">相手チーム</th>
+                <th class="p-2 border">守備位置</th>
+                <th class="p-2 border text-center">守備機会</th>
+                <th class="p-2 border text-center">刺殺</th>
+                <th class="p-2 border text-center">捕殺</th>
+                <th class="p-2 border text-center text-red-600">失策</th>
+                <th class="p-2 border text-center text-amber-700">捕逸</th>
+                <th class="p-2 border text-center">併殺</th>
+                <th class="p-2 border text-center font-bold text-indigo-700">守備率</th>
+            </tr>
+        `;
+
+        tbody.innerHTML = reversedMerged.map(m => {
+            const s = m.stats;
+            const opp = isHomeTeam(m.game?.team_first) ? m.game?.team_second : m.game?.team_first;
+            const rowCalc = calcFielderStats([s]);
+            return `
+                <tr class="hover:bg-gray-50">
+                    <td class="p-2 border font-bold">${m.date}</td>
+                    <td class="p-2 border">${escapeHtml(opp || '不明')}</td>
+                    <td class="p-2 border text-xs">${escapeHtml(rowCalc.positionsText)}</td>
+                    <td class="p-2 border text-center font-bold">${rowCalc.chances}</td>
+                    <td class="p-2 border text-center">${rowCalc.po}</td>
+                    <td class="p-2 border text-center">${rowCalc.a}</td>
+                    <td class="p-2 border text-center ${rowCalc.e > 0 ? 'text-red-600 font-bold bg-red-50' : ''}">${rowCalc.e}</td>
+                    <td class="p-2 border text-center ${rowCalc.pb > 0 ? 'text-amber-700 font-bold bg-amber-50' : ''}">${rowCalc.pb}</td>
+                    <td class="p-2 border text-center">${rowCalc.dp}</td>
+                    <td class="p-2 border text-center font-black text-indigo-700 bg-indigo-50">${rowCalc.fpctStr}</td>
+                </tr>
+            `;
+        }).join('');
     }
 }
 
@@ -2240,8 +2584,10 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
     if (!thead || !tbody) return;
 
     const limitLabel = limitGamesVal === 'all' ? '全試合' : `直近 ${limitGamesVal} 試合`;
-    if (titleEl) titleEl.textContent = `👥 全選手成績一覧 (${role === 'batter' ? '打撃' : '投手'})`;
-    if (subtitleEl) subtitleEl.textContent = `対象: ${limitLabel} / 移動平均: 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'} (各列クリックでソート)`;
+    const roleLabel = role === 'batter' ? '打撃' : (role === 'pitcher' ? '投手' : '守備');
+    const unitLabel = maUnit === 'ab' ? (role === 'fielder' ? '守備機会' : '打数/登板') : '試合';
+    if (titleEl) titleEl.textContent = `👥 全選手成績一覧 (${roleLabel})`;
+    if (subtitleEl) subtitleEl.textContent = `対象: ${limitLabel} / 移動平均: 直近${maWindow}${unitLabel} (各列クリックでソート)`;
 
     const { players: activePlayers } = getActivePlayersForRole(role);
 
@@ -2258,7 +2604,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             }
         }
 
-        const calcPeriod = role === 'batter' ? calcBatterStats(filteredMerged.map(x => x.stats)) : calcPitcherStats(filteredMerged.map(x => x.stats));
+        const calcPeriod = calcStatsByRole(role, filteredMerged.map(x => x.stats));
         const maData = calculateMovingAverageData(filteredMerged, role, maUnit, maWindow);
         const latestMa = maData.length > 0 ? maData[maData.length - 1].calc : calcPeriod;
 
@@ -2274,7 +2620,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             hr: calcPeriod.hr,
             rbi: calcPeriod.rbi,
             r: calcPeriod.r,
-            bb: calcPeriod.bb + calcPeriod.hbp,
+            bb: (calcPeriod.bb || 0) + (calcPeriod.hbp || 0),
             avg: calcPeriod.avg,
             obp: calcPeriod.obp,
             slg: calcPeriod.slg,
@@ -2290,7 +2636,15 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             era: calcPeriod.era,
             whip: calcPeriod.whip,
             maEra: latestMa.era,
-            maWhip: latestMa.whip
+            maWhip: latestMa.whip,
+            chances: calcPeriod.chances,
+            po: calcPeriod.po,
+            a: calcPeriod.a,
+            e: calcPeriod.e,
+            pb: calcPeriod.pb,
+            dp: calcPeriod.dp,
+            fpct: calcPeriod.fpct,
+            maFpct: latestMa.fpct
         };
     }).filter(Boolean);
 
@@ -2350,7 +2704,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <td class="p-2 border text-right font-bold text-indigo-600">${r.latestMa.opsStr}</td>
             </tr>
         `).join('');
-    } else {
+    } else if (role === 'pitcher') {
         thead.innerHTML = `
             <tr>
                 <th class="p-2 border cursor-pointer select-none hover:bg-gray-200" data-ps-sort="name">選手名<span>${getSortIcon('name')}</span></th>
@@ -2384,6 +2738,38 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 <td class="p-2 border text-right font-bold text-blue-500">${r.latestMa.whipStr}</td>
             </tr>
         `).join('');
+    } else {
+        thead.innerHTML = `
+            <tr>
+                <th class="p-2 border cursor-pointer select-none hover:bg-gray-200" data-ps-sort="name">選手名<span>${getSortIcon('name')}</span></th>
+                <th class="p-2 border text-center cursor-pointer select-none hover:bg-gray-200" data-ps-sort="gameCount">試合数<span>${getSortIcon('gameCount')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="chances">守備機会<span>${getSortIcon('chances')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="po">刺殺<span>${getSortIcon('po')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="a">捕殺<span>${getSortIcon('a')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-red-600" data-ps-sort="e">失策<span>${getSortIcon('e')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 text-amber-700" data-ps-sort="pb">捕逸<span>${getSortIcon('pb')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200" data-ps-sort="dp">併殺<span>${getSortIcon('dp')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-indigo-700" data-ps-sort="fpct">守備率 (${limitLabel})<span>${getSortIcon('fpct')}</span></th>
+                <th class="p-2 border text-right cursor-pointer select-none hover:bg-gray-200 font-bold text-indigo-500" data-ps-sort="maFpct">移動平均 守備率<span>${getSortIcon('maFpct')}</span></th>
+            </tr>
+        `;
+
+        tbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="10" class="p-4 text-center text-gray-500">該当する守備データがありません</td></tr>'
+            : rows.map(r => `
+            <tr class="hover:bg-gray-50">
+                <td class="p-2 border font-bold text-gray-800">${escapeHtml(r.player.name)}</td>
+                <td class="p-2 border text-center">${r.gameCount}</td>
+                <td class="p-2 border text-right font-semibold">${r.calcPeriod.chances}</td>
+                <td class="p-2 border text-right">${r.calcPeriod.po}</td>
+                <td class="p-2 border text-right">${r.calcPeriod.a}</td>
+                <td class="p-2 border text-right ${r.calcPeriod.e > 0 ? 'text-red-600 font-bold' : ''}">${r.calcPeriod.e}</td>
+                <td class="p-2 border text-right ${r.calcPeriod.pb > 0 ? 'text-amber-700 font-bold' : ''}">${r.calcPeriod.pb}</td>
+                <td class="p-2 border text-right">${r.calcPeriod.dp}</td>
+                <td class="p-2 border text-right font-black text-indigo-700 bg-indigo-50">${r.calcPeriod.fpctStr}</td>
+                <td class="p-2 border text-right font-bold text-indigo-500">${r.latestMa.fpctStr}</td>
+            </tr>
+        `).join('');
     }
 
     // 列クリック時のソートイベント登録
@@ -2394,7 +2780,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
                 psAllSortState[role].order = psAllSortState[role].order === 'asc' ? 'desc' : 'asc';
             } else {
                 psAllSortState[role].key = key;
-                psAllSortState[role].order = (key === 'era' || key === 'whip' || key === 'maEra' || key === 'maWhip' || key === 'name') ? 'asc' : 'desc';
+                psAllSortState[role].order = (key === 'era' || key === 'whip' || key === 'maEra' || key === 'maWhip' || key === 'e' || key === 'pb' || key === 'name') ? 'asc' : 'desc';
             }
             renderPersonalSummary();
         });
@@ -2443,7 +2829,7 @@ function handleExportPsCsv() {
 
 // --- タブ3: ランキング ---
 function renderRanking() {
-    const { games, bStats, pStats } = currentFiltered;
+    const { games, bStats, pStats, fStats } = currentFiltered;
     const gameCount = games ? games.length : 0;
     const regulationPA = gameCount * 2;
 
@@ -2459,9 +2845,10 @@ function renderRanking() {
             : '※規定打席を考慮せず全打者を合算順位で表示中（規定打席＝対象試合数×2打席）';
     }
 
-    const bMap = {}, pMap = {};
+    const bMap = {}, pMap = {}, fMap = {};
     bStats.forEach(s => { if(!bMap[s.player_id]) bMap[s.player_id] = []; bMap[s.player_id].push(s); });
     pStats.forEach(s => { if(!pMap[s.player_id]) pMap[s.player_id] = []; pMap[s.player_id].push(s); });
+    (fStats || []).forEach(s => { if(!fMap[s.player_id]) fMap[s.player_id] = []; fMap[s.player_id].push(s); });
 
     currentRankingData.batter = Object.keys(bMap)
         .map(pid => {
@@ -2476,8 +2863,18 @@ function renderRanking() {
 
     currentRankingData.pitcher = Object.keys(pMap).map(pid => ({ name: allPlayers.find(x=>x.id==pid)?.name || '不明', ...calcPitcherStats(pMap[pid]) })).filter(x => x.outs > 0);
 
+    currentRankingData.fielder = Object.keys(fMap)
+        .map(pid => {
+            const list = fMap[pid];
+            const stats = calcFielderStats(list);
+            const name = allPlayers.find(x => x.id == pid)?.name || list[0]?.player_name || '不明';
+            return { name, ...stats };
+        })
+        .filter(x => x.chances > 0 || x.pb > 0 || x.dp > 0);
+
     drawRankingTable('batter');
     drawRankingTable('pitcher');
+    drawRankingTable('fielder');
 }
 
 function handleRankingSort(role, key) {
@@ -2485,8 +2882,8 @@ function handleRankingSort(role, key) {
         rankingSortState[role].order = rankingSortState[role].order === 'asc' ? 'desc' : 'asc';
     } else {
         rankingSortState[role].key = key;
-        // ERA/WHIP/与四死球などは低い方が良いため昇順をデフォルトにする
-        if (key === 'era' || key === 'whip' || key === 'bb7' || key === 'bbRate' || key === 'name') {
+        // ERA/WHIP/与四死球・失策・捕逸などは低い方が良いため昇順をデフォルトにする
+        if (key === 'era' || key === 'whip' || key === 'bb7' || key === 'bbRate' || key === 'e' || key === 'pb' || key === 'name') {
             rankingSortState[role].order = 'asc';
         } else {
             rankingSortState[role].order = 'desc';
@@ -2506,7 +2903,12 @@ function drawRankingTable(role) {
         let valA = a[state.key];
         let valB = b[state.key];
         if (typeof valA === 'string') return state.order === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        return state.order === 'asc' ? valA - valB : valB - valA;
+        const cmp = state.order === 'asc' ? valA - valB : valB - valA;
+        if (cmp !== 0) return cmp;
+        if (role === 'fielder' && state.key === 'fpct') {
+            return (b.chances || 0) - (a.chances || 0);
+        }
+        return 0;
     });
 
     if (role === 'batter') {
@@ -2538,12 +2940,19 @@ function drawRankingTable(role) {
                 }).join('');
             }
         }
-    } else {
+    } else if (role === 'pitcher') {
         const pTbody = document.getElementById('ranking-pitcher-tbody');
         if (pTbody) {
             pTbody.innerHTML = data.length === 0
                 ? '<tr><td colspan="12" class="p-4 text-center text-gray-500">該当する選手データがありません</td></tr>'
                 : data.map(r => `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-bold">${escapeHtml(r.name)}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
+        }
+    } else {
+        const fTbody = document.getElementById('ranking-fielder-tbody');
+        if (fTbody) {
+            fTbody.innerHTML = data.length === 0
+                ? '<tr><td colspan="9" class="p-4 text-center text-gray-500">該当する守備データがありません</td></tr>'
+                : data.map(r => `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-bold">${escapeHtml(r.name)}</td><td class="p-2">${r.games}</td><td class="p-2 font-semibold">${r.chances}</td><td class="p-2 font-bold text-indigo-700 bg-indigo-50">${r.fpctStr}</td><td class="p-2">${r.po}</td><td class="p-2">${r.a}</td><td class="p-2 ${r.e > 0 ? 'text-red-600 font-bold' : ''}">${r.e}</td><td class="p-2 ${r.pb > 0 ? 'text-amber-700 font-bold' : ''}">${r.pb}</td><td class="p-2">${r.dp}</td></tr>`).join('');
         }
     }
 
@@ -2801,7 +3210,7 @@ async function handleCsvImport() {
             }
 
             const rawGamesList = Array.from(gamesMap.values());
-            const { idMap, remappedCount } = buildImportedGameIdMap(rawGamesList);
+            const { idMap, remappedCount, collisionReassignedCount } = buildImportedGameIdMap(rawGamesList);
             const finalGamesMap = new Map();
             rawGamesList.forEach(g => {
                 const targetId = idMap.get(g.id) ?? g.id;
@@ -2827,8 +3236,12 @@ async function handleCsvImport() {
             const { error: sErr } = await supabaseClient.from(tableName).upsert(finalStats, { onConflict: 'player_id, game_id' });
             if (sErr) throw sErr;
 
-            await logAction('IMPORT_CSV', `成績データ(${type === 'batter' ? '打者' : '投手'})を${finalStats.length}件インポートしました${remappedCount > 0 ? ` (既存試合統合: ${remappedCount}件)` : ''}`);
-            msgEl.textContent = `成功: ${finalStats.length} 件のデータをインポートしました${remappedCount > 0 ? `（既存試合と一致した ${remappedCount}件は新規追加せず上書き統合しました）` : ''}。`;
+            const extraNotes = [];
+            if (remappedCount > 0) extraNotes.push(`既存試合統合: ${remappedCount}件`);
+            if (collisionReassignedCount > 0) extraNotes.push(`別試合ID衝突を新規採番で保護: ${collisionReassignedCount}件`);
+            const noteSuffix = extraNotes.length > 0 ? ` (${extraNotes.join(' / ')})` : '';
+            await logAction('IMPORT_CSV', `成績データ(${type === 'batter' ? '打者' : '投手'})を${finalStats.length}件インポートしました${noteSuffix}`);
+            msgEl.textContent = `成功: ${finalStats.length} 件のデータをインポートしました${noteSuffix}。`;
             msgEl.className = "mt-4 text-sm font-bold text-green-600";
             msgEl.classList.remove('hidden');
             fileInput.value = ''; // 成功したらクリア
@@ -2936,6 +3349,17 @@ function extractFromScorerBackup(backupData) {
         });
     }
 
+    const catByGame = new Map();
+    if (Array.isArray(backupData.cat)) {
+        backupData.cat.forEach(c => {
+            const gid = parseInt(c.gid, 10);
+            const pid = parseInt(c.pid, 10);
+            if (isNaN(gid) || isNaN(pid) || pid <= 0) return;
+            if (!catByGame.has(gid)) catByGame.set(gid, []);
+            catByGame.get(gid).push(c);
+        });
+    }
+
     const rawGamesById = new Map();
     const rawGameList = Array.isArray(backupData.game)
         ? backupData.game
@@ -2980,6 +3404,7 @@ function extractFromScorerBackup(backupData) {
                 pl: g.pl || '',
                 te: g.te || '',
                 fld: fldByGame.get(gid) || [],
+                cat: catByGame.get(gid) || [],
                 updatedAt: Date.now()
             });
 
@@ -3203,45 +3628,92 @@ function getGameMatchInfo(g) {
     };
 }
 
-// 別端末や再出力などで試合ID(gid)がズレた同一試合を既存DB上の試合IDへマッピングして重複登録を防止する
+// 別端末や再出力などで試合ID(gid)がズレた同一試合の統合と、別試合同士のID衝突上書き防止を行う
 function buildImportedGameIdMap(incomingGames) {
     const idMap = new Map();
     const existingList = Array.isArray(allGames) ? allGames : [];
-    const existingIdSet = new Set(existingList.map(g => Number(g.id)).filter(n => !isNaN(n)));
-    const claimedExistingIds = new Set();
+    const existingById = new Map();
+    const usedIds = new Set();
+    let maxId = 0;
 
-    // 1. すでに同じgame.idがDBにあるものを優先確定
+    existingList.forEach(g => {
+        const eid = Number(g.id);
+        if (!isNaN(eid)) {
+            existingById.set(eid, g);
+            usedIds.add(eid);
+            if (eid > maxId) maxId = eid;
+        }
+    });
     incomingGames.forEach(g => {
         const gid = Number(g.id);
-        if (!isNaN(gid) && existingIdSet.has(gid)) {
+        if (!isNaN(gid)) {
+            usedIds.add(gid);
+            if (gid > maxId) maxId = gid;
+        }
+    });
+
+    const isSameExistingGame = (ex, incoming) => {
+        const exInfo = getGameMatchInfo(ex);
+        const inInfo = getGameMatchInfo(incoming);
+        if (exInfo.baseKey && inInfo.baseKey) {
+            if (exInfo.baseKey !== inInfo.baseKey) return false;
+            return !exInfo.score || !inInfo.score || exInfo.score === inInfo.score;
+        }
+        return true;
+    };
+
+    const claimedExistingIds = new Set();
+
+    // 1. DBに同じgame.idがあり、かつ内容(日付・チーム・スコア)も一致する既存試合を優先確定
+    incomingGames.forEach(g => {
+        const gid = Number(g.id);
+        if (isNaN(gid)) return;
+        const ex = existingById.get(gid);
+        if (ex && isSameExistingGame(ex, g)) {
             idMap.set(gid, gid);
             claimedExistingIds.add(gid);
         }
     });
 
-    // 2. DBにないIDについては (日付, 先攻, 後攻, スコア) 一致の既存試合へ紐付け
+    const allocUnusedGameId = () => {
+        let cand = Math.max(maxId + 1, 1);
+        while (usedIds.has(cand)) cand++;
+        maxId = cand;
+        usedIds.add(cand);
+        return cand;
+    };
+
+    // 2. DBにないID または IDが別試合と衝突した試合は、まず内容一致の既存試合を探し、無ければ未使用IDを割り当てる
     let remappedCount = 0;
+    let collisionReassignedCount = 0;
     incomingGames.forEach(g => {
         const gid = Number(g.id);
         if (isNaN(gid) || idMap.has(gid)) return;
         const inInfo = getGameMatchInfo(g);
-        if (!inInfo.baseKey) return;
-        const matched = existingList.find(ex => {
-            const exId = Number(ex.id);
-            if (isNaN(exId) || claimedExistingIds.has(exId)) return false;
-            const exInfo = getGameMatchInfo(ex);
-            if (exInfo.baseKey !== inInfo.baseKey) return false;
-            return !exInfo.score || !inInfo.score || exInfo.score === inInfo.score;
-        });
-        if (matched) {
-            const targetId = Number(matched.id);
-            idMap.set(gid, targetId);
-            claimedExistingIds.add(targetId);
-            remappedCount++;
+        if (inInfo.baseKey) {
+            const matched = existingList.find(ex => {
+                const exId = Number(ex.id);
+                if (isNaN(exId) || claimedExistingIds.has(exId)) return false;
+                const exInfo = getGameMatchInfo(ex);
+                if (exInfo.baseKey !== inInfo.baseKey) return false;
+                return !exInfo.score || !inInfo.score || exInfo.score === inInfo.score;
+            });
+            if (matched) {
+                const targetId = Number(matched.id);
+                idMap.set(gid, targetId);
+                claimedExistingIds.add(targetId);
+                remappedCount++;
+                return;
+            }
+        }
+
+        if (existingById.has(gid)) {
+            idMap.set(gid, allocUnusedGameId());
+            collisionReassignedCount++;
         }
     });
 
-    return { idMap, remappedCount };
+    return { idMap, remappedCount, collisionReassignedCount };
 }
 
 function findDuplicateGameGroups() {
@@ -3447,11 +3919,21 @@ async function handleResetDashboardData() {
         tempPreviewDetails = [];
         await logAction('RESET_DASHBOARD_DATA', `成績データ全削除: ${summaryText}`);
         await loadDashboardData();
-        if (msgEl) {
-            msgEl.textContent = '✅ 全削除が完了しました。上の①または②からデータを再読み込みしてください。';
-            msgEl.className = 'text-xs font-bold text-emerald-700';
+        const leftoverCount = allGames.length + allBatterStats.length + allPitcherStats.length + allPlayers.length + allGameDetails.length;
+        if (leftoverCount > 0) {
+            const leftMsg = `⚠️ 削除を実行しましたが一部データが残っています（試合 ${allGames.length}件 / 打撃 ${allBatterStats.length}件 / 投手 ${allPitcherStats.length}件 / 詳細 ${allGameDetails.length}件 / 選手 ${allPlayers.length}名）。Supabase の DELETE 権限 (RLSポリシー) をご確認ください。`;
+            if (msgEl) {
+                msgEl.textContent = leftMsg;
+                msgEl.className = 'text-xs font-bold text-amber-700';
+            }
+            alert(leftMsg);
+        } else {
+            if (msgEl) {
+                msgEl.textContent = '✅ 全削除が完了しました。上の①または②からデータを再読み込みしてください。';
+                msgEl.className = 'text-xs font-bold text-emerald-700';
+            }
+            alert('成績・選手・詳細分析データをすべて削除しました。\n上の①（CSV）または②（scorer_data*.txt）から読み込み直してください。');
         }
-        alert('成績・選手・詳細分析データをすべて削除しました。\n上の①（CSV）または②（scorer_data*.txt）から読み込み直してください。');
     } catch (err) {
         console.error(err);
         if (msgEl) {
@@ -3473,7 +3955,7 @@ async function handleBackupImportDb() {
     showLoading('バックアップデータから成績・詳細分析データをDBへ一括インポート中...');
     try {
         const { players, games, gameDetails, batterStats, pitcherStats } = loadedScorerExtracted;
-        const { idMap, remappedCount } = buildImportedGameIdMap(games);
+        const { idMap, remappedCount, collisionReassignedCount } = buildImportedGameIdMap(games);
 
         const finalGamesMap = new Map();
         games.forEach(g => {
@@ -3514,9 +3996,13 @@ async function handleBackupImportDb() {
             await upsertInChunks('master_data', detailRows, 15, { onConflict: 'key' });
         }
 
-        await logAction('IMPORT_BACKUP', `Scorerデータ一括インポート: 試合=${finalGames.length}件, 詳細ログ=${detailRows.length}件, 打者=${finalBatterStats.length}件, 投手=${finalPitcherStats.length}件${remappedCount > 0 ? ` (既存試合統合: ${remappedCount}件)` : ''}`);
+        const backupNotes = [];
+        if (remappedCount > 0) backupNotes.push(`既存試合統合: ${remappedCount}件`);
+        if (collisionReassignedCount > 0) backupNotes.push(`別試合ID衝突を新規採番で保護: ${collisionReassignedCount}件`);
+        const backupNoteSuffix = backupNotes.length > 0 ? ` (${backupNotes.join(' / ')})` : '';
+        await logAction('IMPORT_BACKUP', `Scorerデータ一括インポート: 試合=${finalGames.length}件, 詳細ログ=${detailRows.length}件, 打者=${finalBatterStats.length}件, 投手=${finalPitcherStats.length}件${backupNoteSuffix}`);
         if (msgEl) {
-            msgEl.textContent = `DBインポート完了: 試合 ${finalGames.length}件 / 詳細プレイ ${detailRows.length}件 / 打者成績 ${finalBatterStats.length}件 / 投手成績 ${finalPitcherStats.length}件を保存しました${remappedCount > 0 ? `（既存試合と一致した ${remappedCount}件は新規追加せず統合更新しました）` : ''}（「詳細分析・文字起こし」タブから即座に参照できます）。`;
+            msgEl.textContent = `DBインポート完了: 試合 ${finalGames.length}件 / 詳細プレイ ${detailRows.length}件 / 打者成績 ${finalBatterStats.length}件 / 投手成績 ${finalPitcherStats.length}件を保存しました${backupNoteSuffix}（「詳細分析・文字起こし」タブから即座に参照できます）。`;
             msgEl.className = 'mt-3 text-sm font-bold text-green-600';
             msgEl.classList.remove('hidden');
         }
