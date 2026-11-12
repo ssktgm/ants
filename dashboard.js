@@ -808,6 +808,7 @@ function setupDashboardUI() {
         });
 
         ['ps-mode', 'ps-player', 'ps-role', 'ps-limit-games', 'ps-ma-unit', 'ps-ma-window'].forEach(id => document.getElementById(id)?.addEventListener('change', () => {
+            if (id === 'ps-role') updateRoleScopedPlayerSelectors('ps');
             const unit = document.getElementById('ps-ma-unit')?.value;
             const labelEl = document.getElementById('ps-ma-window-label');
             if (labelEl) labelEl.textContent = unit === 'ab' ? '打数/登板' : '試合';
@@ -819,9 +820,11 @@ function setupDashboardUI() {
         document.getElementById('btn-print-ps')?.addEventListener('click', () => window.print());
 
         document.getElementById('comp-players-list')?.addEventListener('change', renderComparison);
-        ['comp-role', 'comp-calc-mode'].forEach(id => {
-            document.getElementById(id)?.addEventListener('change', renderComparison);
+        document.getElementById('comp-role')?.addEventListener('change', () => {
+            updateRoleScopedPlayerSelectors('comp');
+            renderComparison();
         });
+        document.getElementById('comp-calc-mode')?.addEventListener('change', renderComparison);
         document.getElementById('comp-ma-window')?.addEventListener('change', renderComparison);
         document.getElementById('comp-ma-window')?.addEventListener('input', renderComparison);
 
@@ -1099,22 +1102,51 @@ async function loadDashboardData() {
     }
 }
 
-// 自チーム名にマッチするか判定する共通関数 (部分一致・チーム名表記ブレ対応)
+// 自チーム名にマッチするか判定する共通関数 (部隊タグ @A軍 / @B軍 を区別しつつ表記ブレに対応)
 function isHomeTeam(teamName) {
     if (!teamName) return false;
     const trimmed = teamName.trim();
     // 単に「ありんこ」のみ、「アントス」のみとなっているものは除外
     if (trimmed === 'ありんこ' || trimmed === 'アントス') return false;
 
-    return dashboardSettings.homeTeamNames.some(name => {
-        if (!name) return false;
-        const cleanName = name.replace(/@.*$/, '').trim();
-        const cleanTeam = teamName.replace(/@.*$/, '').trim();
+    const splitTeamAndSquad = (raw) => {
+        const normalized = String(raw || '').replace(/\[([^\]]+)\]/g, '@$1').trim();
+        const atIdx = normalized.indexOf('@');
+        if (atIdx === -1) return { base: normalized, squad: '' };
+        return {
+            base: normalized.slice(0, atIdx).trim(),
+            squad: normalized.slice(atIdx + 1).trim()
+        };
+    };
+
+    const target = splitTeamAndSquad(trimmed);
+    const parsedConfigs = dashboardSettings.homeTeamNames
+        .map(n => (n ? { raw: n.trim(), ...splitTeamAndSquad(n) } : null))
+        .filter(Boolean);
+
+    return parsedConfigs.some(cfg => {
+        if (trimmed === cfg.raw) return true;
         try {
-            if (new RegExp(name, 'i').test(teamName) || new RegExp(cleanName, 'i').test(cleanTeam)) return true;
+            if (new RegExp(`^${cfg.raw}$`, 'i').test(trimmed)) return true;
         } catch (e) {}
-        return teamName.includes(name) || name.includes(teamName) ||
-               (cleanName && cleanTeam && (cleanTeam.includes(cleanName) || cleanName.includes(cleanTeam)));
+
+        if (!cfg.base || !target.base) return false;
+        const baseMatched = target.base.toLowerCase() === cfg.base.toLowerCase() ||
+            target.base.includes(cfg.base) || cfg.base.includes(target.base);
+        if (!baseMatched) return false;
+
+        // 設定側に @A軍 などの部隊指定がある場合は、同じ部隊タグを持つチームのみ一致させる
+        if (cfg.squad) {
+            return target.squad.toLowerCase() === cfg.squad.toLowerCase();
+        }
+        // 同ベース名に対して別エントリで部隊指定がある場合は、無印エントリは無印チームのみに一致させる（例: [@A軍, 無印] で @B軍 を混ぜない）
+        const hasSpecificSquadForBase = parsedConfigs.some(other =>
+            other.squad && other.base.toLowerCase() === cfg.base.toLowerCase()
+        );
+        if (hasSpecificSquadForBase) {
+            return !target.squad;
+        }
+        return true;
     });
 }
 
@@ -1237,7 +1269,7 @@ function applyFiltersAndRender() {
     if (teamRegexStr) {
         try { regex = new RegExp(teamRegexStr, 'i'); } catch(e){}
     }
-    const categories = categoryStr ? categoryStr.split(',').map(s=>s.trim()).filter(s=>s) : [];
+    const categories = categoryStr ? categoryStr.split(/[,、]/).map(s => s.trim()).filter(s => s) : [];
 
     const filteredGames = allGames.filter(g => {
         const teamFirstStr = (g.team_first || '').trim();
@@ -1264,6 +1296,7 @@ function applyFiltersAndRender() {
         if (!isHomeFirst && !isHomeSecond) return false;
 
         const dateStr = normalizeIsoDate(g.date);
+        if ((from || to) && !dateStr) return false;
         if (from && dateStr < from) return false;
         if (to && dateStr > to) return false;
         if (categories.length > 0 && !categories.some(cat => (g.title || '').includes(cat) || (g.category || '').includes(cat))) return false;
@@ -1297,29 +1330,59 @@ function applyFiltersAndRender() {
 
     currentFiltered = { games: filteredGames, bStats: filteredBStats, pStats: filteredPStats };
 
-    // フィルタ結果に含まれる選手のみをリストに表示する
-    const activePlayerIds = new Set();
-    filteredBStats.forEach(s => activePlayerIds.add(s.player_id));
-    filteredPStats.forEach(s => activePlayerIds.add(s.player_id));
-    const activePlayers = allPlayers.filter(p => activePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
-
-    const psSel = document.getElementById('ps-player');
-    if (psSel) {
-        const currentVal = psSel.value;
-        psSel.innerHTML = activePlayers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-        if (currentVal && activePlayerIds.has(parseInt(currentVal))) psSel.value = currentVal;
-    }
-    const cpList = document.getElementById('comp-players-list');
-    if (cpList) {
-        const checkedVals = new Set(Array.from(document.querySelectorAll('.comp-player-cb:checked')).map(cb => cb.value));
-        cpList.innerHTML = activePlayers.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="comp-player-cb rounded text-blue-600" ${checkedVals.has(String(p.id)) ? 'checked' : ''}><span>${escapeHtml(p.name)}</span></label>`).join('');
-    }
+    updateRoleScopedPlayerSelectors('all');
 
     renderTeamSummary(filteredGames, filteredBStats, filteredPStats);
     renderRanking();
     renderPersonalSummary();
     renderComparison();
     renderDetailAnalysisTab(true);
+}
+
+// 対象ロール(打撃/投手)として実際に出場記録があるか判定 (ベンチ登録のみの0打席・0登板レコードを除外)
+function hasRoleAppearance(statRow, role) {
+    if (!statRow) return false;
+    if (role === 'pitcher') {
+        return (statRow.outs || 0) > 0 || (statRow.batters_faced || 0) > 0;
+    }
+    return (statRow.plate_appearances || 0) > 0 || (statRow.at_bats || 0) > 0;
+}
+
+// フィルタ済み試合において指定ロールで実際に出場した選手のみを返す
+function getActivePlayersForRole(role) {
+    const statsList = role === 'pitcher' ? currentFiltered.pStats : currentFiltered.bStats;
+    const activeIds = new Set();
+    (statsList || []).forEach(s => {
+        if (hasRoleAppearance(s, role)) activeIds.add(s.player_id);
+    });
+    return {
+        activeIds,
+        players: allPlayers.filter(p => activeIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name))
+    };
+}
+
+function updateRoleScopedPlayerSelectors(target = 'all') {
+    if (target === 'all' || target === 'ps') {
+        const psSel = document.getElementById('ps-player');
+        if (psSel) {
+            const psRole = document.getElementById('ps-role')?.value || 'batter';
+            const { activeIds, players } = getActivePlayersForRole(psRole);
+            const currentVal = psSel.value;
+            psSel.innerHTML = players.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+            if (currentVal && activeIds.has(parseInt(currentVal, 10))) psSel.value = currentVal;
+        }
+    }
+    if (target === 'all' || target === 'comp') {
+        const cpList = document.getElementById('comp-players-list');
+        if (cpList) {
+            const compRole = document.getElementById('comp-role')?.value || 'batter';
+            const { players } = getActivePlayersForRole(compRole);
+            const checkedVals = new Set(Array.from(document.querySelectorAll('.comp-player-cb:checked')).map(cb => cb.value));
+            cpList.innerHTML = players.length === 0
+                ? '<div class="col-span-full text-xs text-gray-400">対象条件に出場した選手データがありません</div>'
+                : players.map(p => `<label class="flex items-center space-x-1 cursor-pointer"><input type="checkbox" value="${p.id}" class="comp-player-cb rounded text-blue-600" ${checkedVals.has(String(p.id)) ? 'checked' : ''}><span>${escapeHtml(p.name)}</span></label>`).join('');
+        }
+    }
 }
 
 function renderTeamSummary(games, bStats, pStats) {
@@ -1642,6 +1705,15 @@ async function renderPersonalSummary() {
         allContainer?.classList.add('hidden');
         if (pid) {
             renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindow);
+        } else {
+            const hlEl = document.getElementById('ps-highlight-cards');
+            if (hlEl) hlEl.innerHTML = '';
+            if (personalCharts.rawGraph) { personalCharts.rawGraph.destroy(); personalCharts.rawGraph = null; }
+            if (personalCharts.maGraph) { personalCharts.maGraph.destroy(); personalCharts.maGraph = null; }
+            const countLbl = document.getElementById('ps-game-count-label');
+            if (countLbl) countLbl.textContent = '対象全 0 試合';
+            const tbody = document.getElementById('ps-game-tbody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="19" class="p-4 text-center text-gray-500">対象条件に出場した選手データがありません</td></tr>';
         }
     } else {
         singleContainer?.classList.add('hidden');
@@ -1650,21 +1722,26 @@ async function renderPersonalSummary() {
     }
 }
 
-// 単一選手の試合別履歴＆移動平均ビューのレンダリング
-function renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindow) {
+function getPlayerMergedGames(pid, role) {
     const { games, bStats, pStats } = currentFiltered;
-    const playerName = allPlayers.find(p => p.id == pid)?.name || '選手';
-    const targetStats = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == pid);
-    
-    // 試合データとマージして日付順ソート
-    const allMerged = targetStats.map(s => {
+    const targetStats = (role === 'batter' ? bStats : pStats)
+        .filter(s => s.player_id == pid && hasRoleAppearance(s, role));
+    return targetStats.map(s => {
         const game = games.find(g => g.id === s.game_id);
         return {
-            date: game?.date || '',
-            game: game,
+            date: normalizeIsoDate(game?.date) || game?.date || '',
+            game,
             stats: s
         };
-    }).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
+    })
+        .filter(x => x.date)
+        .sort((a, b) => a.date.localeCompare(b.date) || ((a.game?.id || 0) - (b.game?.id || 0)));
+}
+
+// 単一選手の試合別履歴＆移動平均ビューのレンダリング
+function renderSinglePlayerHistoryView(pid, role, limitGamesVal, maUnit, maWindow) {
+    const playerName = allPlayers.find(p => p.id == pid)?.name || '選手';
+    const allMerged = getPlayerMergedGames(pid, role);
 
     // 全期間（通算）データ
     const totalCalc = role === 'batter' ? calcBatterStats(allMerged.map(x => x.stats)) : calcPitcherStats(allMerged.map(x => x.stats));
@@ -2116,22 +2193,15 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
     const tbody = document.getElementById('ps-all-tbody');
     if (!thead || !tbody) return;
 
-    const { games, bStats, pStats } = currentFiltered;
     const limitLabel = limitGamesVal === 'all' ? '全試合' : `直近 ${limitGamesVal} 試合`;
     if (titleEl) titleEl.textContent = `👥 全選手成績一覧 (${role === 'batter' ? '打撃' : '投手'})`;
     if (subtitleEl) subtitleEl.textContent = `対象: ${limitLabel} / 移動平均: 直近${maWindow}${maUnit === 'ab' ? '打数/登板' : '試合'} (各列クリックでソート)`;
 
-    const activePlayerIds = new Set();
-    bStats.forEach(s => activePlayerIds.add(s.player_id));
-    pStats.forEach(s => activePlayerIds.add(s.player_id));
-    const activePlayers = allPlayers.filter(p => activePlayerIds.has(p.id)).sort((a, b) => a.name.localeCompare(b.name));
+    const { players: activePlayers } = getActivePlayersForRole(role);
 
     const rows = activePlayers.map(player => {
-        const pStatsList = (role === 'batter' ? bStats : pStats).filter(s => s.player_id == player.id);
-        const merged = pStatsList.map(s => {
-            const g = games.find(x => x.id === s.game_id);
-            return { date: g?.date || '', game: g, stats: s };
-        }).filter(x => x.date).sort((a, b) => a.date.localeCompare(b.date));
+        const merged = getPlayerMergedGames(player.id, role);
+        if (merged.length === 0) return null;
 
         // 直近N試合フィルター
         let filteredMerged = [...merged];
@@ -2176,7 +2246,7 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             maEra: latestMa.era,
             maWhip: latestMa.whip
         };
-    });
+    }).filter(Boolean);
 
     const sortState = psAllSortState[role];
     rows.sort((a, b) => {
@@ -2213,9 +2283,11 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             </tr>
         `;
 
-        tbody.innerHTML = rows.map(r => `
+        tbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="15" class="p-4 text-center text-gray-500">該当する選手データがありません</td></tr>'
+            : rows.map(r => `
             <tr class="hover:bg-gray-50">
-                <td class="p-2 border font-bold text-gray-800">${r.player.name}</td>
+                <td class="p-2 border font-bold text-gray-800">${escapeHtml(r.player.name)}</td>
                 <td class="p-2 border text-center">${r.gameCount}</td>
                 <td class="p-2 border text-right font-semibold">${r.calcPeriod.ab}</td>
                 <td class="p-2 border text-right text-green-600 font-bold">${r.calcPeriod.h}</td>
@@ -2249,9 +2321,11 @@ function renderAllPlayersHistoryView(role, limitGamesVal, maUnit, maWindow) {
             </tr>
         `;
 
-        tbody.innerHTML = rows.map(r => `
+        tbody.innerHTML = rows.length === 0
+            ? '<tr><td colspan="11" class="p-4 text-center text-gray-500">該当する選手データがありません</td></tr>'
+            : rows.map(r => `
             <tr class="hover:bg-gray-50">
-                <td class="p-2 border font-bold text-gray-800">${r.player.name}</td>
+                <td class="p-2 border font-bold text-gray-800">${escapeHtml(r.player.name)}</td>
                 <td class="p-2 border text-center">${r.gameCount}</td>
                 <td class="p-2 border text-right font-bold text-green-700">${r.calcPeriod.wins}</td>
                 <td class="p-2 border text-right font-bold text-red-600">${r.calcPeriod.losses}</td>
@@ -2419,7 +2493,12 @@ function drawRankingTable(role) {
             }
         }
     } else {
-        document.getElementById('ranking-pitcher-tbody').innerHTML = data.map(r => `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-bold">${escapeHtml(r.name)}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
+        const pTbody = document.getElementById('ranking-pitcher-tbody');
+        if (pTbody) {
+            pTbody.innerHTML = data.length === 0
+                ? '<tr><td colspan="12" class="p-4 text-center text-gray-500">該当する選手データがありません</td></tr>'
+                : data.map(r => `<tr class="border-b hover:bg-gray-50"><td class="p-2 font-bold">${escapeHtml(r.name)}</td><td class="p-2 text-green-700 font-bold">${r.wins}</td><td class="p-2 text-red-600 font-bold">${r.losses}</td><td class="p-2">${r.outs}</td><td class="p-2 text-red-600 font-bold">${r.era.toFixed(2)}</td><td class="p-2">${r.whip.toFixed(2)}</td><td class="p-2">${r.k7.toFixed(2)}</td><td class="p-2">${r.bb7.toFixed(2)}</td><td class="p-2">${r.kRate.toFixed(3)}</td><td class="p-2">${r.bbRate.toFixed(3)}</td><td class="p-2">${(r.sRate*100).toFixed(1)}</td><td class="p-2">${r.kbb.toFixed(2)}</td></tr>`).join('');
+        }
     }
 
     // アイコンの更新
@@ -3655,7 +3734,8 @@ function getDetailGamesMatchingCurrentFilter() {
     if (tempPreviewDetails.length > 0) return sourceList;
 
     // 通常の共通フィルタ結果 (currentFiltered.games) と一致するDB詳細データのみを抽出
-    const filteredGameIds = new Set((currentFiltered.games || []).map(g => g.id));
+    const allGameIdSet = new Set((allGames || []).map(g => String(g.id)));
+    const filteredGameIds = new Set((currentFiltered.games || []).map(g => String(g.id)));
     const filteredKeySet = new Set(
         (currentFiltered.games || []).map(g => `${normalizeIsoDate(g.date)}_${(g.team_first || '').trim()}_${(g.team_second || '').trim()}`)
     );
@@ -3666,7 +3746,10 @@ function getDetailGamesMatchingCurrentFilter() {
 
     return sourceList.filter(gd => {
         if (allGames.length === 0) return true;
-        if (filteredGameIds.has(gd.gid)) return true;
+        const gidStr = gd.gid !== undefined && gd.gid !== null ? String(gd.gid) : '';
+        if (gidStr && allGameIdSet.has(gidStr)) {
+            return filteredGameIds.has(gidStr);
+        }
         const key = `${normalizeIsoDate(gd.date)}_${(gd.tn || '').trim()}_${(gd.bn || '').trim()}`;
         return filteredKeySet.has(key);
     });
@@ -3690,7 +3773,7 @@ function renderDetailAnalysisTab(preserveScope = true, forceScope = null) {
     if (badgeEl) {
         badgeEl.textContent = isPreviewMode
             ? `一時プレビュー表示中 (${availableDetails.length}試合)`
-            : `DB保存詳細データ: 全${allGameDetails.length}試合（フィルタ一致: ${availableDetails.length}試合）`;
+            : `DB保存詳細データ: 全${allGameDetails.length}試合（フィルタ一致: ${availableDetails.length}試合 / 集計対象: ${(currentFiltered.games || []).length}試合）`;
     }
     exitPreviewBtn?.classList.toggle('hidden', !isPreviewMode);
 
