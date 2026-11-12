@@ -530,6 +530,43 @@ function setupDashboardUI() {
                         <div id="backup-extract-msg" class="mt-2 text-sm font-bold hidden"></div>
                     </div>
                 </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md border border-amber-200">
+                    <h3 class="text-lg font-bold mb-2 border-b pb-2">③ DB内の重複試合データの確認・統合整理</h3>
+                    <p class="text-xs text-gray-600 mb-3">
+                        別ファイル・別端末からの再取り込みなどで「同じ日付・対戦カード・スコア」のまま試合ID違いで重複登録された試合を検出し、成績・詳細分析（文字起こし）データを1試合に統合して余分な重複行を削除します。
+                    </p>
+                    <div class="flex flex-wrap gap-2 mb-3">
+                        <button type="button" id="btn-scan-dup-games" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded shadow font-bold text-xs">
+                            🔍 重複試合を再チェック
+                        </button>
+                        <button type="button" id="btn-cleanup-dup-games" class="hidden bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow font-bold text-xs">
+                            🧹 重複試合を1件に統合・整理する
+                        </button>
+                    </div>
+                    <div id="dup-games-status" class="text-xs text-gray-600">DB読み込み後に自動判定されます</div>
+                </div>
+
+                <div class="bg-white p-6 rounded-lg shadow-md border border-red-200">
+                    <h3 class="text-lg font-bold mb-2 border-b pb-2 text-red-700">④ 成績データの全削除（リセット＆読み込み直し用）</h3>
+                    <p class="text-xs text-gray-600 mb-3">
+                        重複や過去の不整合をゼロからやり直したい場合に使用します。試合・打撃成績・投手成績・選手マスタ・詳細分析（文字起こし）データをすべて削除します。<br>
+                        <span class="text-emerald-700 font-bold">※ ダッシュボード設定（初期フィルタ・自チーム登録）や、出欠・配車・アンケート・ポジションシミュレーター等の他機能データは削除されません。</span>
+                    </p>
+                    <div id="reset-db-counts" class="mb-3 p-3 bg-red-50 border border-red-200 rounded text-xs text-gray-700">
+                        DB読み込み後に件数が表示されます
+                    </div>
+                    <label class="flex items-center gap-2 text-xs font-bold text-red-800 mb-3 cursor-pointer select-none">
+                        <input type="checkbox" id="confirm-reset-dashboard-db" class="rounded border-red-400 text-red-600">
+                        <span>上記の成績・選手・詳細ログデータをすべて削除することを確認しました（元に戻せません）</span>
+                    </label>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button type="button" id="btn-reset-dashboard-db" disabled class="bg-red-600 hover:bg-red-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white px-4 py-2 rounded shadow font-bold text-xs transition-colors">
+                            🗑️ 成績データを全削除する
+                        </button>
+                        <span id="reset-db-result-msg" class="text-xs text-gray-600"></span>
+                    </div>
+                </div>
             </div>
 
             <div id="tab-content-detail-analysis" class="hidden space-y-6 mb-6">
@@ -728,6 +765,13 @@ function setupDashboardUI() {
         document.getElementById('btn-extract-single-game')?.addEventListener('click', handleExtractSingleGame);
         document.getElementById('btn-extract-game-transcript')?.addEventListener('click', handleExtractGameTranscript);
         document.getElementById('btn-preview-backup-detail')?.addEventListener('click', handlePreviewBackupDetail);
+        document.getElementById('btn-scan-dup-games')?.addEventListener('click', renderDuplicateGamesPreview);
+        document.getElementById('btn-cleanup-dup-games')?.addEventListener('click', handleCleanupDuplicateGames);
+        document.getElementById('confirm-reset-dashboard-db')?.addEventListener('change', (e) => {
+            const btn = document.getElementById('btn-reset-dashboard-db');
+            if (btn) btn.disabled = !e.target.checked;
+        });
+        document.getElementById('btn-reset-dashboard-db')?.addEventListener('click', handleResetDashboardData);
         document.getElementById('btn-load-detail-data')?.addEventListener('click', handleDetailDataLoad);
         document.getElementById('detail-scope-select')?.addEventListener('change', (e) => renderDetailAnalysisTab(true, e.target.value));
         document.getElementById('btn-detail-back-to-all')?.addEventListener('click', () => renderDetailAnalysisTab(true, 'all'));
@@ -1094,6 +1138,8 @@ async function loadDashboardData() {
         } else {
             applyFiltersAndRender();
         }
+        renderDuplicateGamesPreview();
+        renderResetDashboardCounts();
     } catch (e) {
         console.error(e);
         alert('成績データの取得に失敗しました: ' + e.message);
@@ -2754,21 +2800,35 @@ async function handleCsvImport() {
                 stats.push(statRow);
             }
 
+            const rawGamesList = Array.from(gamesMap.values());
+            const { idMap, remappedCount } = buildImportedGameIdMap(rawGamesList);
+            const finalGamesMap = new Map();
+            rawGamesList.forEach(g => {
+                const targetId = idMap.get(g.id) ?? g.id;
+                finalGamesMap.set(targetId, { ...g, id: targetId });
+            });
+            const finalStatsMap = new Map();
+            stats.forEach(s => {
+                const targetGid = idMap.get(s.game_id) ?? s.game_id;
+                finalStatsMap.set(`${s.player_id}_${targetGid}`, { ...s, game_id: targetGid });
+            });
+            const finalStats = Array.from(finalStatsMap.values());
+
             // 1. 選手マスタの更新 (重複回避)
             const { error: pErr } = await supabaseClient.from('players').upsert(Array.from(playersMap.values()));
             if (pErr) throw pErr;
 
             // 2. 試合マスタの更新
-            const { error: gErr } = await supabaseClient.from('games').upsert(Array.from(gamesMap.values()));
+            const { error: gErr } = await supabaseClient.from('games').upsert(Array.from(finalGamesMap.values()));
             if (gErr) throw gErr;
 
             // 3. 成績の更新
             const tableName = type === 'batter' ? 'batter_stats' : 'pitcher_stats';
-            const { error: sErr } = await supabaseClient.from(tableName).upsert(stats, { onConflict: 'player_id, game_id' });
+            const { error: sErr } = await supabaseClient.from(tableName).upsert(finalStats, { onConflict: 'player_id, game_id' });
             if (sErr) throw sErr;
 
-            await logAction('IMPORT_CSV', `成績データ(${type === 'batter' ? '打者' : '投手'})を${stats.length}件インポートしました`);
-            msgEl.textContent = `成功: ${stats.length} 件のデータをインポートしました。`;
+            await logAction('IMPORT_CSV', `成績データ(${type === 'batter' ? '打者' : '投手'})を${finalStats.length}件インポートしました${remappedCount > 0 ? ` (既存試合統合: ${remappedCount}件)` : ''}`);
+            msgEl.textContent = `成功: ${finalStats.length} 件のデータをインポートしました${remappedCount > 0 ? `（既存試合と一致した ${remappedCount}件は新規追加せず上書き統合しました）` : ''}。`;
             msgEl.className = "mt-4 text-sm font-bold text-green-600";
             msgEl.classList.remove('hidden');
             fileInput.value = ''; // 成功したらクリア
@@ -3124,6 +3184,286 @@ async function upsertInChunks(table, rows, chunkSize, options = undefined) {
     }
 }
 
+function normalizeGameScorePair(rawScore) {
+    const m = String(rawScore || '').match(/(\d+)\s*[-－〜~]\s*(\d+)/);
+    return m ? `${parseInt(m[1], 10)}-${parseInt(m[2], 10)}` : String(rawScore || '').replace(/\s+/g, '').trim();
+}
+
+function getGameMatchInfo(g) {
+    const date = normalizeIsoDate(g?.date);
+    const t1 = (g?.team_first ?? g?.tn ?? '').trim();
+    const t2 = (g?.team_second ?? g?.bn ?? '').trim();
+    const score = normalizeGameScorePair(g?.score || extractScoreStringFromBackupGame(g));
+    return {
+        date,
+        t1,
+        t2,
+        score,
+        baseKey: date && t1 && t2 ? `${date}__${t1}__${t2}` : ''
+    };
+}
+
+// 別端末や再出力などで試合ID(gid)がズレた同一試合を既存DB上の試合IDへマッピングして重複登録を防止する
+function buildImportedGameIdMap(incomingGames) {
+    const idMap = new Map();
+    const existingList = Array.isArray(allGames) ? allGames : [];
+    const existingIdSet = new Set(existingList.map(g => Number(g.id)).filter(n => !isNaN(n)));
+    const claimedExistingIds = new Set();
+
+    // 1. すでに同じgame.idがDBにあるものを優先確定
+    incomingGames.forEach(g => {
+        const gid = Number(g.id);
+        if (!isNaN(gid) && existingIdSet.has(gid)) {
+            idMap.set(gid, gid);
+            claimedExistingIds.add(gid);
+        }
+    });
+
+    // 2. DBにないIDについては (日付, 先攻, 後攻, スコア) 一致の既存試合へ紐付け
+    let remappedCount = 0;
+    incomingGames.forEach(g => {
+        const gid = Number(g.id);
+        if (isNaN(gid) || idMap.has(gid)) return;
+        const inInfo = getGameMatchInfo(g);
+        if (!inInfo.baseKey) return;
+        const matched = existingList.find(ex => {
+            const exId = Number(ex.id);
+            if (isNaN(exId) || claimedExistingIds.has(exId)) return false;
+            const exInfo = getGameMatchInfo(ex);
+            if (exInfo.baseKey !== inInfo.baseKey) return false;
+            return !exInfo.score || !inInfo.score || exInfo.score === inInfo.score;
+        });
+        if (matched) {
+            const targetId = Number(matched.id);
+            idMap.set(gid, targetId);
+            claimedExistingIds.add(targetId);
+            remappedCount++;
+        }
+    });
+
+    return { idMap, remappedCount };
+}
+
+function findDuplicateGameGroups() {
+    const groups = new Map();
+    (allGames || []).forEach(g => {
+        const info = getGameMatchInfo(g);
+        if (!info.baseKey) return;
+        const fullKey = `${info.baseKey}__${info.score || 'NOSCORE'}`;
+        if (!groups.has(fullKey)) groups.set(fullKey, []);
+        groups.get(fullKey).push(g);
+    });
+    return Array.from(groups.values())
+        .filter(list => list.length >= 2)
+        .map(list => [...list].sort((a, b) => Number(a.id) - Number(b.id)))
+        .sort((a, b) => String(normalizeIsoDate(b[0].date)).localeCompare(String(normalizeIsoDate(a[0].date))));
+}
+
+function renderDuplicateGamesPreview() {
+    const statusEl = document.getElementById('dup-games-status');
+    const cleanBtn = document.getElementById('btn-cleanup-dup-games');
+    if (!statusEl) return;
+
+    const dupGroups = findDuplicateGameGroups();
+    if (dupGroups.length === 0) {
+        statusEl.className = 'text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded p-2.5';
+        statusEl.textContent = '✅ DB内に重複している試合はありません。';
+        cleanBtn?.classList.add('hidden');
+        return;
+    }
+
+    const detailIdSet = new Set((allGameDetails || []).map(d => Number(d.gid)));
+    const bCountByGid = new Map();
+    (allBatterStats || []).forEach(s => bCountByGid.set(Number(s.game_id), (bCountByGid.get(Number(s.game_id)) || 0) + 1));
+
+    statusEl.className = 'text-xs bg-amber-50 border border-amber-200 rounded p-3 space-y-2 text-amber-950';
+    statusEl.innerHTML = `
+        <div class="font-bold text-red-700">⚠️ 同じ日付・対戦カード・スコアの重複試合が ${dupGroups.length} 組見つかりました（「重複試合を1件に統合・整理する」で解消できます）：</div>
+        <ul class="space-y-1 pl-4 list-disc">
+            ${dupGroups.map(list => {
+                const head = list[0];
+                const idSummary = list.map(g => {
+                    const id = Number(g.id);
+                    const bCnt = bCountByGid.get(id) || 0;
+                    const hasDet = detailIdSet.has(id) ? '・詳細あり' : '';
+                    return `ID:${id} (打者${bCnt}件${hasDet})`;
+                }).join(' / ');
+                return `<li><span class="font-bold">${escapeHtml(normalizeIsoDate(head.date) || head.date || '')}</span> | ${escapeHtml(head.team_first || '')} ${escapeHtml(head.score || '')} ${escapeHtml(head.team_second || '')} → <span class="text-gray-700">${escapeHtml(idSummary)}</span></li>`;
+            }).join('')}
+        </ul>
+    `;
+    cleanBtn?.classList.remove('hidden');
+}
+
+async function handleCleanupDuplicateGames() {
+    const dupGroups = findDuplicateGameGroups();
+    if (dupGroups.length === 0) {
+        return alert('現在、DB内に重複している試合はありません。');
+    }
+    if (!confirm(`重複している ${dupGroups.length} 組の試合データを1件ずつに統合し、余分な重複行をDBから削除します。よろしいですか？`)) {
+        return;
+    }
+
+    showLoading('重複試合データを1件に統合・整理中...');
+    try {
+        const detailByGid = new Map((allGameDetails || []).map(d => [Number(d.gid), d]));
+        const gamesToUpdate = [];
+        const detailsToUpsert = [];
+        const bStatsToUpsert = [];
+        const pStatsToUpsert = [];
+        const deleteGameIds = [];
+
+        dupGroups.forEach(list => {
+            // 既存成績が入っている最も小さいIDを優先して残す
+            const bCnt = (gid) => (allBatterStats || []).filter(s => Number(s.game_id) === Number(gid)).length;
+            const pCnt = (gid) => (allPitcherStats || []).filter(s => Number(s.game_id) === Number(gid)).length;
+            const sorted = [...list].sort((a, b) => {
+                const hasStatsA = (bCnt(a.id) + pCnt(a.id)) > 0 ? 1 : 0;
+                const hasStatsB = (bCnt(b.id) + pCnt(b.id)) > 0 ? 1 : 0;
+                if (hasStatsA !== hasStatsB) return hasStatsB - hasStatsA;
+                return Number(a.id) - Number(b.id);
+            });
+
+            const keepGame = { ...sorted[0] };
+            const keepId = Number(keepGame.id);
+            const keepBatPids = new Set((allBatterStats || []).filter(s => Number(s.game_id) === keepId).map(s => Number(s.player_id)));
+            const keepPitPids = new Set((allPitcherStats || []).filter(s => Number(s.game_id) === keepId).map(s => Number(s.player_id)));
+            let keepDetail = detailByGid.get(keepId) || null;
+
+            sorted.slice(1).forEach(dup => {
+                const dupId = Number(dup.id);
+                deleteGameIds.push(dupId);
+
+                if (!keepGame.title && dup.title) keepGame.title = dup.title;
+                if (!keepGame.category && dup.category) keepGame.category = dup.category;
+                if (!keepGame.stadium && dup.stadium) keepGame.stadium = dup.stadium;
+                if (!keepGame.score && dup.score) keepGame.score = dup.score;
+
+                // 詳細データがあれば keepId 側へ引き継ぐ
+                const dupDetail = detailByGid.get(dupId);
+                if (!keepDetail && dupDetail) {
+                    keepDetail = { ...dupDetail, gid: keepId };
+                    detailsToUpsert.push({ key: `SCORER_GAME_DETAIL_${keepId}`, data: keepDetail });
+                }
+
+                // keepId 側に未登録の選手成績のみ引き継ぐ
+                (allBatterStats || []).filter(s => Number(s.game_id) === dupId).forEach(s => {
+                    const pid = Number(s.player_id);
+                    if (!keepBatPids.has(pid)) {
+                        keepBatPids.add(pid);
+                        const copy = { ...s, game_id: keepId };
+                        delete copy.id;
+                        bStatsToUpsert.push(copy);
+                    }
+                });
+                (allPitcherStats || []).filter(s => Number(s.game_id) === dupId).forEach(s => {
+                    const pid = Number(s.player_id);
+                    if (!keepPitPids.has(pid)) {
+                        keepPitPids.add(pid);
+                        const copy = { ...s, game_id: keepId };
+                        delete copy.id;
+                        pStatsToUpsert.push(copy);
+                    }
+                });
+            });
+
+            gamesToUpdate.push(keepGame);
+        });
+
+        if (gamesToUpdate.length > 0) await upsertInChunks('games', gamesToUpdate, 100);
+        if (bStatsToUpsert.length > 0) await upsertInChunks('batter_stats', bStatsToUpsert, 200, { onConflict: 'player_id, game_id' });
+        if (pStatsToUpsert.length > 0) await upsertInChunks('pitcher_stats', pStatsToUpsert, 200, { onConflict: 'player_id, game_id' });
+        if (detailsToUpsert.length > 0) await upsertInChunks('master_data', detailsToUpsert, 15, { onConflict: 'key' });
+
+        if (deleteGameIds.length > 0) {
+            const { error: delBErr } = await supabaseClient.from('batter_stats').delete().in('game_id', deleteGameIds);
+            if (delBErr) throw delBErr;
+            const { error: delPErr } = await supabaseClient.from('pitcher_stats').delete().in('game_id', deleteGameIds);
+            if (delPErr) throw delPErr;
+            const { error: delGErr } = await supabaseClient.from('games').delete().in('id', deleteGameIds);
+            if (delGErr) throw delGErr;
+            const detailKeys = deleteGameIds.map(id => `SCORER_GAME_DETAIL_${id}`);
+            const { error: delMErr } = await supabaseClient.from('master_data').delete().in('key', detailKeys);
+            if (delMErr) console.warn('master_data cleanup warning:', delMErr);
+        }
+
+        await logAction('CLEANUP_DUPLICATE_GAMES', `重複試合を整理: ${dupGroups.length}組統合 / 重複行 ${deleteGameIds.length}件削除`);
+        await loadDashboardData();
+        alert(`重複していた ${dupGroups.length} 組の試合を統合し、余分な ${deleteGameIds.length} 件を削除しました。`);
+    } catch (err) {
+        console.error(err);
+        alert(`重複試合の整理に失敗しました: ${err.message}`);
+    } finally {
+        hideLoading();
+    }
+}
+
+/** DB内成績データ全削除プレビューの件数表示と確認状態の初期化を行う */
+function renderResetDashboardCounts() {
+    const countsEl = document.getElementById('reset-db-counts');
+    if (countsEl) {
+        countsEl.innerHTML =
+            `現在の削除対象: <span class="font-bold">試合 ${allGames.length}件</span> / ` +
+            `<span class="font-bold">打撃 ${allBatterStats.length}件</span> / ` +
+            `<span class="font-bold">投手 ${allPitcherStats.length}件</span> / ` +
+            `<span class="font-bold">詳細分析 ${allGameDetails.length}件</span> / ` +
+            `<span class="font-bold">選手 ${allPlayers.length}名</span>`;
+    }
+    const chk = document.getElementById('confirm-reset-dashboard-db');
+    const btn = document.getElementById('btn-reset-dashboard-db');
+    if (chk) chk.checked = false;
+    if (btn) btn.disabled = true;
+}
+
+/** ダッシュボードの成績・選手・詳細分析データをFK依存順で全削除する */
+async function handleResetDashboardData() {
+    const chk = document.getElementById('confirm-reset-dashboard-db');
+    if (!chk?.checked) {
+        alert('先に確認チェックボックスにチェックを入れてください。');
+        return;
+    }
+    const summaryText =
+        `試合 ${allGames.length}件 / 打撃 ${allBatterStats.length}件 / 投手 ${allPitcherStats.length}件 / ` +
+        `詳細分析 ${allGameDetails.length}件 / 選手 ${allPlayers.length}名`;
+    if (!confirm(`本当にダッシュボードの成績データを全削除しますか？\n対象: ${summaryText}\n\n※ この操作は元に戻せません。設定や他機能（出欠・配車等）は保持されます。`)) {
+        return;
+    }
+
+    const msgEl = document.getElementById('reset-db-result-msg');
+    showLoading();
+    try {
+        const INT_MIN = -2147483648;
+        const { error: delBErr } = await supabaseClient.from('batter_stats').delete().gte('game_id', INT_MIN);
+        if (delBErr) throw delBErr;
+        const { error: delPErr } = await supabaseClient.from('pitcher_stats').delete().gte('game_id', INT_MIN);
+        if (delPErr) throw delPErr;
+        const { error: delGErr } = await supabaseClient.from('games').delete().gte('id', INT_MIN);
+        if (delGErr) throw delGErr;
+        const { error: delPlErr } = await supabaseClient.from('players').delete().gte('id', INT_MIN);
+        if (delPlErr) throw delPlErr;
+        const { error: delMErr } = await supabaseClient.from('master_data').delete().like('key', 'SCORER_GAME_DETAIL_%');
+        if (delMErr) throw delMErr;
+
+        tempPreviewDetails = [];
+        await logAction('RESET_DASHBOARD_DATA', `成績データ全削除: ${summaryText}`);
+        await loadDashboardData();
+        if (msgEl) {
+            msgEl.textContent = '✅ 全削除が完了しました。上の①または②からデータを再読み込みしてください。';
+            msgEl.className = 'text-xs font-bold text-emerald-700';
+        }
+        alert('成績・選手・詳細分析データをすべて削除しました。\n上の①（CSV）または②（scorer_data*.txt）から読み込み直してください。');
+    } catch (err) {
+        console.error(err);
+        if (msgEl) {
+            msgEl.textContent = `❌ 削除に失敗しました: ${err.message}`;
+            msgEl.className = 'text-xs font-bold text-red-700';
+        }
+        alert(`成績データの全削除に失敗しました: ${err.message}`);
+    } finally {
+        hideLoading();
+    }
+}
+
 async function handleBackupImportDb() {
     const msgEl = document.getElementById('backup-extract-msg');
     if (!loadedScorerExtracted) {
@@ -3133,14 +3473,40 @@ async function handleBackupImportDb() {
     showLoading('バックアップデータから成績・詳細分析データをDBへ一括インポート中...');
     try {
         const { players, games, gameDetails, batterStats, pitcherStats } = loadedScorerExtracted;
+        const { idMap, remappedCount } = buildImportedGameIdMap(games);
+
+        const finalGamesMap = new Map();
+        games.forEach(g => {
+            const targetId = idMap.get(g.id) ?? g.id;
+            finalGamesMap.set(targetId, { ...g, id: targetId });
+        });
+        const finalGames = Array.from(finalGamesMap.values());
+
+        const dedupeStatRows = (rows) => {
+            const m = new Map();
+            rows.forEach(r => {
+                const targetGid = idMap.get(r.game_id) ?? r.game_id;
+                m.set(`${r.player_id}_${targetGid}`, { ...r, game_id: targetGid });
+            });
+            return Array.from(m.values());
+        };
+        const finalBatterStats = dedupeStatRows(batterStats);
+        const finalPitcherStats = dedupeStatRows(pitcherStats);
+
+        const finalDetailsMap = new Map();
+        gameDetails.forEach(gd => {
+            const targetGid = idMap.get(gd.gid) ?? gd.gid;
+            finalDetailsMap.set(targetGid, { ...gd, gid: targetGid });
+        });
+        const finalDetails = Array.from(finalDetailsMap.values());
 
         if (players.length > 0) await upsertInChunks('players', players, 200);
-        if (games.length > 0) await upsertInChunks('games', games, 100);
-        if (batterStats.length > 0) await upsertInChunks('batter_stats', batterStats, 200, { onConflict: 'player_id, game_id' });
-        if (pitcherStats.length > 0) await upsertInChunks('pitcher_stats', pitcherStats, 200, { onConflict: 'player_id, game_id' });
+        if (finalGames.length > 0) await upsertInChunks('games', finalGames, 100);
+        if (finalBatterStats.length > 0) await upsertInChunks('batter_stats', finalBatterStats, 200, { onConflict: 'player_id, game_id' });
+        if (finalPitcherStats.length > 0) await upsertInChunks('pitcher_stats', finalPitcherStats, 200, { onConflict: 'player_id, game_id' });
 
         // 詳細分析・文字起こし用データを master_data に試合単位で永続保存
-        const detailRows = gameDetails.map(gd => ({
+        const detailRows = finalDetails.map(gd => ({
             key: `SCORER_GAME_DETAIL_${gd.gid}`,
             data: gd
         }));
@@ -3148,9 +3514,9 @@ async function handleBackupImportDb() {
             await upsertInChunks('master_data', detailRows, 15, { onConflict: 'key' });
         }
 
-        await logAction('IMPORT_BACKUP', `Scorerデータ一括インポート: 試合=${games.length}件, 詳細ログ=${detailRows.length}件, 打者=${batterStats.length}件, 投手=${pitcherStats.length}件`);
+        await logAction('IMPORT_BACKUP', `Scorerデータ一括インポート: 試合=${finalGames.length}件, 詳細ログ=${detailRows.length}件, 打者=${finalBatterStats.length}件, 投手=${finalPitcherStats.length}件${remappedCount > 0 ? ` (既存試合統合: ${remappedCount}件)` : ''}`);
         if (msgEl) {
-            msgEl.textContent = `DBインポート完了: 試合 ${games.length}件 / 詳細プレイ ${detailRows.length}件 / 打者成績 ${batterStats.length}件 / 投手成績 ${pitcherStats.length}件を保存しました（「詳細分析・文字起こし」タブから即座に参照できます）。`;
+            msgEl.textContent = `DBインポート完了: 試合 ${finalGames.length}件 / 詳細プレイ ${detailRows.length}件 / 打者成績 ${finalBatterStats.length}件 / 投手成績 ${finalPitcherStats.length}件を保存しました${remappedCount > 0 ? `（既存試合と一致した ${remappedCount}件は新規追加せず統合更新しました）` : ''}（「詳細分析・文字起こし」タブから即座に参照できます）。`;
             msgEl.className = 'mt-3 text-sm font-bold text-green-600';
             msgEl.classList.remove('hidden');
         }
@@ -4024,7 +4390,8 @@ function handleDetailDataLoad() {
         try {
             const text = String(e.target.result || '').replace(/^\uFEFF/, '');
             const data = JSON.parse(text);
-            if (Array.isArray(data.game) && data.game.length > 0) {
+            const hasGames = Array.isArray(data.game) ? data.game.length > 0 : Boolean(data.game || (data.cd && data.cf));
+            if (hasGames) {
                 const extracted = extractFromScorerBackup(data);
                 tempPreviewDetails = extracted.gameDetails;
                 renderDetailAnalysisTab(false, tempPreviewDetails.length === 1 ? String(tempPreviewDetails[0].gid) : 'all');
